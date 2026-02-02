@@ -55,11 +55,11 @@ def find_ticker(product_name, isin=None):
     2. Finnhub lookup via ISIN of productname
     """
     manual_map = {
-        'BITCOIN': 'BINANCE:BTC-EUR',
-        'ETHEREUM': 'BINANCE:ETH-EUR',
-        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'EUNL.VX',
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANDEF.AS'
-    }
+    'BITCOIN': 'BINANCE:BTC/EUR',
+    'ETHEREUM': 'BINANCE:ETH/EUR',
+    'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'ISIN:IE00B4L5Y983',
+    'FUTURE OF DEFENCE UCITS - ACC ETF': 'ISIN:IE00BF0M2Z83'
+}
 
     upper_name = product_name.upper()
     if upper_name in manual_map:
