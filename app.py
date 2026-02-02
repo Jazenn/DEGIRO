@@ -316,9 +316,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     # Download data voor alle tickers in 1 keer (efficiënter)
     unique_tickers = list(set(product_map.values()))
     try:
-        # Download wekelijkse data
+        # Download DAGELIJKSE data (was wekelijks)
         print(f"Downloading history for: {unique_tickers}")
-        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1wk", group_by="ticker", progress=False)
+        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
         return pd.DataFrame()
