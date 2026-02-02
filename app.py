@@ -539,6 +539,12 @@ def main() -> None:
     # Globale samenvatting
     total_deposits = df.loc[df["type"] == "Deposit", "amount"].sum()
     total_withdrawals = -df.loc[df["type"] == "Withdrawal", "amount"].sum()
+    
+    # Nieuwe metrics voor display (Koop/Verkoop volume)
+    # Buy is negatief (geld uit), Sell is positief (geld in). We tonen absolute waarden.
+    total_buys = df.loc[df["type"] == "Buy", "amount"].sum()
+    total_sells = df.loc[df["type"] == "Sell", "amount"].sum()
+    
     total_fees = -df.loc[df["is_fee"], "amount"].sum()
     total_dividends = df.loc[df["is_dividend"], "amount"].sum()
     
@@ -559,23 +565,26 @@ def main() -> None:
     # Totaal eigen vermogen = Marktwaarde + Cash
     total_equity = total_market_value + current_cash
     
-    # Netto inleg = Stortingen - Opnames
+    # Netto inleg = Stortingen - Opnames (gebruikt voor P/L berekening)
     net_invested_total = total_deposits - total_withdrawals
     
     # Totaal resultaat = Eigen Vermogen Nu - Netto Inleg
     # Dit omvat dus ALLES: koerswinst, dividenden, kosten, rente, etc.
     total_result = total_equity - net_invested_total
 
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Totaal gestort", format_eur(total_deposits))
-    col2.metric("Totaal opgenomen", format_eur(total_withdrawals))
-    col3.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
-    col4.metric("Ontvangen dividend", format_eur(total_dividends))
+    # Layout: 2 rijen van 3 kolommen zoals gevraagd
+    # Rij 1: Gekocht, Verkocht, Marktwaarde
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
+    col2.metric("Totaal aandelen verkocht", format_eur(total_sells))
+    col3.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
 
-    col5, col6 = st.columns(2)
-    col5.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col6.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
+    # Rij 2: Resultaat, Kosten, Dividend
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
                help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
+    col5.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
+    col6.metric("Ontvangen dividend", format_eur(total_dividends))
 
     st.markdown("---")
     
