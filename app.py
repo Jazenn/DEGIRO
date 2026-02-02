@@ -18,36 +18,43 @@ def get_live_price(symbol):
         data = yf.download(symbol, period="5d", interval="1d")
         if not data.empty:
             return data['Close'].iloc[-1]
-    except Exception as e:
-        print(f"Fout bij ophalen {symbol}: {e}")
+    except:
+        pass
     return None
 
-def detect_ticker(product_name):
-    """Detecteer automatisch ticker voor een product"""
-    # Crypto mapping
+def find_ticker(product_name, isin=None):
+    """
+    Zoek automatisch ticker:
+    1. Crypto mapping
+    2. ISIN -> Yahoo Finance
+    3. Productnaam -> Yahoo Finance
+    """
     crypto_map = {
         'BITCOIN': 'BTC-EUR',
         'ETHEREUM': 'ETH-EUR'
     }
-    # Fallback voor ETF's die yfinance niet automatisch herkent
-    etf_map = {
-        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWCE.DE',
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANETFDEF.AS'
-    }
-    
+
     name_upper = product_name.upper()
     if name_upper in crypto_map:
         return crypto_map[name_upper]
-    if product_name in etf_map:
-        return etf_map[product_name]
-    
-    # Probeer direct yfinance ticker
+
+    # Probeer via ISIN (yfinance ondersteunt soms ISIN)
+    if isin:
+        try:
+            t = yf.Ticker(isin)
+            if not t.history(period="5d").empty:
+                return isin
+        except:
+            pass
+
+    # Probeer via naam (direct lookup)
     try:
-        ticker = yf.Ticker(product_name)
-        if not ticker.history(period="5d").empty:
+        t = yf.Ticker(product_name)
+        if not t.history(period="5d").empty:
             return product_name
     except:
         pass
+
     return None
 
 def parse_buy_sell(row, positions):
@@ -66,16 +73,15 @@ def parse_buy_sell(row, positions):
         positions[product]['total_cost'] += abs(amount)
 
 # --- MAIN APP ---
-
 if uploaded_file is not None:
     st.success("✅ CSV geladen")
     
-    # --- CSV PARSING ---
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file, sep=',')
     
     date_col, product_col, omschrijving_col = 'Datum', 'Product', 'Omschrijving'
     mutatie_bedrag_col, saldo_bedrag_col = 'Unnamed: 8', 'Unnamed: 10'
+    isin_col = 'ISIN' if 'ISIN' in df.columns else None
     
     df['__date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
     df['bedrag'] = df[mutatie_bedrag_col].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0)
@@ -84,7 +90,6 @@ if uploaded_file is not None:
     # --- POSITIES PARSING ---
     positions = {}
     ignore_types = ['ideal deposit', 'reservation ideal', 'degiro cash sweep', 'overboeking']
-    
     mask_relevant = True
     for ignore in ignore_types:
         mask_relevant &= ~df[omschrijving_col].astype(str).str.contains(ignore, case=False, na=False)
@@ -94,7 +99,8 @@ if uploaded_file is not None:
     # --- TICKERS AUTOMATISCH DETECTEREN ---
     tickers = {}
     for product in positions.keys():
-        ticker = detect_ticker(product)
+        isin = df_relevant[df_relevant[product_col] == product][isin_col].iloc[0] if isin_col else None
+        ticker = find_ticker(product, isin)
         if ticker:
             tickers[product] = ticker
         else:
