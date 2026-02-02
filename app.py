@@ -10,13 +10,9 @@ st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
 uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
 
 # --- FUNCTIES ---
-
 @st.cache_data(ttl=300)
 def get_live_price(symbol):
-    """
-    Haal de laatste slotprijs van een ticker op en return float of None
-    Voorkomt errors bij Series of NaN.
-    """
+    """Haal de laatste slotprijs van een ticker op en return float of None"""
     try:
         data = yf.download(symbol, period="5d", interval="1d", progress=False)
         if data.empty or 'Close' not in data.columns:
@@ -25,43 +21,6 @@ def get_live_price(symbol):
         return float(price)
     except:
         return None
-
-def find_ticker(product_name, isin=None):
-    """
-    Zoek automatisch ticker:
-    1. Crypto mapping
-    2. ISIN -> Yahoo Finance
-    3. Productnaam -> Yahoo Finance
-    """
-    crypto_map = {
-        'BITCOIN': 'BTC-EUR',
-        'ETHEREUM': 'ETH-EUR'
-    }
-
-    name_upper = product_name.upper()
-    if name_upper in crypto_map:
-        return crypto_map[name_upper]
-
-    # Probeer via ISIN
-    if isin:
-        try:
-            t = yf.Ticker(isin)
-            hist = t.history(period="5d")
-            if not hist.empty:
-                return isin
-        except:
-            pass
-
-    # Probeer via naam
-    try:
-        t = yf.Ticker(product_name)
-        hist = t.history(period="5d")
-        if not hist.empty:
-            return product_name
-    except:
-        pass
-
-    return None
 
 def parse_buy_sell(row, positions):
     """Parse kooptransacties en update posities"""
@@ -77,6 +36,56 @@ def parse_buy_sell(row, positions):
             positions[product] = {'quantity': 0, 'total_cost': 0}
         positions[product]['quantity'] += quantity
         positions[product]['total_cost'] += abs(amount)
+
+def find_ticker(product_name, isin=None):
+    """
+    Zoek ticker:
+    1. Handmatige mapping voor bekende producten
+    2. Crypto mapping
+    3. ISIN lookup
+    4. Productnaam lookup
+    """
+    # --- HANDMATIGE TICKERS (jouw huidige portefeuille) ---
+    manual_map = {
+        'BITCOIN': 'BTC-EUR',
+        'ETHEREUM': 'ETH-EUR',
+        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWCE.AS',  # Amsterdam, correct koers
+        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANETFDEF.AS'
+    }
+
+    upper_name = product_name.upper()
+    if upper_name in manual_map:
+        return manual_map[upper_name]
+
+    # --- CRYPTO ---
+    crypto_map = {
+        'BITCOIN': 'BTC-EUR',
+        'ETHEREUM': 'ETH-EUR'
+    }
+    if upper_name in crypto_map:
+        return crypto_map[upper_name]
+
+    # --- ISIN lookup ---
+    if isin:
+        try:
+            t = yf.Ticker(isin)
+            hist = t.history(period="5d")
+            if not hist.empty:
+                return isin
+        except:
+            pass
+
+    # --- Productnaam lookup ---
+    try:
+        t = yf.Ticker(product_name)
+        hist = t.history(period="5d")
+        if not hist.empty:
+            return product_name
+    except:
+        pass
+
+    # Geen ticker gevonden
+    return None
 
 # --- MAIN APP ---
 if uploaded_file is not None:
