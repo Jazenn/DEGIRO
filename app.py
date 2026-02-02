@@ -427,17 +427,9 @@ def main() -> None:
         st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
         if not positions.empty:
             display = positions.copy()
-            display["Laatste koers"] = display["last_price"].map(
-                lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                if pd.notna(v)
-                else ""
-            )
+            # Totale aankoopkosten (positief bedrag) en huidige marktwaarde
+            display["Totale kosten (aankoop)"] = display["invested"].map(format_eur)
             display["Huidige waarde"] = display["current_value"].map(format_eur)
-            display["Gemiddelde aankoopkoers"] = display["avg_price"].map(
-                lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-                if pd.notna(v)
-                else ""
-            )
             display = display.rename(
                 columns={
                     "product": "Product",
@@ -451,12 +443,11 @@ def main() -> None:
             display = display[
                 [
                     "Product",
+                    "Totale kosten (aankoop)",
+                    "Huidige waarde",
                     "Aantal",
                     "Aantal transacties",
                     "Ticker",
-                    "Laatste koers",
-                    "Huidige waarde",
-                    "Gemiddelde aankoopkoers",
                 ]
             ]
             st.dataframe(display, use_container_width=True)
