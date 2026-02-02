@@ -4,15 +4,13 @@ import matplotlib.pyplot as plt
 import re
 import requests
 
-# --- FINNHUB API KEY ---
-FINNHUB_API_KEY = st.secrets["FINNHUB_API_KEY"]
-
+# ----------------- STREAMLIT SETTINGS -----------------
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
 
-uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
-
-# ----------------- FUNCTIES -----------------
+# ----------------- FINNHUB API -----------------
+# Ophalen uit Streamlit Secrets
+FINNHUB_API_KEY = st.secrets["api_keys"]["finnhub"]
 
 @st.cache_data(ttl=300)
 def get_finnhub_price(symbol):
@@ -26,11 +24,14 @@ def get_finnhub_price(symbol):
         data = r.json()
         if 'c' in data and data['c'] is not None:
             return float(data['c'])
-        else:
-            return None
+        return None
     except:
         return None
 
+# ----------------- CSV UPLOAD -----------------
+uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
+
+# ----------------- FUNCTIES -----------------
 def parse_buy_sell(row, positions):
     """
     Parse kooptransacties en update posities
@@ -51,29 +52,26 @@ def find_ticker(product_name, isin=None):
     """
     Zoek ticker:
     1. Handmatige mapping voor bekende producten
-    2. Crypto mapping
-    3. Finnhub fallback
+    2. Finnhub lookup via ISIN of productname
     """
     manual_map = {
         'BITCOIN': 'BINANCE:BTC-EUR',
         'ETHEREUM': 'BINANCE:ETH-EUR',
-        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'EUNL.VX',  # Amsterdam EUR
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANDEF.AS'     # check juiste Finnhub ticker
+        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'EUNL.VX',
+        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANDEF.AS'
     }
 
     upper_name = product_name.upper()
     if upper_name in manual_map:
         return manual_map[upper_name]
 
-    # Finnhub fallback: probeer ISIN eerst
     if isin:
         return isin
 
-    # Als fallback, gebruik productnaam zelf
+    # fallback: gebruik productname, Finnhub probeert match
     return product_name
 
 # ----------------- MAIN APP -----------------
-
 if uploaded_file is not None:
     st.success("✅ CSV geladen")
     
@@ -104,19 +102,21 @@ if uploaded_file is not None:
     for product in positions.keys():
         isin = df_relevant[df_relevant[product_col] == product][isin_col].iloc[0] if isin_col else None
         ticker = find_ticker(product, isin)
-        if ticker:
-            tickers[product] = ticker
-        else:
-            st.sidebar.warning(f"Geen ticker gevonden voor {product}")
+        tickers[product] = ticker
     
     # --- LIVE KOERSEN via Finnhub ---
     live_prices = {}
-    if st.sidebar.checkbox("📡 Live koersen", value=True):
-        for product, symbol in tickers.items():
-            price = get_finnhub_price(symbol)
-            if price is None:
-                st.sidebar.warning(f"{product[:20]}: Geen koers gevonden, fallback naar kostprijs")
+    st.sidebar.markdown("### 📡 Live koersen")
+    for product, symbol in tickers.items():
+        st.sidebar.write(f"Probeer Finnhub ticker voor {product}: {symbol}")
+        price = get_finnhub_price(symbol)
+        if price is not None:
             live_prices[product] = price
+            st.sidebar.success(f"{product[:25]}: €{price:.2f}")
+        else:
+            # fallback naar kostprijs
+            live_prices[product] = None
+            st.sidebar.warning(f"{product[:25]}: Geen koers gevonden, fallback naar kostprijs")
     
     # --- POSITIES TONEN ---
     position_data = []
@@ -185,4 +185,4 @@ if uploaded_file is not None:
     st.dataframe(pd.DataFrame(position_data), use_container_width=True)
 
 else:
-    st.info("👆 Upload CSV! `pip install requests` voor Finnhub")
+    st.info("👆 Upload CSV! Zorg dat je `requests` geïnstalleerd hebt voor Finnhub")
