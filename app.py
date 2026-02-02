@@ -17,6 +17,15 @@ def format_eur(value: float) -> str:
     return f"€ {s}"
 
 
+def format_pct(value: float) -> str:
+    """Format a float as percentage with European decimal separator."""
+    if pd.isna(value):
+        return ""
+    s = f"{value:+.2f}"  # bijv. +12.34 of -5.67
+    s = s.replace(",", "X").replace(".", ",").replace("X", ",")
+    return f"{s}%"
+
+
 def load_degiro_csv(file) -> pd.DataFrame:
     """Load a DeGiro CSV file into a cleaned DataFrame."""
     df = pd.read_csv(file)
@@ -307,26 +316,11 @@ def main() -> None:
         help="Gebruik bij voorkeur de 'Account.csv' export uit DeGiro.",
     )
 
-    use_example = sidebar.checkbox(
-        "Gebruik voorbeelddata (Account_year.csv)", value=uploaded_file is None
-    )
-
-    df_raw: pd.DataFrame | None = None
-
-    if uploaded_file is not None:
-        df_raw = load_degiro_csv(uploaded_file)
-    elif use_example:
-        example_path = Path(__file__).with_name("Account_year.csv")
-        if example_path.exists():
-            df_raw = load_degiro_csv(example_path)
-        else:
-            st.warning(
-                "Voorbeeldbestand `Account_year.csv` niet gevonden in de huidige map."
-            )
-
-    if df_raw is None:
-        st.info("Upload een CSV-bestand of schakel de voorbeelddata in via de sidebar.")
+    if uploaded_file is None:
+        st.info("Upload een DeGiro CSV-bestand om je portefeuille te analyseren.")
         return
+
+    df_raw = load_degiro_csv(uploaded_file)
 
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
@@ -383,10 +377,9 @@ def main() -> None:
     col3.metric("Transactiekosten", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
 
-    col5, col6, col7 = st.columns(3)
-    col5.metric("Totaal geïnvesteerd in effecten", format_eur(total_invested_positions))
-    col6.metric("Huidige marktwaarde (live koersen)", format_eur(total_market_value))
-    col7.metric("On-gerealiseerde winst/verlies", format_eur(unrealized_pl))
+    col5, col6 = st.columns(2)
+    col5.metric("Huidige marktwaarde (live koersen)", format_eur(total_market_value))
+    col6.metric("On-gerealiseerde winst/verlies", format_eur(unrealized_pl))
 
     st.markdown("---")
 
@@ -430,6 +423,19 @@ def main() -> None:
             # Totale aankoopkosten (positief bedrag) en huidige marktwaarde
             display["Totale kosten (aankoop)"] = display["invested"].map(format_eur)
             display["Huidige waarde"] = display["current_value"].map(format_eur)
+            # Huidige winst/verlies in EUR en procent
+            display["Winst/verlies (EUR)"] = (
+                display["current_value"] - display["invested"]
+            ).map(format_eur)
+            def _pl_pct(row: pd.Series) -> float | None:
+                cur = row.get("current_value")
+                inv = row.get("invested")
+                if pd.notna(cur) and pd.notna(inv) and inv != 0:
+                    return (cur / inv - 1.0) * 100.0
+                return pd.NA
+            display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(
+                format_pct
+            )
             display = display.rename(
                 columns={
                     "product": "Product",
@@ -445,6 +451,8 @@ def main() -> None:
                     "Product",
                     "Totale kosten (aankoop)",
                     "Huidige waarde",
+                    "Winst/verlies (EUR)",
+                    "Winst/verlies (%)",
                     "Aantal",
                     "Aantal transacties",
                     "Ticker",
