@@ -3,14 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 import re
-from datetime import datetime
 
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
-
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
-
-# Live koersen checkbox
-use_live = st.sidebar.checkbox("📡 Live koersen", value=True)
 
 uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
 
@@ -21,14 +16,24 @@ if uploaded_file is not None:
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file, sep=',')
     
-    date_col, product_col, omschrijving_col = 'Datum', 'Product', 'Omschrijving'
-    mutatie_bedrag_col, saldo_bedrag_col = 'Unnamed: 8', 'Unnamed: 10'
+    # Kolommen veilig ophalen
+    date_col = 'Datum'
+    product_col = 'Product' 
+    omschrijving_col = 'Omschrijving'
+    mutatie_bedrag_col = 'Unnamed: 8'
+    saldo_bedrag_col = 'Unnamed: 10'
     
-    df['__date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
-    df['bedrag'] = df[mutatie_bedrag_col].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0)
+    # Datum en bedragen (veilig!)
+    df['__date'] = pd.to_datetime(df.get(date_col, pd.Series()), dayfirst=True, errors='coerce')
+    df['bedrag'] = df.get(mutatie_bedrag_col, pd.Series()).apply(
+        lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0
+    )
+    df['saldo_num'] = df.get(saldo_bedrag_col, pd.Series()).apply(
+        lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0
+    )
     
     # === POSITIE PARSING ===
-    positions = {}  # {product: {'quantity': 0, 'total_cost': 0}}
+    positions = {}
     
     def parse_buy_sell(row):
         oms = str(row[omschrijving_col]).lower()
@@ -36,44 +41,44 @@ if uploaded_file is not None:
         amount = row['bedrag']
         
         # Koop parsing: "Koop 0,001441 @ 69.278,95 EUR"
-        buy_match = re.search(r'koop\s+(\d+(?:,\d+)?)\s*@', oms)
-        if buy_match and amount < 0:  # Koop = negatief
+        buy_match = re.search(r'koop\s+(\d+(?:,\d+)?)', oms)
+        if buy_match and amount < 0:
             quantity = float(buy_match.group(1).replace(',', '.'))
             if product not in positions:
                 positions[product] = {'quantity': 0, 'total_cost': 0}
             positions[product]['quantity'] += quantity
             positions[product]['total_cost'] += abs(amount)
     
-    # Filter relevante + parse posities
+    # Filter en parse
     ignore_types = ['ideal deposit', 'reservation ideal', 'degiro cash sweep', 'overboeking']
     mask_relevant = True
     for ignore in ignore_types:
         mask_relevant &= ~df[omschrijving_col].astype(str).str.contains(ignore, case=False, na=False)
     
-    df_relevant = df[mask_relevant].apply(parse_buy_sell, axis=1)
+    df_relevant = df[mask_relevant].copy()
+    df_relevant.apply(parse_buy_sell, axis=1)
     
     # === LIVE KOERSEN ===
     tickers = {
         'BITCOIN': 'BTC-EUR',
-        'ETHEREUM': 'ETH-EUR', 
+        'ETHEREUM': 'ETH-EUR',
         'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWRL.AS',
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'NVDX.AS',  # HANetf Defence
+        'FUTURE OF DEFENCE UCITS - ACC ETF': 'DFEN.AS',
         'AEGON LTD': 'AGN.AS'
     }
     
     live_prices = {}
-    if use_live:
-        with st.spinner("📡 Live koersen ophalen..."):
-            for product, symbol in tickers.items():
-                if product in positions:
-                    try:
-                        ticker = yf.Ticker(symbol)
-                        price = ticker.history(period="1d")['Close'].iloc[-1]
-                        live_prices[product] = price
-                    except:
-                        live_prices[product] = None
+    if st.sidebar.checkbox("📡 Live koersen", value=True):
+        for product, symbol in tickers.items():
+            if product in positions:
+                try:
+                    ticker = yf.Ticker(symbol)
+                    price = ticker.history(period="1d")['Close'].iloc[-1]
+                    live_prices[product] = price
+                except:
+                    live_prices[product] = None
     
-    # === POSITIES TABEL ===
+    # === POSITIES ===
     position_data = []
     total_cost = 0
     total_market = 0
@@ -89,7 +94,8 @@ if uploaded_file is not None:
             total_market += market_value
             rendement = ((market_value - cost) / cost * 100)
         else:
-            market_value = cost  # Fallback
+            market_value = cost
+            total_market += market_value
             rendement = 0
             
         position_data.append({
@@ -104,13 +110,14 @@ if uploaded_file is not None:
     positions_df = pd.DataFrame(position_data)
     
     # === KPI's ===
-    col1, col2, col3, col4 = st.columns(4)
     rendement_total = ((total_market - total_cost) / total_cost * 100) if total_cost > 0 else 0
+    cash_saldo = df['saldo_num'].iloc[-1] if len(df) > 0 else 0
     
-    with col1: st.metric("💼 Totale kostprijs", f"€{total_cost:,.0f}")
-    with col2: st.metric("📈 Marktwaarde", f"€{total_market:,.0f}")
-    with col3: st.metric("🎯 Rendement", f"{rendement_total:+.1f}%")
-    with col4: st.metric("💰 Cash", f"€{df['saldo_num'].iloc[-1]:,.0f}")
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("💼 Kostprijs", f"€{total_cost:,.0f}")
+    col2.metric("📈 Marktwaarde", f"€{total_market:,.0f}")
+    col3.metric("🎯 Rendement", f"{rendement_total:+.1f}%")
+    col4.metric("💰 Cash", f"€{cash_saldo:,.0f}")
     
     # === Charts ===
     colA, colB = st.columns(2)
@@ -118,17 +125,10 @@ if uploaded_file is not None:
     with colA:
         st.markdown("### 📈 Portefeuille groei")
         fig, ax = plt.subplots(figsize=(12, 6))
-        
-        # Kostprijs timeline
         df_pos = df[df['bedrag'] < 0].copy()
         df_pos['cum_cost'] = (-df_pos['bedrag']).cumsum()
-        ax.plot(df_pos['__date'], df_pos['cum_cost'], 'b-o', linewidth=2, label='Kostprijs', markersize=4)
-        
-        # Live waarde lijn
-        ax.axhline(y=total_market, color='g', linestyle='--', linewidth=3, 
-                  label=f'Live marktwaarde €{total_market:,.0f}')
-        
-        ax.set_title('Kostprijs vs Live waarde')
+        ax.plot(df_pos['__date'], df_pos['cum_cost'], 'b-o', linewidth=2, label='Kostprijs')
+        ax.axhline(y=total_market, color='g', linestyle='--', linewidth=3, label=f'Marktwaarde €{total_market:,.0f}')
         ax.legend()
         ax.grid(True, alpha=0.3)
         plt.xticks(rotation=45)
@@ -136,23 +136,22 @@ if uploaded_file is not None:
     
     with colB:
         st.markdown("### 🥧 Verdeling")
-        if len(positions) > 0:
-            market_values = [row['Marktwaarde'].replace('€', '').replace(',', '') for row in position_data]
-            market_values = [float(v) for v in market_values]
+        if len(position_data) > 0:
+            market_values = [float(row['Marktwaarde'].replace('€', '').replace(',', '')) for row in position_data]
             fig, ax = plt.subplots(figsize=(8, 6))
             ax.pie(market_values, labels=[row['Product'] for row in position_data], autopct='%1.1f%%')
             ax.set_title('Portefeuille verdeling')
             st.pyplot(fig)
     
-    # === POSITIES ===
-    st.markdown("### 💼 Gedetailleerde posities")
+    # === TABEL ===
+    st.markdown("### 💼 Posities")
     st.dataframe(positions_df, use_container_width=True)
     
-    # === TICKER INFO ===
-    st.markdown("### 🔗 Gebruikte tickers")
-    ticker_df = pd.DataFrame(list(tickers.items()), columns=['Product', 'Yahoo Ticker'])
-    st.dataframe(ticker_df)
+    # === DEBUG INFO ===
+    st.markdown("### 🔍 Debug: Wat wordt geparsed?")
+    st.write(f"Aantal posities gevonden: {len(positions)}")
+    st.write(f"Totale kostprijs: €{total_cost:,.0f}")
+    st.write(f"Totale marktwaarde: €{total_market:,.0f}")
 
 else:
-    st.info("👆 Upload CSV!")
-    st.info("💡 `pip install yfinance` vereist")
+    st.info("👆 Upload CSV! `pip install yfinance` nodig")
