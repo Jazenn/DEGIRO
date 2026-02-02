@@ -236,38 +236,34 @@ def build_positions(df: pd.DataFrame) -> pd.DataFrame:
     return grouped
 
 
-def build_cashflow_by_month(df: pd.DataFrame) -> pd.DataFrame:
-    """Netto in-/uitstroom per maand, uitgesplitst naar type (Deposit/Withdrawal)."""
+def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
+    """Handelsvolume (Koop/Verkoop) per maand."""
     if "value_date" not in df.columns:
         return pd.DataFrame()
 
-    # Filter alleen op Stortingen en Opnames
-    valid = df[df["type"].isin(["Deposit", "Withdrawal"])].copy()
+    # Filter alleen op Koop en Verkoop acties
+    valid = df[df["type"].isin(["Buy", "Sell"])].copy()
     if valid.empty:
         return pd.DataFrame()
 
     valid["month"] = valid["value_date"].dt.to_period("M").dt.to_timestamp()
     
-    # We willen per maand EN per type de som zien
     grouped = valid.groupby(["month", "type"])["amount"].sum()
     
-    # Zorg voor een volledige set: elke maand moet zowel 'Deposit' als 'Withdrawal' hebben
-    # (ook met waarde 0), anders raakt de uitlijning van de grouped bar chart in de war.
+    # Zorg voor volledige dekkking per maand voor Buy en Sell
     unique_months = valid["month"].unique()
-    # Maak alle combinaties van maand + type
     idx = pd.MultiIndex.from_product(
-        [unique_months, ["Deposit", "Withdrawal"]], 
+        [unique_months, ["Buy", "Sell"]], 
         names=["month", "type"]
     )
     
-    # Reindex en vul gaten met 0
     monthly = grouped.reindex(idx, fill_value=0).reset_index()
     monthly = monthly.sort_values("month")
     
-    # Laten we ze absoluut maken voor de visualisatie
+    # Absolute bedragen voor visualisatie
     monthly["amount_abs"] = monthly["amount"].abs()
     
-    # Voeg een string-kolom toe voor de x-as (Categorical).
+    # Categorical x-axis label
     monthly["month_str"] = monthly["month"].dt.strftime("%b %Y")
     
     return monthly
@@ -348,7 +344,7 @@ def main() -> None:
 
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
-    cashflow_monthly = build_cashflow_by_month(df)
+    trading_volume = build_trading_volume_by_month(df)
     
     # Live koersen en actuele waarde per positie
     if not positions.empty:
@@ -496,23 +492,28 @@ def main() -> None:
             st.caption("Geen open posities gevonden op basis van de transacties.")
 
     with tab_balance:
-        st.subheader("Stortingen vs Opnames per maand")
-        if not cashflow_monthly.empty:
+        st.subheader("Aandelen Gekocht vs Verkocht per maand")
+        if not trading_volume.empty:
             fig_cf = px.bar(
-                cashflow_monthly,
+                trading_volume,
                 x="month_str",
                 y="amount_abs",
                 color="type",
-                barmode="group",
+                barmode="overlay", 
+                opacity=0.7,
+                color_discrete_map={
+                    "Buy": "#EF553B",  # Rood/Oranje voor aankoop (geld uit account voor aandelen)
+                    "Sell": "#00CC96"  # Groen voor verkoop (geld in account van aandelen)
+                },
                 labels={
                     "month_str": "Maand", 
                     "amount_abs": "Bedrag (EUR)",
-                    "type": "Type"
+                    "type": "Actie"
                 },
             )
             st.plotly_chart(fig_cf, use_container_width=True)
         else:
-            st.caption("Geen stortingen of opnames gevonden.")
+            st.caption("Geen aan- of verkopen gevonden.")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
