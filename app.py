@@ -237,40 +237,36 @@ def build_positions(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_cashflow_by_month(df: pd.DataFrame) -> pd.DataFrame:
-    """Netto in-/uitstroom per maand (exclusief interne transfers)."""
+    """Netto in-/uitstroom per maand, uitgesplitst naar type (Deposit/Withdrawal)."""
     if "value_date" not in df.columns:
         return pd.DataFrame()
 
-    # Filter interne transfers en reserveringen eruit voor een zuiver beeld
-    valid = df[~df["type"].isin(["Reservation", "Cash Sweep"]) & df["is_cashflow"]].copy()
+    # Filter alleen op Stortingen en Opnames
+    valid = df[df["type"].isin(["Deposit", "Withdrawal"])].copy()
     if valid.empty:
         return pd.DataFrame()
 
     valid["month"] = valid["value_date"].dt.to_period("M").dt.to_timestamp()
-    monthly = valid.groupby("month")["amount"].sum().reset_index(name="net_cashflow")
+    
+    # We willen per maand EN per type de som zien
+    monthly = (
+        valid.groupby(["month", "type"])["amount"]
+        .sum()
+        .reset_index()
+        .sort_values("month")
+    )
+    # Zorg dat Withdrawals negatief blijven of maak ze positief voor vergelijking?
+    # Meestal is een bar chart met negatieve waarden voor uitgaven ook duidelijk.
+    # We laten 'amount' zoals het is (Deposits +, Withdrawals -). 
+    # Of wil de user ze NAAST elkaar zien als positieve staven?
+    # "hoeveel geld ik heb gestort en uit mn account heb gehaald".
+    # Vaak is absolute waarde mooier in een grouped bar:
+    # "Januari: Storting 500, Opname 200".
+    
+    # Laten we ze absoluut maken voor de visualisatie, dat vergelijkt makkelijker in een Grouped Bar.
+    monthly["amount_abs"] = monthly["amount"].abs()
+    
     return monthly
-
-
-def build_calculated_balance(df: pd.DataFrame) -> pd.DataFrame:
-    """Bereken het verloop van het kassaldo op basis van transacties."""
-    if "value_date" not in df.columns or "amount" not in df.columns:
-        return pd.DataFrame()
-
-    # Gebruik alle transacties die het saldo beïnvloeden (dus alles behalve Reservation/Sweep)
-    # We sorteren op datum+tijd om de loop correct te krijgen.
-    valid = df[~df["type"].isin(["Reservation", "Cash Sweep"])].copy()
-    
-    sort_cols = [c for c in ["value_date", "date", "time"] if c in valid.columns]
-    if sort_cols:
-        valid = valid.sort_values(sort_cols)
-    
-    valid["balance"] = valid["amount"].cumsum()
-    
-    # We willen per datum het eindsaldo weten (voor de grafiek)
-    # Dus als er meerdere mutaties op 1 dag zijn, pakken we de laatste 'cumulative balance' van die dag.
-    daily = valid.drop_duplicates(subset=["value_date"], keep="last").copy()
-    
-    return daily[["value_date", "balance"]]
 
 
 # Eenvoudige mapping van ISIN/product naar een yfinance-ticker.
@@ -349,8 +345,7 @@ def main() -> None:
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
     cashflow_monthly = build_cashflow_by_month(df)
-    balance_series = build_calculated_balance(df)
-
+    
     # Live koersen en actuele waarde per positie
     if not positions.empty:
         positions["ticker"] = positions.apply(
@@ -497,33 +492,25 @@ def main() -> None:
             st.caption("Geen open posities gevonden op basis van de transacties.")
 
     with tab_balance:
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            st.subheader("Kassaldo in de tijd")
-            if not balance_series.empty:
-                fig_bal = px.line(
-                    balance_series,
-                    x="value_date",
-                    y="balance",
-                    labels={"value_date": "Datum", "balance": "Saldo (EUR)"},
-                )
-                st.plotly_chart(fig_bal, use_container_width=True)
-            else:
-                st.caption("Geen saldo-informatie beschikbaar in dit bestand.")
-
-        with col_b:
-            st.subheader("Netto in-/uitstroom per maand")
-            if not cashflow_monthly.empty:
-                fig_cf = px.bar(
-                    cashflow_monthly,
-                    x="month",
-                    y="net_cashflow",
-                    labels={"month": "Maand", "net_cashflow": "Netto cashflow (EUR)"},
-                )
-                st.plotly_chart(fig_cf, use_container_width=True)
-            else:
-                st.caption("Geen cashflow-transacties gevonden.")
+        st.subheader("Stortingen vs Opnames per maand")
+        if not cashflow_monthly.empty:
+            fig_cf = px.bar(
+                cashflow_monthly,
+                x="month",
+                y="amount_abs",
+                color="type",
+                barmode="group",
+                labels={
+                    "month": "Maand", 
+                    "amount_abs": "Bedrag (EUR)",
+                    "type": "Type"
+                },
+            )
+            # Forceer maandelijkse ticks
+            fig_cf.update_xaxes(dtick="M1", tickformat="%b %Y")
+            st.plotly_chart(fig_cf, use_container_width=True)
+        else:
+            st.caption("Geen stortingen of opnames gevonden.")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
