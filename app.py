@@ -438,6 +438,12 @@ def map_to_ticker(product: str | None, isin: str | None) -> str | None:
         return PRICE_MAPPING_BY_ISIN[isin]
 
     upper_product = product.upper()
+    
+    # Fallback op productnaam als ISIN ontbreekt of niet gemapt is
+    if "VANGUARD FTSE ALL-WORLD" in upper_product:
+        # User confirmed IE00BK5BQT80 -> VWCE
+        return "VWCE.DE"
+        
     if upper_product.startswith("BITCOIN"):
         return "BTC-EUR"
     if upper_product.startswith("ETHEREUM"):
