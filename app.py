@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+import yfinance as yf
 
 
 def format_eur(value: float) -> str:
@@ -37,6 +38,38 @@ def load_degiro_csv(file) -> pd.DataFrame:
         "Order Id": "order_id",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
+
+    # DeGiro plaatst lege kolommen na 'Mutatie' en 'Saldo'.
+    # In jouw export staan de bedragen dus vaak in een 'Unnamed: x' kolom.
+    # Als onze 'amount'/'balance' volledig leeg zijn, kopiëren we de eerstvolgende
+    # 'Unnamed'-kolom naar die velden.
+    if "amount" in df.columns and df["amount"].isna().all():
+        try:
+            mut_idx = df.columns.get_loc("amount")
+            replacement = None
+            for j in range(mut_idx + 1, len(df.columns)):
+                colname = df.columns[j]
+                if isinstance(colname, str) and colname.startswith("Unnamed"):
+                    replacement = colname
+                    break
+            if replacement is not None:
+                df["amount"] = df[replacement]
+        except KeyError:
+            pass
+
+    if "balance" in df.columns and df["balance"].isna().all():
+        try:
+            bal_idx = df.columns.get_loc("balance")
+            replacement = None
+            for j in range(bal_idx + 1, len(df.columns)):
+                colname = df.columns[j]
+                if isinstance(colname, str) and colname.startswith("Unnamed"):
+                    replacement = colname
+                    break
+            if replacement is not None:
+                df["balance"] = df[replacement]
+        except KeyError:
+            pass
 
     # Parse dates (European format)
     if "value_date" in df.columns:
@@ -207,6 +240,52 @@ def build_balance_series(df: pd.DataFrame) -> pd.DataFrame:
     return bal
 
 
+# Eenvoudige mapping van ISIN/product naar een yfinance-ticker.
+# Dit kun je later uitbreiden met jouw eigen posities.
+PRICE_MAPPING_BY_ISIN: dict[str, str] = {
+    # Voorbeeld: Vanguard FTSE All-World (acc, IE00BK5BQT80) op XETRA
+    "IE00BK5BQT80": "VWCE.DE",
+    # Voorbeeld: Future of Defence ETF (indicatief symbool)
+    "IE000OJ5TQP4": "DFND.MI",
+    # Aegon op Euronext Amsterdam
+    "BMG0112X1056": "AGN.AS",
+    # Crypto ETN's - gebruik onderliggende crypto in EUR
+    "XFC000A2YY6Q": "BTC-EUR",  # BITCOIN
+    "XFC000A2YY6X": "ETH-EUR",  # ETHEREUM
+}
+
+
+def map_to_ticker(product: str | None, isin: str | None) -> str | None:
+    """Bepaal de yfinance-ticker voor een positie op basis van ISIN/product."""
+    isin = (isin or "").strip()
+    product = (product or "").strip()
+
+    if isin and isin in PRICE_MAPPING_BY_ISIN:
+        return PRICE_MAPPING_BY_ISIN[isin]
+
+    upper_product = product.upper()
+    if upper_product.startswith("BITCOIN"):
+        return "BTC-EUR"
+    if upper_product.startswith("ETHEREUM"):
+        return "ETH-EUR"
+
+    return None
+
+
+def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
+    """Vraag de laatste slotkoers op per ticker via yfinance."""
+    prices: dict[str, float] = {}
+    for ticker in sorted({t for t in tickers if t}):
+        try:
+            data = yf.Ticker(ticker).history(period="1d")
+            if not data.empty:
+                prices[ticker] = float(data["Close"].iloc[-1])
+        except Exception:
+            # Bij fout gewoon overslaan, zodat de rest blijft werken
+            continue
+    return prices
+
+
 def main() -> None:
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
@@ -256,17 +335,60 @@ def main() -> None:
     cashflow_monthly = build_cashflow_by_month(df)
     balance_series = build_balance_series(df)
 
+    # Live koersen en actuele waarde per positie
+    if not positions.empty:
+        positions["ticker"] = positions.apply(
+            lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
+        )
+        price_map = fetch_live_prices(positions["ticker"].dropna().unique().tolist())
+        positions["last_price"] = positions["ticker"].map(price_map)
+        positions["current_value"] = positions.apply(
+            lambda r: (
+                r["quantity"] * r["last_price"]
+                if pd.notna(r.get("last_price")) and pd.notna(r.get("quantity"))
+                else pd.NA
+            ),
+            axis=1,
+        )
+        positions["avg_price"] = positions.apply(
+            lambda r: (
+                r["invested"] / r["quantity"]
+                if pd.notna(r.get("invested"))
+                and pd.notna(r.get("quantity"))
+                and r["quantity"] != 0
+                else pd.NA
+            ),
+            axis=1,
+        )
+    else:
+        positions["ticker"] = []
+        positions["last_price"] = []
+        positions["current_value"] = []
+        positions["avg_price"] = []
+
     # Globale samenvatting
     total_deposits = df.loc[df["type"] == "Deposit", "amount"].sum()
     total_withdrawals = -df.loc[df["type"] == "Withdrawal", "amount"].sum()
     total_fees = -df.loc[df["is_fee"], "amount"].sum()
     total_dividends = df.loc[df["is_dividend"], "amount"].sum()
+    total_invested_positions = (
+        positions["invested"].sum() if not positions.empty else 0.0
+    )
+    total_market_value = (
+        positions["current_value"].dropna().sum() if not positions.empty else 0.0
+    )
+    unrealized_pl = total_market_value - total_invested_positions
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Totaal gestort", format_eur(total_deposits))
     col2.metric("Totaal opgenomen", format_eur(total_withdrawals))
     col3.metric("Transactiekosten", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
+
+    col5, col6, col7 = st.columns(3)
+    col5.metric("Totaal geïnvesteerd in effecten", format_eur(total_invested_positions))
+    col6.metric("Huidige marktwaarde (live koersen)", format_eur(total_market_value))
+    col7.metric("On-gerealiseerde winst/verlies", format_eur(unrealized_pl))
 
     st.markdown("---")
 
@@ -311,15 +433,41 @@ def main() -> None:
             display["Gerealiseerde P/L (cash)"] = display["realized_pnl"].map(
                 format_eur
             )
+            display["Laatste koers"] = display["last_price"].map(
+                lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                if pd.notna(v)
+                else ""
+            )
+            display["Huidige waarde"] = display["current_value"].map(format_eur)
+            display["Gemiddelde aankoopkoers"] = display["avg_price"].map(
+                lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                if pd.notna(v)
+                else ""
+            )
             display = display.rename(
                 columns={
                     "product": "Product",
                     "isin": "ISIN",
                     "quantity": "Aantal",
                     "trades": "Aantal transacties",
+                    "ticker": "Ticker",
                 }
             )
             st.dataframe(display, use_container_width=True)
+
+            # Pie chart met huidige verdeling van de portefeuille
+            alloc = positions.copy()
+            alloc["alloc_value"] = alloc["current_value"]
+            alloc["alloc_value"] = alloc["alloc_value"].fillna(alloc["invested"])
+            alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
+            if not alloc.empty:
+                st.subheader("Huidige portefeuilleverdeling")
+                fig_alloc = px.pie(
+                    alloc,
+                    names="product",
+                    values="alloc_value",
+                )
+                st.plotly_chart(fig_alloc, use_container_width=True)
         else:
             st.caption("Geen open posities gevonden op basis van de transacties.")
 
