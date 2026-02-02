@@ -11,7 +11,7 @@ st.write(
     "Dit is een simpele start die je later kunt uitbreiden."
 )
 
-uploaded_file = st.file_uploader("Upload DEGIRO CSV", type=["csv"])
+uploaded_file = st.file_uploader("Upload DEGIRO CSV")
 
 if uploaded_file is not None:
     # Probeer CSV in te lezen met ; of , als separator
