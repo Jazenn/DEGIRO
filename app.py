@@ -53,9 +53,8 @@ if uploaded_file is not None:
     tickers = {
         'BITCOIN': 'BTC-EUR',                           # ✅ Werkt
         'ETHEREUM': 'ETH-EUR',                          # ✅ Werkt  
-        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWRL.AS',  # ✅ €147.36
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'DFNS.AS',     # ✅ €17.218 (correcte ticker)
-        'AEGON LTD': 'AGN.AS'
+        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWCE.DE',     # Xetra versie
+        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANETFDEF.AS',   # Officiële HANetf ticker
     }
     
     # === LIVE KOERSEN ===
