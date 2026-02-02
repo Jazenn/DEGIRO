@@ -410,7 +410,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         return pd.DataFrame()
         
     final_df = pd.concat(history_frames)
-    return final_df.reset_index().rename(columns={"Date": "date"})
+    # Zorg dat de index een naam heeft, zodat reset_index() een kolom 'date' maakt
+    final_df.index.name = "date"
+    return final_df.reset_index()
 
 
 # Eenvoudige mapping van ISIN/product naar een yfinance-ticker.
