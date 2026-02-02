@@ -452,18 +452,108 @@ def map_to_ticker(product: str | None, isin: str | None) -> str | None:
     return None
 
 
+def fetch_tradegate_price(isin: str) -> float | None:
+    """Schraap de laatste koers van Tradegate (voor real-time nauwkeurigheid)."""
+    try:
+        import requests
+        # Tradegate Orderboek pagina
+        url = f"https://www.tradegate.de/orderbuch.php?isin={isin}"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+        resp = requests.get(url, headers=headers, timeout=3)
+        if resp.status_code != 200:
+            return None
+        
+        # Regex om <td id="last">123,45</td> te vinden
+        # Dit is de 'Laatst' koers op de Tradegate website
+        match = re.search(r'<td id="last">\s*([\d.,]+)\s*</td>', resp.text)
+        if match:
+            # Europees formaat: 1.234,56 -> 1234.56
+            price_str = match.group(1).replace(".", "").replace(",", ".")
+            return float(price_str)
+    except Exception:
+        pass
+    return None
+
+
 def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
-    """Vraag de laatste slotkoers op per ticker via yfinance."""
-    prices: dict[str, float] = {}
-    for ticker in sorted({t for t in tickers if t}):
-        try:
-            data = yf.Ticker(ticker).history(period="1d")
-            if not data.empty:
-                prices[ticker] = float(data["Close"].iloc[-1])
-        except Exception:
-            # Bij fout gewoon overslaan, zodat de rest blijft werken
-            continue
-    return prices
+    """Vraag de laatste slotkoers op. Eerst Tradegate (voor Vanguard/bekende), dan YFinance."""
+    if not tickers:
+        return {}
+
+    unique_tickers = sorted(list(set(t for t in tickers if t)))
+    results = {}
+    
+    # 1. Probeer Tradegate voor stocks waar we de ISIN van weten
+    ticker_to_isin = {v: k for k, v in PRICE_MAPPING_BY_ISIN.items()}
+    yf_tickers = []
+    
+    for t in unique_tickers:
+        price_found = False
+        
+        # Specifieke check voor ISINs in onze mapping
+        if t in ticker_to_isin:
+            isin = ticker_to_isin[t]
+            # Crypto heeft geen Tradegate ISIN pagina die we zo makkelijk scrapen, en is 24/7 dus YF is prima
+            if not isin.startswith("XFC"): 
+                tg_price = fetch_tradegate_price(isin)
+                if tg_price:
+                    results[t] = tg_price
+                    price_found = True
+        
+        if not price_found:
+            yf_tickers.append(t)
+
+    if not yf_tickers:
+        return results
+
+    # 2. De overgebleven tickers via YFinance (Smart Selection)
+    download_list = yf_tickers[:]
+    alternatives = {"VWCE.DE": ["VWCE.F", "VWCE.SG"]}
+    
+    for main, alts in alternatives.items():
+        if main in yf_tickers:
+            download_list.extend(alts)
+
+    try:
+        data = yf.download(download_list, period="1d", group_by="ticker", progress=False)
+    except Exception:
+        return results
+
+    def get_latest_from_df(df_in) -> tuple[pd.Timestamp, float] | None:
+        if df_in.empty or "Close" not in df_in.columns: return None
+        valid = df_in["Close"].dropna()
+        if valid.empty: return None
+        return (valid.index[-1], float(valid.iloc[-1]))
+
+    for t in yf_tickers:
+        candidates = [t]
+        if t in alternatives: candidates += alternatives[t]
+        
+        best_ts = None
+        best_val = 0.0
+        
+        for cand in candidates:
+            try:
+                if len(download_list) == 1:
+                    df_cand = data
+                else:
+                    if cand not in data.columns.levels[0]: continue
+                    df_cand = data[cand]
+                
+                res = get_latest_from_df(df_cand)
+                if res:
+                    ts, val = res
+                    if best_ts is None or ts > best_ts:
+                        best_ts = ts
+                        best_val = val
+            except Exception: pass
+        
+        if best_val > 0:
+            results[t] = best_val
+            
+    return results
 
 
 def main() -> None:
