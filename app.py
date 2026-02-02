@@ -7,11 +7,10 @@ st.set_page_config(page_title="📈 DeGiro Portfolio Dashboard", layout="wide")
 st.title("📈 DeGiro Portfolio Dashboard")
 
 st.write("""
-Upload hier je DeGiro exportbestand (CSV of TXT). 
-Het bestand moet kolommen bevatten zoals: Datum, Mutatie, Aantal, Koers, Type, Sector.
+Upload hier je DeGiro exportbestand (CSV of TXT).
 """)
 
-uploaded_file = st.file_uploader("Kies je DeGiro exportbestand", accept_multiple_files=False)
+uploaded_file = st.file_uploader("", accept_multiple_files=False)
 
 if uploaded_file is not None:
     # Data inlezen
