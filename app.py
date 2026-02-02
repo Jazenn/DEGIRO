@@ -689,6 +689,16 @@ def main() -> None:
                     names="product",
                     values="alloc_value",
                 )
+                # Fix legend for mobile (horizontal at bottom)
+                fig_alloc.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=-0.2,
+                        xanchor="center",
+                        x=0.5
+                    )
+                )
                 st.plotly_chart(fig_alloc, use_container_width=True)
         else:
             st.caption("Geen open posities gevonden op basis van de transacties.")
@@ -779,7 +789,7 @@ def main() -> None:
                     ),
                     # Range slider voor in- en uitzoomen
                     xaxis=dict(
-                        rangeslider=dict(visible=True), 
+                        rangeslider=dict(visible=False), 
                         type="date"
                     )
                 )
@@ -810,8 +820,8 @@ def main() -> None:
                     range=price_lims
                 )
                 
-                if st.checkbox("Vergroot grafiek (Full Screen)", key="full_hist"):
-                    fig_hist.update_layout(height=600)
+                # if st.checkbox("Vergroot grafiek (Full Screen)", key="full_hist"):
+                #     fig_hist.update_layout(height=600)
 
                 st.plotly_chart(fig_hist, use_container_width=True)
                 
@@ -861,11 +871,11 @@ def main() -> None:
                         xanchor="left",
                         x=0
                     ),
-                    xaxis=dict(rangeslider=dict(visible=True), type="date")
+                    xaxis=dict(rangeslider=dict(visible=False), type="date")
                 )
                 
-                if st.checkbox("Vergroot grafiek (Full Screen)", key="full_compare"):
-                    fig_compare.update_layout(height=600)
+                # if st.checkbox("Vergroot grafiek (Full Screen)", key="full_compare"):
+                #     fig_compare.update_layout(height=600)
                 
                 st.plotly_chart(fig_compare, use_container_width=True)
             else:
