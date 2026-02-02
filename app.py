@@ -301,10 +301,8 @@ def main() -> None:
 
     st.title("DeGiro Portfolio Dashboard")
     st.markdown(
-        "Upload je **DeGiro Account.csv** export of gebruik het voorbeeldbestand om "
+        "Upload je **DeGiro Account.csv** om "
         "een aantal basisinzichten over je portefeuille te krijgen. "
-        "De cijfers zijn gebaseerd op de transacties, vergelijkbaar met wat tools als "
-        "Portfolio Performance tonen (cashflows, posities, kosten, dividend)."
     )
 
     sidebar = st.sidebar
