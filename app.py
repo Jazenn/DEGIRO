@@ -212,8 +212,8 @@ def build_positions(df: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
     )
 
-    # Alleen nog posities met resterende stukken tonen
-    grouped = grouped[grouped["quantity"].round(8) != 0]
+    # Alleen nog posities met resterende stukken tonen (positieve hoeveelheid)
+    grouped = grouped[grouped["quantity"] > 0]
     grouped = grouped.sort_values("invested", ascending=False)
 
     return grouped
@@ -458,7 +458,7 @@ def main() -> None:
                     "Ticker",
                 ]
             ]
-            st.dataframe(display, use_container_width=True)
+            st.dataframe(display, use_container_width=True, hide_index=True)
 
             # Pie chart met huidige verdeling van de portefeuille
             alloc = positions.copy()
