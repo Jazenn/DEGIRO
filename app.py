@@ -11,55 +11,71 @@ uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
 if uploaded_file is not None:
     st.success(f"✅ Bestand geladen: {uploaded_file.name}")
     
-    # Lees CSV PRECIES zoals DEGIRO export
+    # Lees DEGIRO CSV correct
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file, sep=',')
     
-    # === BELANGRIJK: DEGIRO heeft Unnamed kolommen voor bedragen ===
-    # Kolom volgorde uit jouw CSV: ['Datum','Tijd','Valutadatum','Product','ISIN','Omschrijving','FX','Mutatie','Unnamed: 8','Saldo','Unnamed: 10','Order Id']
-    
+    # DEGIRO kolom volgorde
     date_col = 'Datum'
     product_col = 'Product'
     omschrijving_col = 'Omschrijving'
-    
-    # ECHTE BEDRAG KOLOMMEN (Unnamed!)
-    mutatie_bedrag_col = 'Unnamed: 8'    # Bedrag naast Mutatie
-    saldo_bedrag_col = 'Unnamed: 10'     # Bedrag naast Saldo
+    mutatie_bedrag_col = 'Unnamed: 8'  # Echte bedragen!
+    saldo_bedrag_col = 'Unnamed: 10'
     
     # Datum
     df['__date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
     
-    # BULLETPROOF NL conversie
+    # NL conversie
     def convert_nl_number(value):
         if pd.isna(value) or str(value).strip() == '':
             return 0.0
-        s = str(value).strip()
-        s = s.replace('.', '')  # 1.000,00 → 1000,00
-        s = s.replace(',', '.') # 1000,00 → 1000.0
+        s = str(value).strip().replace('.', '').replace(',', '.')
         try:
             return float(s)
         except:
             return 0.0
     
-    # CONVERTEER ECHTE BEDRAG KOLOMMEN
-    df['mutatie_num'] = df[mutatie_bedrag_col].apply(convert_nl_number)
+    df['bedrag'] = df[mutatie_bedrag_col].apply(convert_nl_number)
     df['saldo_num'] = df[saldo_bedrag_col].apply(convert_nl_number)
     
-    df = df.sort_values('__date')
+    # === FILTER: ALLEEN BELANGRIJKE TRANSACTIES ===
+    ignore_types = [
+        'ideal deposit', 'reservation ideal', 'degiro cash sweep', 
+        'overboeking naar', 'overboeking van', 'flatex interest'
+    ]
     
-    st.success("✅ ECHTE bedragen gevonden en geconverteerd!")
+    # Filter transacties (geen cash movements)
+    mask_relevant = True
+    for ignore in ignore_types:
+        mask_relevant &= ~df[omschrijving_col].astype(str).str.contains(ignore, case=False, na=False)
+    
+    df_relevant = df[mask_relevant].copy()
+    
+    # === PORTFOLIO LOGICA ===
+    # Koop = negatief bedrag → POSITIEVE portefeuille waarde
+    df_relevant['portefeuille_waarde'] = 0.0
+    df_relevant.loc[df_relevant['bedrag'] < 0, 'portefeuille_waarde'] = -df_relevant['bedrag']
+    
+    # Kosten zijn meestal negatief klein
+    df_relevant['is_kosten'] = df_relevant[omschrijving_col].astype(str).str.contains('kosten|transactiekosten|fee', case=False, na=False)
+    
+    # Dividend = positief klein
+    df_relevant['is_dividend'] = df_relevant[omschrijving_col].astype(str).str.contains('dividend', case=False, na=False)
+    
+    st.success("✅ Transacties gefilterd & portefeuille berekend!")
     
     # === KPI's ===
     col1, col2, col3, col4 = st.columns(4)
     
-    total_mut = df['mutatie_num'].sum()
-    last_saldo = df['saldo_num'].iloc[-1]
-    stortingen = df[df['mutatie_num'] > 0]['mutatie_num'].sum()
+    totale_investering = df_relevant['portefeuille_waarde'].sum()
+    totale_kosten = df_relevant[df_relevant['is_kosten']]['bedrag'].sum()
+    totaal_dividend = df_relevant[df_relevant['is_dividend']]['bedrag'].sum()
+    laatste_saldo = df['saldo_num'].iloc[-1]
     
-    with col1: st.metric("💰 Totale mutatie", f"€{total_mut:,.0f}")
-    with col2: st.metric("🏦 Laatste saldo", f"€{last_saldo:,.0f}")
-    with col3: st.metric("📈 Stortingen", f"€{stortingen:,.0f}")
-    with col4: st.metric("💰 Investeringen", f"€{-df[df['mutatie_num'] < 0]['mutatie_num'].sum():,.0f}")
+    with col1: st.metric("💼 Totale investering", f"€{totale_investering:,.0f}")
+    with col2: st.metric("💸 Totale kosten", f"€{abs(totale_kosten):,.0f}")
+    with col3: st.metric("💰 Dividend ontvangen", f"€{totaal_dividend:,.0f}")
+    with col4: st.metric("🏦 Laatste saldo", f"€{laatste_saldo:,.0f}")
     
     # === Charts ===
     colA, colB = st.columns(2)
@@ -69,27 +85,30 @@ if uploaded_file is not None:
         data = df.dropna(subset=['__date', 'saldo_num'])
         if len(data) > 1:
             fig, ax = plt.subplots(figsize=(10, 5))
-            ax.plot(data['__date'], data['saldo_num'], 'o-', linewidth=2)
-            ax.set_title('Saldo verloop')
+            ax.plot(data['__date'], data['saldo_num'], 'o-', linewidth=2, label='Cash saldo')
+            ax.plot(df_relevant['__date'], df_relevant['portefeuille_waarde'].cumsum(), 'r--', 
+                   linewidth=2, label='Portefeuille groei')
+            ax.legend()
+            ax.set_title('Cash + Portefeuille verloop')
             ax.grid(True, alpha=0.3)
             plt.xticks(rotation=45)
             st.pyplot(fig)
     
     with colB:
-        st.markdown("### 🥧 Transacties per product")
-        top = df[product_col].dropna().value_counts().head(8)
-        fig, ax = plt.subplots(figsize=(8, 6))
-        ax.pie(top.values, labels=top.index, autopct='%1.1f%%')
-        st.pyplot(fig)
+        st.markdown("### 🥧 Investering per product")
+        portfolio_by_product = df_relevant[df_relevant['portefeuille_waarde'] > 0].groupby(product_col)['portefeuille_waarde'].sum()
+        if len(portfolio_by_product) > 0:
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.pie(portfolio_by_product.values, labels=portfolio_by_product.index, autopct='%1.1f%%')
+            ax.set_title('Portefeuille verdeling')
+            st.pyplot(fig)
     
     # === POSITIES ===
-    st.markdown("### 💼 Investeringen per product")
-    investeringen = df[df['mutatie_num'] < 0].groupby(product_col)['mutatie_num'].sum()
-    st.dataframe(investeringen.sort_values().round(0))
+    st.markdown("### 💼 Huidige posities")
+    positions = df_relevant[df_relevant['portefeuille_waarde'] > 0].groupby(product_col)['portefeuille_waarde'].sum()
+    st.dataframe(positions.sort_values(ascending=False).round(0))
     
-    # === BEWIJS ===
-    st.markdown("### ✅ BEWIJS: Werkende conversie")
-    st.dataframe(df[[date_col, product_col, mutatie_bedrag_col, 'mutatie_num', saldo_bedrag_col, 'saldo_num']].head(10))
-    
-else:
-    st.info("👆 Upload je CSV!")
+    # === TRANSACTIES ===
+    st.markdown("### 📋 Laatste relevante transacties")
+    display_cols = [date_col, product_col, omschrijving_col, mutatie_bedrag_col, 'bedrag', 'portefeuille_waarde']
+    st.dataframe(df_relevant[display_cols].sort_values('
