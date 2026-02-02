@@ -263,8 +263,13 @@ def build_cashflow_by_month(df: pd.DataFrame) -> pd.DataFrame:
     # Vaak is absolute waarde mooier in een grouped bar:
     # "Januari: Storting 500, Opname 200".
     
-    # Laten we ze absoluut maken voor de visualisatie, dat vergelijkt makkelijker in een Grouped Bar.
+    # Laten we ze absoluut maken voor de visualisatie
     monthly["amount_abs"] = monthly["amount"].abs()
+    
+    # Voeg een string-kolom toe voor de x-as (Categorical).
+    # Dit zorgt ervoor dat de bars netjes gecentreerd staan boven de maand,
+    # in plaats van dat Plotly ze op een datum-as probeert te zetten (wat vaak verschuift).
+    monthly["month_str"] = monthly["month"].dt.strftime("%b %Y")
     
     return monthly
 
@@ -496,18 +501,16 @@ def main() -> None:
         if not cashflow_monthly.empty:
             fig_cf = px.bar(
                 cashflow_monthly,
-                x="month",
+                x="month_str",
                 y="amount_abs",
                 color="type",
                 barmode="group",
                 labels={
-                    "month": "Maand", 
+                    "month_str": "Maand", 
                     "amount_abs": "Bedrag (EUR)",
                     "type": "Type"
                 },
             )
-            # Forceer maandelijkse ticks
-            fig_cf.update_xaxes(dtick="M1", tickformat="%b %Y")
             st.plotly_chart(fig_cf, use_container_width=True)
         else:
             st.caption("Geen stortingen of opnames gevonden.")
