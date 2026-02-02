@@ -39,37 +39,35 @@ def load_degiro_csv(file) -> pd.DataFrame:
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # DeGiro plaatst lege kolommen na 'Mutatie' en 'Saldo'.
-    # In jouw export staan de bedragen dus vaak in een 'Unnamed: x' kolom.
-    # Als onze 'amount'/'balance' volledig leeg zijn, kopiëren we de eerstvolgende
-    # 'Unnamed'-kolom naar die velden.
-    if "amount" in df.columns and df["amount"].isna().all():
-        try:
-            mut_idx = df.columns.get_loc("amount")
-            replacement = None
-            for j in range(mut_idx + 1, len(df.columns)):
-                colname = df.columns[j]
-                if isinstance(colname, str) and colname.startswith("Unnamed"):
-                    replacement = colname
-                    break
-            if replacement is not None:
-                df["amount"] = df[replacement]
-        except KeyError:
-            pass
+    # In de DeGiro-export staat in de kolom 'Mutatie' / 'Saldo' meestal de valuta (EUR)
+    # en staat het echte bedrag in de naastliggende 'Unnamed: x' kolom.
+    # Herken dat patroon en verschuif de waarden naar 'amount' / 'balance'.
 
-    if "balance" in df.columns and df["balance"].isna().all():
-        try:
-            bal_idx = df.columns.get_loc("balance")
+    def _shift_if_currency(main_col: str) -> None:
+        if main_col not in df.columns:
+            return
+        series = df[main_col].astype(str).str.strip()
+        non_empty = series[series != ""].unique()
+        if (
+            len(non_empty) > 0
+            and len(non_empty) <= 3
+            and all(len(v) <= 3 and v.isalpha() for v in non_empty)
+        ):
+            try:
+                idx = df.columns.get_loc(main_col)
+            except KeyError:
+                return
             replacement = None
-            for j in range(bal_idx + 1, len(df.columns)):
+            for j in range(idx + 1, len(df.columns)):
                 colname = df.columns[j]
                 if isinstance(colname, str) and colname.startswith("Unnamed"):
                     replacement = colname
                     break
             if replacement is not None:
-                df["balance"] = df[replacement]
-        except KeyError:
-            pass
+                df[main_col] = df[replacement]
+
+    _shift_if_currency("amount")
+    _shift_if_currency("balance")
 
     # Parse dates (European format)
     if "value_date" in df.columns:
