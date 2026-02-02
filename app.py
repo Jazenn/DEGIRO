@@ -119,15 +119,16 @@ def classify_row(description: str) -> str:
         return "Buy"
     if "Verkoop " in desc:
         return "Sell"
-    # Fees & Costs
+
+    # Fees & Costs (Strict matching as requested)
     if "DEGIRO Transactiekosten" in desc or "Brokerskosten" in desc:
+        return "Fee"
+    if "Kosten van derden" in desc:  # Explicitly requested
         return "Fee"
     if "Aansluitingskosten" in desc or "Connectivity Fee" in desc:
         return "Fee"
     if "Valutakosten" in desc or "Auto FX" in desc:
         return "Fee"
-    if "Kosten" in desc and "transactie" not in desc.lower(): # Fallback for other costs
-         return "Fee"
             
     if "Dividendbelasting" in desc:
         return "Dividend Tax"
@@ -400,12 +401,12 @@ def main() -> None:
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Totaal gestort", format_eur(total_deposits))
     col2.metric("Totaal opgenomen", format_eur(total_withdrawals))
-    col3.metric("Transactiekosten (Totaal)", format_eur(total_fees))
+    col3.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
 
     col5, col6 = st.columns(2)
     col5.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col6.metric("Totaal Resultaat (incl. kosten/div)", format_eur(total_result))
+    col6.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result))
 
     st.markdown("---")
 
