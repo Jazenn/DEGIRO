@@ -376,26 +376,35 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
                 except Exception:
                     pass
 
-        # Voeg quantity toe. 
-        # Zorg dat daily_qty ook tz-naive is
         if daily_qty.index.tz is not None:
             daily_qty.index = daily_qty.index.tz_localize(None)
-
-        # Merge quantity op de prijs-datums (wekelijkse punten + vandaag)
-        aligned_qty = daily_qty.reindex(hist_df.index, method="ffill").fillna(0)
         
-        hist_df["quantity"] = aligned_qty
-        hist_df["product"] = p
-        hist_df["ticker"] = ticker
+        if hist_df.index.tz is not None:
+            hist_df.index = hist_df.index.tz_localize(None)
+
+        # Reindex prijzen naar volledige dagelijkse reeks (inclusief weekends)
+        # 'ffill' zorgt dat de prijs van vrijdag doorloopt in za/zo.
+        # Hierdoor krijg je een vlakke lijn in het weekend ipv gaten.
+        full_price_series = hist_df["price"].reindex(daily_qty.index).ffill()
+        
+        # Maak nieuwe dataframe voor dit product
+        combined_df = pd.DataFrame(index=daily_qty.index)
+        combined_df["price"] = full_price_series
+        combined_df["quantity"] = daily_qty
+        
+        combined_df["product"] = p
+        combined_df["ticker"] = ticker
         
         # Bereken waarde
-        hist_df["value"] = hist_df["quantity"] * hist_df["price"]
+        combined_df["value"] = combined_df["quantity"] * combined_df["price"]
         
         # Filter rijen waar we nog niks hadden
-        hist_df = hist_df[hist_df["quantity"] != 0]
+        # Na reindex kunnen er NaNs zijn in price (als daily_qty eerder begint dan available price history)
+        combined_df = combined_df.dropna(subset=["price"])
+        combined_df = combined_df[combined_df["quantity"] != 0]
         
-        if not hist_df.empty:
-            history_frames.append(hist_df)
+        if not combined_df.empty:
+            history_frames.append(combined_df)
 
     if not history_frames:
         return pd.DataFrame()
