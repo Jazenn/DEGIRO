@@ -243,8 +243,8 @@ def build_balance_series(df: pd.DataFrame) -> pd.DataFrame:
 PRICE_MAPPING_BY_ISIN: dict[str, str] = {
     # Voorbeeld: Vanguard FTSE All-World (acc, IE00BK5BQT80) op XETRA
     "IE00BK5BQT80": "VWCE.DE",
-    # Future of Defence UCITS ETF (IE000OJ5TQP4) op LSE
-    "IE000OJ5TQP4": "NATP.L",
+    # Future of Defence UCITS ETF (IE000OJ5TQP4), ticker ASWC op XETRA
+    "IE000OJ5TQP4": "ASWC.DE",
     # Aegon op Euronext Amsterdam
     "BMG0112X1056": "AGN.AS",
     # Crypto ETN's - gebruik onderliggende crypto in EUR
