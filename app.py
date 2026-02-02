@@ -5,10 +5,13 @@ import matplotlib.pyplot as plt
 st.title("📈 DeGiro Portfolio Dashboard")
 
 st.write("""
-Upload hier je DeGiro CSV export en krijg direct inzicht in je rendement.
+Upload hier je DeGiro exportbestand (CSV of TXT).
 """)
 
-uploaded_file = st.file_uploader("Upload DeGiro CSV", type=["csv"])
+uploaded_file = st.file_uploader(
+    "Kies je DeGiro exportbestand",
+    accept_multiple_files=False
+)
 
 if uploaded_file is not None:
     df = pd.read_csv(uploaded_file)
@@ -55,4 +58,4 @@ if uploaded_file is not None:
     st.dataframe(df)
 
 else:
-    st.info("Upload eerst je DeGiro CSV bestand om te beginnen.")
+    st.info("Upload eerst je DeGiro exportbestand om te beginnen.")
