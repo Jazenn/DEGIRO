@@ -119,4 +119,24 @@ if uploaded_file is not None:
         df_pos = df[df['bedrag'] < 0].copy()
         df_pos['cum_cost'] = (-df_pos['bedrag']).cumsum()
         ax.plot(df_pos['__date'], df_pos['cum_cost'], 'b-o', linewidth=2, label='Kostprijs')
-        ax.axhline(y=total_market, color='g', linestyle='--', linewidth=3, label
+        ax.axhline(y=total_market, color='g', linestyle='--', linewidth=3, label=f'Marktwaarde')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        plt.xticks(rotation=45)
+        st.pyplot(fig)
+    
+    with colB:
+        st.markdown("### 🥧 Verdeling")
+        if len(position_data) > 0:
+            market_values = [float(d['Marktwaarde'].replace('€', '').replace(',', '')) for d in position_data]
+            fig, ax = plt.subplots(figsize=(8, 6))
+            ax.pie(market_values, labels=[d['Product'] for d in position_data], autopct='%1.1f%%')
+            ax.set_title('Portefeuille verdeling')
+            st.pyplot(fig)
+    
+    # === TABEL ===
+    st.markdown("### 💼 Posities")
+    st.dataframe(pd.DataFrame(position_data), use_container_width=True)
+
+else:
+    st.info("👆 Upload CSV! `pip install yfinance`")
