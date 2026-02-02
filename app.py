@@ -111,4 +111,7 @@ if uploaded_file is not None:
     # === TRANSACTIES ===
     st.markdown("### 📋 Laatste relevante transacties")
     display_cols = [date_col, product_col, omschrijving_col, mutatie_bedrag_col, 'bedrag', 'portefeuille_waarde']
-    st.dataframe(df_relevant[display_cols].sort_values('
+    st.dataframe(df_relevant[display_cols].sort_values('__date', ascending=False).head(15))
+    
+else:
+    st.info("👆 Upload je CSV!")
