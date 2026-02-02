@@ -119,21 +119,29 @@ def classify_row(description: str) -> str:
         return "Buy"
     if "Verkoop " in desc:
         return "Sell"
-    if "DEGIRO Transactiekosten" in desc:
+    # Fees & Costs
+    if "DEGIRO Transactiekosten" in desc or "Brokerskosten" in desc:
         return "Fee"
+    if "Aansluitingskosten" in desc or "Connectivity Fee" in desc:
+        return "Fee"
+    if "Valutakosten" in desc or "Auto FX" in desc:
+        return "Fee"
+    if "Kosten" in desc and "transactie" not in desc.lower(): # Fallback for other costs
+         return "Fee"
+            
     if "Dividendbelasting" in desc:
         return "Dividend Tax"
     if "Dividend" in desc:
         return "Dividend"
-    if "Flatex Interest Income" in desc:
+    if "Flatex Interest" in desc or "Rente" in desc:
         return "Interest"
     if "iDEAL Deposit" in desc:
         return "Deposit"
     if "Reservation iDEAL" in desc:
         return "Reservation"
-    if "Overboeking van uw geldrekening" in desc:
+    if "Overboeking van uw geldrekening" in desc or "Storting" in desc:
         return "Deposit"
-    if "Overboeking naar uw geldrekening" in desc:
+    if "Overboeking naar uw geldrekening" in desc or "Terugstorting" in desc:
         return "Withdrawal"
     if "Degiro Cash Sweep Transfer" in desc:
         return "Cash Sweep"
@@ -369,23 +377,35 @@ def main() -> None:
     total_withdrawals = -df.loc[df["type"] == "Withdrawal", "amount"].sum()
     total_fees = -df.loc[df["is_fee"], "amount"].sum()
     total_dividends = df.loc[df["is_dividend"], "amount"].sum()
-    total_invested_positions = (
-        positions["invested"].sum() if not positions.empty else 0.0
-    )
+    
     total_market_value = (
         positions["current_value"].dropna().sum() if not positions.empty else 0.0
     )
-    unrealized_pl = total_market_value - total_invested_positions
+    
+    # Bepaal huidig saldo uit de laatste regel van balance_series
+    current_cash = 0.0
+    if not balance_series.empty:
+        current_cash = balance_series.iloc[-1]["balance"]
+    
+    # Totaal eigen vermogen = Marktwaarde + Cash
+    total_equity = total_market_value + current_cash
+    
+    # Netto inleg = Stortingen - Opnames
+    net_invested_total = total_deposits - total_withdrawals
+    
+    # Totaal resultaat = Eigen Vermogen Nu - Netto Inleg
+    # Dit omvat dus ALLES: koerswinst, dividenden, kosten, rente, etc.
+    total_result = total_equity - net_invested_total
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("Totaal gestort", format_eur(total_deposits))
     col2.metric("Totaal opgenomen", format_eur(total_withdrawals))
-    col3.metric("Transactiekosten", format_eur(total_fees))
+    col3.metric("Transactiekosten (Totaal)", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
 
     col5, col6 = st.columns(2)
-    col5.metric("Huidige marktwaarde (live koersen)", format_eur(total_market_value))
-    col6.metric("On-gerealiseerde winst/verlies", format_eur(unrealized_pl))
+    col5.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+    col6.metric("Totaal Resultaat (incl. kosten/div)", format_eur(total_result))
 
     st.markdown("---")
 
