@@ -327,20 +327,6 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     for p in valid_products:
         ticker = product_map[p]
         
-        # Selecteer transacties voor dit product
-        # quantity is al negatief bij verkoop in de bron-data? 
-        # Check 'enrich_transactions': 
-        #   Buy -> quantity positief. 
-        #   Sell -> quantity wordt daar negatief gemaakt? 
-        #   Even checken: enriched df heeft 'quantity'. 
-        #   Bij Sell is quantity in CSV vaak negatief, of we moeten het negatief maken.
-        #   Laten we ervan uitgaan dat 'quantity' in df de juiste +/- heeft.
-        #   (Normaal in DeGiro CSV is quantity bij verkoop ook positief getal, maar in enrich checken we dit).
-        
-        # In enrich_transactions:
-        # if "Koop" -> sign = 1. if "Verkoop" -> sign = -1. quantity = abs(quantity) * sign.
-        # Dus df['quantity'] is correct signed.
-        
         tx_p = relevant_tx[relevant_tx["product"] == p].copy()
         if tx_p.empty:
             continue
@@ -349,36 +335,53 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         tx_p = tx_p.set_index("value_date")["quantity"].sort_index()
         
         # Resample naar dag om gaten te vullen, daarna cumsum
-        # We willen weten hoeveel we HEBBEN op elke dag.
-        # Resample 'D' en sum (voor als er meerdere trades op 1 dag zijn)
         daily_qty = tx_p.resample("D").sum().cumsum()
         
+        # Zorg dat de quantity-data doorloopt tot VANDAAG.
+        # Anders stopt de grafiek bij de laatste transactie, of bij de laatste weekly candle.
+        now = pd.Timestamp.now().normalize()
+        if daily_qty.index.max() < now:
+            # Voeg een index toe tot vandaag, ffill vult de laatste stand door
+            new_index = pd.date_range(start=daily_qty.index.min(), end=now, freq="D")
+            daily_qty = daily_qty.reindex(new_index).ffill()
+        
         # Nu mergen met prijsdata (die wekelijks is).
-        # We halen de prijsdata voor deze ticker.
         if len(unique_tickers) > 1:
             if ticker not in yf_data.columns.levels[0]:
                 continue
             price_series = yf_data[ticker]["Close"]
         else:
-            # Bij 1 ticker is de structuur anders (geen MultiIndex op hoogste niveau)
             price_series = yf_data["Close"]
             
-        # Zorg dat de price_series tijdzone-informatie kwijtraakt of matcht
+        # Zorg dat de price_series tijdzone-informatie kwijtraakt
         if price_series.index.tz is not None:
              price_series.index = price_series.index.tz_localize(None)
              
         # Maak dataframe van de prices
         hist_df = price_series.to_frame(name="price")
         
-        # Voeg quantity toe. We gebruiken 'asof' merge of reindex/ffill.
-        # Reindex daily_qty naar de index van prices (wekelijke data).
-        # We forward fillen de hoeveelheid (je houdt de aandelen tot je ze verkoopt of bijkoopt).
-        
+        # WEEKLY data van YF stopt vaak aan het begin van de week (maandag).
+        # Als we vandaag verder zijn dan de laatste history-datum, voegen we de laatste live prijs toe.
+        if not hist_df.empty:
+            last_hist_date = hist_df.index.max()
+            if last_hist_date < now:
+                # Probeer actuele prijs op te halen
+                try:
+                    latest_data = yf.Ticker(ticker).history(period="1d")
+                    if not latest_data.empty:
+                        cur_price = float(latest_data["Close"].iloc[-1])
+                        # Voeg toe aan hist_df
+                        new_row = pd.DataFrame({"price": [cur_price]}, index=[now])
+                        hist_df = pd.concat([hist_df, new_row])
+                except Exception:
+                    pass
+
+        # Voeg quantity toe. 
         # Zorg dat daily_qty ook tz-naive is
         if daily_qty.index.tz is not None:
             daily_qty.index = daily_qty.index.tz_localize(None)
 
-        # Merge using reindex met method='ffill' (pak de quantity van de laatste dag voor de prijsdatum)
+        # Merge quantity op de prijs-datums (wekelijkse punten + vandaag)
         aligned_qty = daily_qty.reindex(hist_df.index, method="ffill").fillna(0)
         
         hist_df["quantity"] = aligned_qty
@@ -408,8 +411,6 @@ PRICE_MAPPING_BY_ISIN: dict[str, str] = {
     "IE00BK5BQT80": "VWCE.DE",
     # Future of Defence UCITS ETF (IE000OJ5TQP4), ticker ASWC op XETRA
     "IE000OJ5TQP4": "ASWC.DE",
-    # Aegon op Euronext Amsterdam
-    "BMG0112X1056": "AGN.AS",
     # Crypto ETN's - gebruik onderliggende crypto in EUR
     "XFC000A2YY6Q": "BTC-EUR",  # BITCOIN
     "XFC000A2YY6X": "ETH-EUR",  # ETHEREUM
@@ -474,6 +475,11 @@ def main() -> None:
         return
 
     df_raw = load_degiro_csv(uploaded_file)
+    
+    # Filter specifieke producten eruit op verzoek (bijv. test-aandelen)
+    # Aegon verwijderen
+    if "product" in df_raw.columns:
+        df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
 
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
