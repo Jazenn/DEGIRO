@@ -404,9 +404,11 @@ def main() -> None:
     col3.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
 
-    col5, col6 = st.columns(2)
+    col5, col6, col7 = st.columns(3)
     col5.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col6.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result))
+    col6.metric("Huidig Saldo (Cash)", format_eur(current_cash))
+    col7.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
+               help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
 
     st.markdown("---")
 
