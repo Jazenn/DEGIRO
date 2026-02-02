@@ -766,8 +766,23 @@ def main() -> None:
                 # Layout updates
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}",
-                    hovermode="x unified"
+                    hovermode="x unified",
+                    # Mobiele optimalisatie: Legend IN de grafiek (linksboven)
+                    legend=dict(
+                        orientation="h",
+                        yanchor="top",
+                        y=0.99,
+                        xanchor="left",
+                        x=0.01,
+                        bgcolor="rgba(255, 255, 255, 0.5)"
+                    ),
+                    # Range slider voor in- en uitzoomen
+                    xaxis=dict(
+                        rangeslider=dict(visible=True), 
+                        type="date"
+                    )
                 )
+                
                 # Bereken ranges met padding voor "Waarde" (Links)
                 val_min, val_max = subset["value"].min(), subset["value"].max()
                 val_range = val_max - val_min
@@ -831,6 +846,19 @@ def main() -> None:
                     title="Waarde per aandeel in de tijd (EUR)",
                     labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
                 )
+                
+                # Mobiele optimalisatie voor vergelijk-grafiek
+                fig_compare.update_layout(
+                    legend=dict(
+                        orientation="h",
+                        yanchor="bottom",
+                        y=1.02,
+                        xanchor="right",
+                        x=1
+                    ),
+                    xaxis=dict(rangeslider=dict(visible=True), type="date")
+                )
+                
                 st.plotly_chart(fig_compare, use_container_width=True)
             else:
                 st.info("Geen data om te tonen.")
