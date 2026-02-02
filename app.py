@@ -269,6 +269,138 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     return monthly
 
 
+def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Reconstrueer historische portefeuillewaarde per week.
+    Combineert transacties (hoeveelheid) met historische koersen (yfinance).
+    """
+    if df.empty or "value_date" not in df.columns:
+        return pd.DataFrame()
+
+    # 1. Bepaal welke producten we kunnen volgen (hebben een ticker)
+    #    We gebruiken de unieke producten uit de transacties.
+    products = df["product"].unique()
+    valid_products = []
+    
+    # Maak een mapping: product -> ticker
+    product_map = {}
+    for p in products:
+        if not p: continue
+        # Zoek isin erbij
+        isin_series = df.loc[df["product"] == p, "isin"]
+        isin = isin_series.iloc[0] if not isin_series.empty else None
+        
+        ticker = map_to_ticker(p, isin)
+        if ticker:
+            product_map[p] = ticker
+            valid_products.append(p)
+
+    if not valid_products:
+        return pd.DataFrame()
+
+    # 2. Bouw per product de cumulatieve hoeveelheid op in de tijd
+    #    We doen dit op dagbasis en resamplen later naar week.
+    history_frames = []
+    
+    # Filter op relevante transacties
+    mask = df["type"].isin(["Buy", "Sell"]) & df["product"].isin(valid_products)
+    relevant_tx = df[mask].copy()
+    
+    if relevant_tx.empty:
+        return pd.DataFrame()
+
+    # Bepaal startdatum voor download (eerste transactie - beetje marge)
+    min_date = relevant_tx["value_date"].min()
+    start_date_str = (min_date - pd.Timedelta(weeks=1)).strftime("%Y-%m-%d")
+
+    # Download data voor alle tickers in 1 keer (efficiënter)
+    unique_tickers = list(set(product_map.values()))
+    try:
+        # Download wekelijkse data
+        print(f"Downloading history for: {unique_tickers}")
+        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1wk", group_by="ticker", progress=False)
+    except Exception as e:
+        st.error(f"Fout bij ophalen historische data: {e}")
+        return pd.DataFrame()
+
+    # Verwerk per product
+    for p in valid_products:
+        ticker = product_map[p]
+        
+        # Selecteer transacties voor dit product
+        # quantity is al negatief bij verkoop in de bron-data? 
+        # Check 'enrich_transactions': 
+        #   Buy -> quantity positief. 
+        #   Sell -> quantity wordt daar negatief gemaakt? 
+        #   Even checken: enriched df heeft 'quantity'. 
+        #   Bij Sell is quantity in CSV vaak negatief, of we moeten het negatief maken.
+        #   Laten we ervan uitgaan dat 'quantity' in df de juiste +/- heeft.
+        #   (Normaal in DeGiro CSV is quantity bij verkoop ook positief getal, maar in enrich checken we dit).
+        
+        # In enrich_transactions:
+        # if "Koop" -> sign = 1. if "Verkoop" -> sign = -1. quantity = abs(quantity) * sign.
+        # Dus df['quantity'] is correct signed.
+        
+        tx_p = relevant_tx[relevant_tx["product"] == p].copy()
+        if tx_p.empty:
+            continue
+            
+        # Zet datum index
+        tx_p = tx_p.set_index("value_date")["quantity"].sort_index()
+        
+        # Resample naar dag om gaten te vullen, daarna cumsum
+        # We willen weten hoeveel we HEBBEN op elke dag.
+        # Resample 'D' en sum (voor als er meerdere trades op 1 dag zijn)
+        daily_qty = tx_p.resample("D").sum().cumsum()
+        
+        # Nu mergen met prijsdata (die wekelijks is).
+        # We halen de prijsdata voor deze ticker.
+        if len(unique_tickers) > 1:
+            if ticker not in yf_data.columns.levels[0]:
+                continue
+            price_series = yf_data[ticker]["Close"]
+        else:
+            # Bij 1 ticker is de structuur anders (geen MultiIndex op hoogste niveau)
+            price_series = yf_data["Close"]
+            
+        # Zorg dat de price_series tijdzone-informatie kwijtraakt of matcht
+        if price_series.index.tz is not None:
+             price_series.index = price_series.index.tz_localize(None)
+             
+        # Maak dataframe van de prices
+        hist_df = price_series.to_frame(name="price")
+        
+        # Voeg quantity toe. We gebruiken 'asof' merge of reindex/ffill.
+        # Reindex daily_qty naar de index van prices (wekelijke data).
+        # We forward fillen de hoeveelheid (je houdt de aandelen tot je ze verkoopt of bijkoopt).
+        
+        # Zorg dat daily_qty ook tz-naive is
+        if daily_qty.index.tz is not None:
+            daily_qty.index = daily_qty.index.tz_localize(None)
+
+        # Merge using reindex met method='ffill' (pak de quantity van de laatste dag voor de prijsdatum)
+        aligned_qty = daily_qty.reindex(hist_df.index, method="ffill").fillna(0)
+        
+        hist_df["quantity"] = aligned_qty
+        hist_df["product"] = p
+        hist_df["ticker"] = ticker
+        
+        # Bereken waarde
+        hist_df["value"] = hist_df["quantity"] * hist_df["price"]
+        
+        # Filter rijen waar we nog niks hadden
+        hist_df = hist_df[hist_df["quantity"] != 0]
+        
+        if not hist_df.empty:
+            history_frames.append(hist_df)
+
+    if not history_frames:
+        return pd.DataFrame()
+        
+    final_df = pd.concat(history_frames)
+    return final_df.reset_index().rename(columns={"Date": "date"})
+
+
 # Eenvoudige mapping van ISIN/product naar een yfinance-ticker.
 # Dit kun je later uitbreiden met jouw eigen posities.
 PRICE_MAPPING_BY_ISIN: dict[str, str] = {
@@ -345,6 +477,7 @@ def main() -> None:
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
     trading_volume = build_trading_volume_by_month(df)
+    history_df = build_portfolio_history(df)
     
     # Live koersen en actuele waarde per positie
     if not positions.empty:
@@ -420,8 +553,8 @@ def main() -> None:
 
     st.markdown("---")
     
-    tab_overview, tab_balance, tab_transactions = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", "📋 Transacties"]
+    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
+        ["📈 Overzicht", "💰 Saldo & Cashflow", "� Historie", "�📋 Transacties"]
     )
 
     with tab_overview:
@@ -514,6 +647,68 @@ def main() -> None:
             st.plotly_chart(fig_cf, use_container_width=True)
         else:
             st.caption("Geen aan- of verkopen gevonden.")
+    
+    with tab_history:
+        st.subheader("Historische waardeontwikkeling (Indicatief)")
+        st.markdown(
+            "Hier zie je hoeveel waarde je in bezit had per week (Aantal * Koers). "
+            "Dit is gebaseerd op de wekelijkse slotkoers en je transactiehistorie."
+        )
+        
+        if not history_df.empty:
+            # Kies een product
+            products = sorted(history_df["product"].unique())
+            selected_product = st.selectbox("Selecteer een product", products)
+            
+            # Filter data
+            subset = history_df[history_df["product"] == selected_product].copy()
+            if not subset.empty:
+                import plotly.graph_objects as go
+                from plotly.subplots import make_subplots
+                
+                # Maak figuur met secundaire y-as
+                fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
+                
+                # Lijn 1: Totale Waarde (Links)
+                fig_hist.add_trace(
+                    go.Scatter(
+                        x=subset["date"], 
+                        y=subset["value"], 
+                        name="Waarde in bezit (EUR)",
+                        fill='tozeroy',
+                        line=dict(color="#636EFA")
+                    ),
+                    secondary_y=False,
+                )
+                
+                # Lijn 2: Koers (Rechts)
+                fig_hist.add_trace(
+                    go.Scatter(
+                        x=subset["date"], 
+                        y=subset["price"], 
+                        name="Koers (EUR)",
+                        line=dict(color="#EF553B", dash='dot')
+                    ),
+                    secondary_y=True,
+                )
+                
+                # Layout updates
+                fig_hist.update_layout(
+                    title_text=f"Historie voor {selected_product}",
+                    hovermode="x unified"
+                )
+                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False)
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True)
+                
+                st.plotly_chart(fig_hist, use_container_width=True)
+                
+                # Toon een stukje data
+                with st.expander("Toon tabel data"):
+                    st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
+            else:
+                st.warning("Geen data gevonden voor dit product.")
+        else:
+            st.info("Geen historische data beschikbaar. Mogelijk konden geen koersen worden opgehaald.")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
