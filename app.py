@@ -700,10 +700,31 @@ def main() -> None:
                     title_text=f"Historie voor {selected_product}",
                     hovermode="x unified"
                 )
+                # Bereken ranges met padding voor "Waarde" (Links)
+                val_min, val_max = subset["value"].min(), subset["value"].max()
+                val_range = val_max - val_min
+                # 5% padding boven en onder
+                val_lims = [val_min - 0.05 * val_range, val_max + 0.05 * val_range]
+                
+                # Bereken ranges met padding voor "Prijs" (Rechts)
+                price_min, price_max = subset["price"].min(), subset["price"].max()
+                price_range = price_max - price_min
+                price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
+
                 # Forceer autoscaling door eventuele constraints los te laten, 
-                # hoewel default gedrag bij lijnen al goed is.
-                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear")
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear")
+                # en voeg handmatige range toe voor padding.
+                fig_hist.update_yaxes(
+                    title_text="Totale Waarde in bezit (€)", 
+                    secondary_y=False, 
+                    type="linear",
+                    range=val_lims
+                )
+                fig_hist.update_yaxes(
+                    title_text="Koers per aandeel (€)", 
+                    secondary_y=True, 
+                    type="linear",
+                    range=price_lims
+                )
                 
                 st.plotly_chart(fig_hist, use_container_width=True)
                 
@@ -712,8 +733,41 @@ def main() -> None:
                     st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
             else:
                 st.warning("Geen data gevonden voor dit product.")
+        
+        st.markdown("---")
+        st.subheader("Vergelijk Portefeuille")
+        st.markdown(
+            "Hieronder kun je meerdere aandelen tegelijk zien. "
+            "Deselecteer de grootste posities om de dalingen/stijgingen van kleinere posities beter te zien."
+        )
+        
+        all_products = sorted(history_df["product"].unique())
+        # Default alles selecteren
+        selected_for_compare = st.multiselect(
+            "Selecteer aandelen om te vergelijken", 
+            all_products, 
+            default=all_products
+        )
+        
+        if selected_for_compare:
+            compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
+            if not compare_df.empty:
+                # Sorteer op datum voor correcte lijnen
+                compare_df = compare_df.sort_values("date")
+                
+                fig_compare = px.line(
+                    compare_df,
+                    x="date",
+                    y="value",
+                    color="product",
+                    title="Waarde per aandeel in de tijd (EUR)",
+                    labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
+                )
+                st.plotly_chart(fig_compare, use_container_width=True)
+            else:
+                st.info("Geen data om te tonen.")
         else:
-            st.info("Geen historische data beschikbaar. Mogelijk konden geen koersen worden opgehaald.")
+            st.info("Selecteer minimaal één aandeel.")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
