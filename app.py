@@ -243,8 +243,8 @@ def build_balance_series(df: pd.DataFrame) -> pd.DataFrame:
 PRICE_MAPPING_BY_ISIN: dict[str, str] = {
     # Voorbeeld: Vanguard FTSE All-World (acc, IE00BK5BQT80) op XETRA
     "IE00BK5BQT80": "VWCE.DE",
-    # Voorbeeld: Future of Defence ETF (indicatief symbool)
-    "IE000OJ5TQP4": "DFND.MI",
+    # Future of Defence UCITS ETF (IE000OJ5TQP4) op LSE
+    "IE000OJ5TQP4": "NATP.L",
     # Aegon op Euronext Amsterdam
     "BMG0112X1056": "AGN.AS",
     # Crypto ETN's - gebruik onderliggende crypto in EUR
@@ -427,10 +427,6 @@ def main() -> None:
         st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
         if not positions.empty:
             display = positions.copy()
-            display["Geïnvesteerd"] = display["invested"].map(format_eur)
-            display["Gerealiseerde P/L (cash)"] = display["realized_pnl"].map(
-                format_eur
-            )
             display["Laatste koers"] = display["last_price"].map(
                 lambda v: f"{v:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
                 if pd.notna(v)
@@ -451,6 +447,18 @@ def main() -> None:
                     "ticker": "Ticker",
                 }
             )
+            # Alleen de meest relevante kolommen tonen
+            display = display[
+                [
+                    "Product",
+                    "Aantal",
+                    "Aantal transacties",
+                    "Ticker",
+                    "Laatste koers",
+                    "Huidige waarde",
+                    "Gemiddelde aankoopkoers",
+                ]
+            ]
             st.dataframe(display, use_container_width=True)
 
             # Pie chart met huidige verdeling van de portefeuille
