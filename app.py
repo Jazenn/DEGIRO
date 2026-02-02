@@ -384,11 +384,11 @@ def main() -> None:
     )
     
     # Bepaal huidig saldo NIET uit de balance-kolom (onbetrouwbaar),
-    # maar door sommatie van alle mutaties (behalve 'Reservation').
-    # User geeft aan: Reservation iDEAL moet genegeerd worden.
+    # maar door sommatie van alle mutaties (behalve 'Reservation' en 'Cash Sweep').
+    # Cash Sweep is interne verschuiving naar geldmarktfonds, geen netto in/uitstroom.
     
-    # Filter 'Reservation' eruit
-    valid_cash_tx = df[df["type"] != "Reservation"]
+    # Filter 'Reservation' en 'Cash Sweep' eruit
+    valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     
     # Bereken saldo = som van alle bedragen
     current_cash = valid_cash_tx["amount"].sum()
@@ -416,9 +416,9 @@ def main() -> None:
                help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
 
     st.markdown("---")
-
+    
     tab_overview, tab_balance, tab_transactions = st.tabs(
-        ["📈 Overzicht", "� Saldo & Cashflow", "📋 Transacties"]
+        ["📈 Overzicht", "💰 Saldo & Cashflow", "📋 Transacties"]
     )
 
     with tab_overview:
@@ -518,17 +518,17 @@ def main() -> None:
                 st.caption("Geen cashflow-transacties gevonden.")
 
         st.markdown("---")
-        st.subheader("🔍 Debug: Saldo Check")
-        st.markdown(
-            "Hieronder zie je hoe het saldo is opgebouwd per type transactie. "
-            "Controleer of 'Koop' negatief is en 'Deposit' positief."
-        )
-        # Groepeer op type en toon aantal + som
-        debug_df = df.groupby("type")["amount"].agg(["count", "sum"]).reset_index()
-        # Formatteer voor leesbaarheid
-        debug_df["sum_fmt"] = debug_df["sum"].apply(format_eur)
-        st.dataframe(debug_df, use_container_width=True)
-        st.info(f"Huidig berekend saldo (som van alles behalve Reservation): {format_eur(current_cash)}")
+        with st.expander("🔍 Debug: Saldo Check (Details)"):
+            st.markdown(
+                "Hieronder zie je hoe het saldo is opgebouwd per type transactie. "
+                "Cash Sweep en Reservation worden genegeerd."
+            )
+            # Groepeer op type en toon aantal + som
+            debug_df = df.groupby("type")["amount"].agg(["count", "sum"]).reset_index()
+            # Formatteer voor leesbaarheid
+            debug_df["sum_fmt"] = debug_df["sum"].apply(format_eur)
+            st.dataframe(debug_df, use_container_width=True)
+            st.info(f"Huidig berekend saldo: {format_eur(current_cash)}")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
