@@ -477,9 +477,17 @@ def main() -> None:
 
     uploaded_file = sidebar.file_uploader(
         "Upload een DeGiro CSV-bestand",
-        type=["csv"],
+        # We laten 'type' weg zodat mobiele browsers (Android/iOS) 
+        # niet per ongeluk de CSV grijs maken / niet toestaan.
+        # We checken de extensie hieronder handmatig.
         help="Gebruik bij voorkeur de 'Account.csv' export uit DeGiro.",
     )
+
+    if uploaded_file is not None:
+        # Handmatige check op extensie voor mobiele compatibiliteit
+        if not uploaded_file.name.lower().endswith(".csv"):
+            st.error("Het geüploade bestand lijkt geen CSV te zijn. Probeer het opnieuw met een .csv bestand.")
+            return
 
     if uploaded_file is None:
         st.info("Upload een DeGiro CSV-bestand om je portefeuille te analyseren.")
