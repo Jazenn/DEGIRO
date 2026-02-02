@@ -237,31 +237,40 @@ def build_positions(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_cashflow_by_month(df: pd.DataFrame) -> pd.DataFrame:
-    """Netto in-/uitstroom per maand."""
+    """Netto in-/uitstroom per maand (exclusief interne transfers)."""
     if "value_date" not in df.columns:
         return pd.DataFrame()
 
-    cash = df[df["is_cashflow"]].copy()
-    if cash.empty:
+    # Filter interne transfers en reserveringen eruit voor een zuiver beeld
+    valid = df[~df["type"].isin(["Reservation", "Cash Sweep"]) & df["is_cashflow"]].copy()
+    if valid.empty:
         return pd.DataFrame()
 
-    cash["month"] = cash["value_date"].dt.to_period("M").dt.to_timestamp()
-    monthly = cash.groupby("month")["amount"].sum().reset_index(name="net_cashflow")
+    valid["month"] = valid["value_date"].dt.to_period("M").dt.to_timestamp()
+    monthly = valid.groupby("month")["amount"].sum().reset_index(name="net_cashflow")
     return monthly
 
 
-def build_balance_series(df: pd.DataFrame) -> pd.DataFrame:
-    """Reeks van kassaldo in de tijd."""
-    if "balance" not in df.columns or "value_date" not in df.columns:
+def build_calculated_balance(df: pd.DataFrame) -> pd.DataFrame:
+    """Bereken het verloop van het kassaldo op basis van transacties."""
+    if "value_date" not in df.columns or "amount" not in df.columns:
         return pd.DataFrame()
 
-    bal = df.dropna(subset=["balance", "value_date"]).copy()
-    if bal.empty:
-        return pd.DataFrame()
-
-    bal = bal.sort_values("value_date")
-    bal = bal[["value_date", "balance"]]
-    return bal
+    # Gebruik alle transacties die het saldo beïnvloeden (dus alles behalve Reservation/Sweep)
+    # We sorteren op datum+tijd om de loop correct te krijgen.
+    valid = df[~df["type"].isin(["Reservation", "Cash Sweep"])].copy()
+    
+    sort_cols = [c for c in ["value_date", "date", "time"] if c in valid.columns]
+    if sort_cols:
+        valid = valid.sort_values(sort_cols)
+    
+    valid["balance"] = valid["amount"].cumsum()
+    
+    # We willen per datum het eindsaldo weten (voor de grafiek)
+    # Dus als er meerdere mutaties op 1 dag zijn, pakken we de laatste 'cumulative balance' van die dag.
+    daily = valid.drop_duplicates(subset=["value_date"], keep="last").copy()
+    
+    return daily[["value_date", "balance"]]
 
 
 # Eenvoudige mapping van ISIN/product naar een yfinance-ticker.
@@ -340,7 +349,7 @@ def main() -> None:
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
     cashflow_monthly = build_cashflow_by_month(df)
-    balance_series = build_balance_series(df)
+    balance_series = build_calculated_balance(df)
 
     # Live koersen en actuele waarde per positie
     if not positions.empty:
