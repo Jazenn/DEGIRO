@@ -3,7 +3,6 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 import re
-import math
 
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
@@ -14,14 +13,18 @@ uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
 
 @st.cache_data(ttl=300)
 def get_live_price(symbol):
-    """Haal de laatste slotprijs van een ticker op"""
+    """
+    Haal de laatste slotprijs van een ticker op en return float of None
+    Voorkomt errors bij Series of NaN.
+    """
     try:
-        data = yf.download(symbol, period="5d", interval="1d")
-        if not data.empty:
-            return data['Close'].iloc[-1]
+        data = yf.download(symbol, period="5d", interval="1d", progress=False)
+        if data.empty or 'Close' not in data.columns:
+            return None
+        price = data['Close'].iloc[-1]
+        return float(price)
     except:
-        pass
-    return None
+        return None
 
 def find_ticker(product_name, isin=None):
     """
@@ -43,15 +46,17 @@ def find_ticker(product_name, isin=None):
     if isin:
         try:
             t = yf.Ticker(isin)
-            if not t.history(period="5d").empty:
+            hist = t.history(period="5d")
+            if not hist.empty:
                 return isin
         except:
             pass
 
-    # Probeer via productnaam
+    # Probeer via naam
     try:
         t = yf.Ticker(product_name)
-        if not t.history(period="5d").empty:
+        hist = t.history(period="5d")
+        if not hist.empty:
             return product_name
     except:
         pass
@@ -63,7 +68,7 @@ def parse_buy_sell(row, positions):
     oms = str(row[omschrijving_col]).lower()
     product = row[product_col]
     amount = row['bedrag']
-    
+
     # Koop regex
     buy_match = re.search(r'koop\s+(\d+(?:,\d+)?)', oms)
     if buy_match and amount < 0:
@@ -115,8 +120,7 @@ if uploaded_file is not None:
         for product, symbol in tickers.items():
             price = get_live_price(symbol)
             live_prices[product] = price
-            # Correcte check op None/NaN
-            if price is not None and not pd.isna(price):
+            if price is not None:
                 st.sidebar.success(f"{product[:20]}: €{price:.2f}")
             else:
                 st.sidebar.warning(f"{product[:20]}: Geen koers gevonden")
@@ -132,7 +136,7 @@ if uploaded_file is not None:
         total_cost += cost
         
         market_price = live_prices.get(product)
-        if market_price is not None and not pd.isna(market_price):
+        if market_price is not None:
             market_value = quantity * market_price
             total_market += market_value
             rendement = ((market_value - cost) / cost * 100)
@@ -145,7 +149,7 @@ if uploaded_file is not None:
             'Product': product[:25],
             'Aantal': f"{quantity:.6f}",
             'Kostprijs': f"€{cost:,.0f}",
-            'Live koers': f"€{market_price:,.2f}" if market_price is not None and not pd.isna(market_price) else "N.v.t.",
+            'Live koers': f"€{market_price:,.2f}" if market_price is not None else "N.v.t.",
             'Marktwaarde': f"€{market_value:,.0f}",
             'Rendement': f"{rendement:+.1f}%"
         })
