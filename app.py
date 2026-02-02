@@ -193,26 +193,34 @@ def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_positions(df: pd.DataFrame) -> pd.DataFrame:
-    """Bepaal open posities per product op basis van trades."""
+    """Bepaal open posities en historische cashflow per product."""
     if "product" not in df.columns:
         return pd.DataFrame()
 
-    trades = df[df["is_trade"]].copy()
-    if trades.empty:
+    # Filter op rijen die aan een product gekoppeld zijn
+    # (dus trades, dividends, fees, etc. voor een specifiek aandeel)
+    product_rows = df[df["product"].notna() & (df["product"] != "")].copy()
+    if product_rows.empty:
         return pd.DataFrame()
 
+    # Groepeer per product/ISIN
     grouped = (
-        trades.groupby(["product", "isin"], dropna=False)
+        product_rows.groupby(["product", "isin"], dropna=False)
         .agg(
             quantity=("quantity", "sum"),
-            invested=("buy_cash", lambda s: -s.sum()),
-            realized_pnl=("sell_cash", "sum"),
-            trades=("amount", "count"),
+            invested=("buy_cash", lambda s: -s.sum()),  # Bruto aankoopwaarde
+            total_fees=("amount", lambda s: s[product_rows.loc[s.index, "is_fee"]].sum()),
+            total_dividends=("amount", lambda s: s[product_rows.loc[s.index, "is_dividend"]].sum()),
+            total_div_tax=("amount", lambda s: s[product_rows.loc[s.index, "is_tax"]].sum()),
+            net_cashflow=("amount", "sum"),  # Som van buys(-), sells(+), fees(-), div(+), tax(-)
+            trades=("is_trade", "sum"),
         )
         .reset_index()
     )
 
     # Alleen nog posities met resterende stukken tonen (positieve hoeveelheid)
+    # Of wil je ook gesloten posities met winst/verlies zien?
+    # Voor 'Overzicht' is open posities het meest logisch.
     grouped = grouped[grouped["quantity"] > 0]
     grouped = grouped.sort_values("invested", ascending=False)
 
@@ -389,19 +397,26 @@ def main() -> None:
         st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
         if not positions.empty:
             display = positions.copy()
-            # Totale aankoopkosten (positief bedrag) en huidige marktwaarde
-            display["Totale kosten (aankoop)"] = display["invested"].map(format_eur)
+            # Totale aankoopkosten (bruto, zonder fees) en huidige marktwaarde
+            display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
             display["Huidige waarde"] = display["current_value"].map(format_eur)
-            # Huidige winst/verlies in EUR en procent
+
+            # Winst/verlies (Totaal) = Huidige Waarde + Netto Cashflow (historisch saldo van buys/sells/fees/divs)
+            # Voorbeeld: Buy -1000, Fee -2, Div +10. Net Cashflow = -992. Value = 1100. P/L = 1100 - 992 = 108.
             display["Winst/verlies (EUR)"] = (
-                display["current_value"] - display["invested"]
+                display["current_value"] + display["net_cashflow"]
             ).map(format_eur)
+
             def _pl_pct(row: pd.Series) -> float | None:
                 cur = row.get("current_value")
+                net_cf = row.get("net_cashflow")
                 inv = row.get("invested")
-                if pd.notna(cur) and pd.notna(inv) and inv != 0:
-                    return (cur / inv - 1.0) * 100.0
+                
+                if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
+                    pl_amount = cur + net_cf
+                    return (pl_amount / inv) * 100.0
                 return pd.NA
+
             display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(
                 format_pct
             )
@@ -418,7 +433,7 @@ def main() -> None:
             display = display[
                 [
                     "Product",
-                    "Totale kosten (aankoop)",
+                    "Totaal geinvesteerd",
                     "Huidige waarde",
                     "Winst/verlies (EUR)",
                     "Winst/verlies (%)",
