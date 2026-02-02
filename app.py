@@ -598,11 +598,20 @@ def main() -> None:
     total_result = total_equity - net_invested_total
 
     # Layout: 2 rijen van 3 kolommen zoals gevraagd
-    # Rij 1: Gekocht, Verkocht, Marktwaarde
+    
+    # Periode weergeven
+    if "value_date" in df.columns and not df["value_date"].empty:
+        min_date = df["value_date"].min()
+        max_date = df["value_date"].max()
+        # Format: Maand Jaar
+        period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
+        st.markdown(f"**Periode data:** {period_str}")
+    
+    # Rij 1: Gekocht, Marktwaarde, Verkocht (Gewisseld op verzoek)
     col1, col2, col3 = st.columns(3)
     col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
-    col2.metric("Totaal aandelen verkocht", format_eur(total_sells))
-    col3.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+    col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+    col3.metric("Totaal aandelen verkocht", format_eur(total_sells))
 
     # Rij 2: Resultaat, Kosten, Dividend
     col4, col5, col6 = st.columns(3)
