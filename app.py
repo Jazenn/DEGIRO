@@ -10,7 +10,7 @@ st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
 
 # ----------------- FINNHUB API -----------------
 # Ophalen uit Streamlit Secrets
-FINNHUB_API_KEY = st.secrets["api_keys"]["finnhub"]
+FINNHUB_API_KEY = st.secrets["finnhub"]
 
 @st.cache_data(ttl=300)
 def get_finnhub_price(symbol):
