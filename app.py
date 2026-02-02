@@ -418,8 +418,9 @@ PRICE_MAPPING_BY_ISIN: dict[str, str] = {
 
 def map_to_ticker(product: str | None, isin: str | None) -> str | None:
     """Bepaal de yfinance-ticker voor een positie op basis van ISIN/product."""
-    isin = (isin or "").strip()
-    product = (product or "").strip()
+    # Zorg dat we strings hebben (vang NaN/None af)
+    isin = str(isin).strip() if pd.notna(isin) else ""
+    product = str(product).strip() if pd.notna(product) else ""
 
     if isin and isin in PRICE_MAPPING_BY_ISIN:
         return PRICE_MAPPING_BY_ISIN[isin]
