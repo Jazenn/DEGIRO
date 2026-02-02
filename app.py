@@ -676,7 +676,8 @@ def main() -> None:
                         x=subset["date"], 
                         y=subset["value"], 
                         name="Waarde in bezit (EUR)",
-                        fill='tozeroy',
+                        mode='lines',
+                        # fill='tozeroy',  <-- Removed to allow autoscaling y-axis
                         line=dict(color="#636EFA")
                     ),
                     secondary_y=False,
@@ -688,6 +689,7 @@ def main() -> None:
                         x=subset["date"], 
                         y=subset["price"], 
                         name="Koers (EUR)",
+                        mode='lines',
                         line=dict(color="#EF553B", dash='dot')
                     ),
                     secondary_y=True,
@@ -698,8 +700,10 @@ def main() -> None:
                     title_text=f"Historie voor {selected_product}",
                     hovermode="x unified"
                 )
-                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False)
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True)
+                # Forceer autoscaling door eventuele constraints los te laten, 
+                # hoewel default gedrag bij lijnen al goed is.
+                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear")
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear")
                 
                 st.plotly_chart(fig_hist, use_container_width=True)
                 
