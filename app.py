@@ -475,25 +475,50 @@ def main() -> None:
     sidebar = st.sidebar
     sidebar.header("Instellingen")
 
-    uploaded_file = sidebar.file_uploader(
-        "Upload een DeGiro CSV-bestand",
-        # We laten 'type' weg zodat mobiele browsers (Android/iOS) 
-        # niet per ongeluk de CSV grijs maken / niet toestaan.
-        # We checken de extensie hieronder handmatig.
-        help="Gebruik bij voorkeur de 'Account.csv' export uit DeGiro.",
+    uploaded_files = sidebar.file_uploader(
+        "Upload DeGiro CSV-bestanden (meerdere toegestaan)",
+        # We laten 'type' weg ivm mobiele browsers.
+        accept_multiple_files=True,
+        help="Je kunt meerdere Account.csv bestanden selecteren om een langere periode te combineren.",
     )
 
-    if uploaded_file is not None:
-        # Handmatige check op extensie voor mobiele compatibiliteit
-        if not uploaded_file.name.lower().endswith(".csv"):
-            st.error("Het geüploade bestand lijkt geen CSV te zijn. Probeer het opnieuw met een .csv bestand.")
-            return
-
-    if uploaded_file is None:
-        st.info("Upload een DeGiro CSV-bestand om je portefeuille te analyseren.")
+    if not uploaded_files:
+        st.info("Upload een of meerdere DeGiro CSV-bestanden om je portefeuille te analyseren.")
         return
 
-    df_raw = load_degiro_csv(uploaded_file)
+    # Inlezen en samenvoegen van bestanden
+    df_list = []
+    for f in uploaded_files:
+        # Handmatige check op extensie
+        if not f.name.lower().endswith(".csv"):
+            st.warning(f"Bestand '{f.name}' overgeslagen (geen .csv).")
+            continue
+            
+        try:
+            # We gebruiken de bestand-stream direct
+            # Zet de pointer voor de zekerheid aan het begin (meestal 0 bij upload)
+            f.seek(0)
+            df_part = load_degiro_csv(f)
+            if not df_part.empty:
+                df_list.append(df_part)
+        except Exception as e:
+            st.error(f"Fout bij inlezen van '{f.name}': {e}")
+
+    if not df_list:
+        st.warning("Geen geldige data gevonden in de geüploade bestanden.")
+        return
+
+    # Samenvoegen
+    df_raw = pd.concat(df_list, ignore_index=True)
+    
+    # Duplicaten verwijderen (indien bestanden overlappende periodes hebben)
+    # We ontdubbelen op basis van ALLES, omdat DeGiro geen eenduidige TransactieID in elke export heeft.
+    before_dedup = len(df_raw)
+    df_raw = df_raw.drop_duplicates()
+    after_dedup = len(df_raw)
+    
+    if before_dedup != after_dedup:
+        st.caption(f"{before_dedup - after_dedup} dubbele regels verwijderd na samenvoegen.")
     
     # Filter specifieke producten eruit op verzoek (bijv. test-aandelen)
     # Aegon verwijderen
