@@ -5,6 +5,7 @@ import re
 import requests
 import time
 import json
+import io
 
 # ----------------- STREAMLIT SETTINGS -----------------
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
@@ -14,224 +15,205 @@ st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
 try:
     FINNHUB_API_KEY = st.secrets["finnhub"]
     if not FINNHUB_API_KEY or FINNHUB_API_KEY == "":
-        st.error("❌ Finnhub API key niet gevonden in secrets!")
+        st.error("❌ Finnhub API key niet gevonden!")
         st.stop()
 except:
-    st.error("❌ Voeg je Finnhub API key toe in Streamlit Secrets (finnhub)")
+    st.error("❌ Voeg Finnhub API key toe in secrets.toml")
     st.stop()
 
-@st.cache_data(ttl=120)  # Cache 2 minuten
-def get_finnhub_price(symbol):
-    """Haal de huidige prijs op via Finnhub met betere error handling"""
-    try:
-        st.info(f"🔍 Zoek koers voor: {symbol}")
-        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
-        response = requests.get(url, timeout=10)
-        
-        if response.status_code != 200:
-            st.warning(f"HTTP {response.status_code} voor {symbol}")
-            return None
-            
-        data = response.json()
-        st.info(f"Finnhub response voor {symbol}: {data}")
-        
-        # Controleer verschillende velden
-        if 'c' in data and data['c'] is not None and data['c'] > 0:
-            return float(data['c'])
-        elif 'pc' in data and data['pc'] is not None and data['pc'] > 0:
-            return float(data['pc'])
-        else:
-            st.warning(f"Geen geldige prijs in response voor {symbol}")
-            return None
-            
-    except Exception as e:
-        st.error(f"Finnhub error voor {symbol}: {str(e)}")
-        return None
-
-@st.cache_data(ttl=300)
-def get_finnhub_symbol_search(query):
-    """Zoek symbols via Finnhub"""
-    try:
-        url = f"https://finnhub.io/api/v1/search?q={query}&token={FINNHUB_API_KEY}"
-        response = requests.get(url, timeout=10)
-        if response.status_code == 200:
-            data = response.json()
-            if 'result' in data:
-                return data['result'][:5]  # Top 5 resultaten
-        return []
-    except:
-        return []
-
-# ----------------- BETERE TICKER MAPPING -----------------
-MANUAL_TICKERS = {
-    'BITCOIN': 'BTCUSDT',  # Gebruik spot pairs i.p.v. futures
-    'ETHEREUM': 'ETHUSDT',
-    'VANGUARD FTSE ALL-WORLD UCITS ETF (USD)': 'VWCE.DE',  # Xetra ticker
-    'FUTURE OF DEFENCE UCITS ETF': 'NATC.AS',  # Amsterdam ticker
-    'VANECK SEMICONDUCTOR ETF': 'SMH',
-    'ISHARES S&P 500 ETF': 'SPY',
-    'AMUNDI NASDAQ 100 ETF': 'ANX.AS'
-}
-
-def find_best_ticker(product_name, isin=None):
-    """Verbeterde ticker detectie"""
-    upper_name = product_name.upper()
+# ----------------- BETERE CSV PARSING -----------------
+def parse_degiro_csv(file_content):
+    """Parse DEGIRO CSV met automatische kolom detectie"""
+    # Probeer verschillende encodings en separators
+    encodings = ['utf-8', 'latin1', 'iso-8859-1']
+    separators = [';', ',', '\t']
     
-    # 1. Manual mapping
-    for key in MANUAL_TICKERS:
-        if key in upper_name:
-            return MANUAL_TICKERS[key]
+    df = None
+    for encoding in encodings:
+        try:
+            content = file_content.read().decode(encoding)
+            for sep in separators:
+                try:
+                    df = pd.read_csv(io.StringIO(content), sep=sep)
+                    if len(df.columns) > 5:  # Minimaal 5 kolommen = geldig
+                        st.success(f"✅ Geparsed met {encoding}, separator '{sep}'")
+                        return df
+                except:
+                    continue
+        except:
+            continue
     
-    # 2. ISIN naar ticker (vereenvoudigd)
-    if isin:
-        # Probeer bekende ISIN mappings
-        isin_map = {
-            'IE00B4L5Y983': 'VWCE.DE',
-            'IE00BF0M2Z83': 'NATC.AS'
-        }
-        if isin in isin_map:
-            return isin_map[isin]
+    # ULTIEKE FALLBACK: handmatig splitten van 1-kolom CSV
+    st.warning("🔧 Probeer handmatige kolom splitting...")
+    lines = file_content.read().decode('latin1').split('\n')
+    rows = []
     
-    # 3. Finnhub search
-    symbols = get_finnhub_symbol_search(product_name)
-    if symbols:
-        # Kies eerste geldige exchange
-        for sym in symbols:
-            if sym.get('exchange') in ['XETR', 'AMS', 'NASDAQ', 'NYSE']:
-                return sym['symbol']
+    for line in lines[1:]:  # Skip header
+        if not line.strip():
+            continue
+        # Split op veelvoorkomende DEGIRO patronen
+        parts = re.split(r'[;\t,]', line, maxsplit=12)
+        if len(parts) >= 8:
+            rows.append([p.strip() for p in parts])
     
-    # 4. Fallback: verwijder ETF/UCITS etc en probeer
-    clean_name = re.sub(r'\(USD\)|\(EUR\)|UCITS|ETF', '', upper_name).strip()
-    symbols = get_finnhub_symbol_search(clean_name)
-    if symbols:
-        return symbols[0]['symbol']
+    if rows:
+        df = pd.DataFrame(rows)
+        st.success(f"✅ Handmatig geparsed: {len(rows)} rows")
+        return df
     
+    st.error("❌ Kan CSV niet parsen!")
     return None
 
-# ----------------- CSV UPLOAD -----------------
-uploaded_file = st.file_uploader("📁 Upload je DEGIRO CSV", type=['csv', 'txt'])
+@st.cache_data(ttl=120)
+def get_finnhub_price(symbol):
+    """Finnhub price fetch met debug"""
+    try:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        response = requests.get(url, timeout=10)
+        data = response.json()
+        
+        if response.status_code == 200 and 'c' in data and data['c']:
+            return float(data['c'])
+        return None
+    except:
+        return None
+
+MANUAL_TICKERS = {
+    'BITCOIN': 'BTCUSDT',
+    'ETHEREUM': 'ETHUSDT', 
+    'VANGUARD FTSE': 'VWCE.DE',
+    'FUTURE OF DEFENCE': 'NATC.AS',
+    'S&P 500': 'SPY',
+    'NASDAQ': 'QQQ'
+}
+
+def find_ticker(product):
+    """Eenvoudige ticker mapping"""
+    upper = product.upper()
+    for key, ticker in MANUAL_TICKERS.items():
+        if key in upper:
+            return ticker
+    return None
+
+# ----------------- UPLOAD & PARSE -----------------
+uploaded_file = st.file_uploader("📁 Upload DEGIRO CSV", type=['csv', 'txt'])
 
 if uploaded_file is not None:
-    st.success("✅ CSV geladen!")
-    
-    # Reset file pointer
     uploaded_file.seek(0)
-    try:
-        df = pd.read_csv(uploaded_file, sep=';', encoding='utf-8')  # DEGIRO gebruikt vaak ;
-    except:
-        uploaded_file.seek(0)
-        df = pd.read_csv(uploaded_file, sep=',', encoding='latin1')
+    st.success("✅ CSV geladen")
     
-    st.info(f"📊 CSV vorm: {df.shape}")
+    # BELANGRIJK: reset & parse
+    uploaded_file.seek(0)
+    df = parse_degiro_csv(uploaded_file)
     
-    # Auto-detect kolommen
-    date_col = next((col for col in df.columns if 'datum' in col.lower()), 'Datum')
-    product_col = next((col for col in df.columns if 'product' in col.lower()), 'Product')
-    omschrijving_col = next((col for col in df.columns if 'omschrijving' in col.lower()), 'Omschrijving')
+    if df is None:
+        st.error("❌ Parsing mislukt!")
+        st.stop()
     
-    st.info(f"🔍 Gebruikt kolommen: Datum={date_col}, Product={product_col}")
+    # DEBUG: toon eerste rows en kolommen
+    st.markdown("### 🔍 **DEBUG: Eerste 3 rows**")
+    st.dataframe(df.head(3), use_container_width=True)
     
-    # Data conversie
-    df['__date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
-    df['bedrag'] = pd.to_numeric(df.iloc[:, -2].astype(str).str.replace('.', '').str.replace(',', '.'), errors='coerce').fillna(0)
-    df['saldo_num'] = pd.to_numeric(df.iloc[:, -1].astype(str).str.replace('.', '').str.replace(',', '.'), errors='coerce').fillna(0)
+    st.markdown("### 🔍 **Kolommen gevonden**")
+    st.write(f"`{list(df.columns)}` ({len(df.columns)} kolommen)")
     
-    # ----------------- POSITIES PARSING -----------------
-    def parse_positions(df):
-        positions = {}
-        for _, row in df.iterrows():
-            oms = str(row[omschrijving_col]).lower()
+    # Auto-detect kolommen (flexibeler)
+    date_col = next((i for i, col in enumerate(df.columns) if 'datum' in str(col).lower()), 0)
+    product_col = next((i for i, col in enumerate(df.columns) if 'product' in str(col).lower()), 3)
+    oms_col = next((i for i, col in enumerate(df.columns) if 'omschrijving' in str(col).lower()), 5)
+    amount_col = next((i for i, col in enumerate(df.columns) if 'mutatie' in str(col).lower()), -2)
+    
+    st.info(f"🔍 **Auto-detect**: Datum={date_col}, Product={product_col}, Oms={oms_col}, Bedrag={amount_col}")
+    
+    # ----------------- POSITIES EXTRAHEREN -----------------
+    positions = {}
+    
+    for idx, row in df.iterrows():
+        try:
+            oms = str(row[oms_col]).lower() if pd.notna(row[oms_col]) else ""
+            product = str(row[product_col]) if pd.notna(row[product_col]) else "Onbekend"
+            amount_str = str(row[amount_col]) if pd.notna(row[amount_col]) else "0"
             
-            # Koop detectie (bedrag < 0)
-            if row['bedrag'] < 0 and ('koop' in oms or 'buy' in oms):
-                quantity_match = re.search(r'(@|x|@\s)(\d+(?:,\d+)?)', oms)
-                if quantity_match:
-                    quantity = float(quantity_match.group(2).replace(',', '.'))
-                    product = row[product_col]
+            # Nederlandse getal conversie
+            amount = float(re.sub(r'[^\d,-]', '', amount_str).replace(',', '.'))
+            
+            # Koop detectie: negatief bedrag + koop/buy
+            if amount < 0 and ('koop' in oms or 'buy' in oms):
+                # Extract quantity uit omschrijving (bijv. "KOOP 10,5 @ 50.00")
+                qty_match = re.search(r'(\d+(?:,\d+)?)\s*(x|@)', oms)
+                if qty_match:
+                    qty = float(qty_match.group(1).replace(',', '.'))
                     
                     if product not in positions:
-                        positions[product] = {'quantity': 0, 'total_cost': 0}
-                    positions[product]['quantity'] += quantity
-                    positions[product]['total_cost'] += abs(row['bedrag'])
-        return positions
+                        positions[product] = {'qty': 0, 'cost': 0}
+                    positions[product]['qty'] += qty
+                    positions[product]['cost'] += abs(amount)
+                    
+        except:
+            continue
     
-    positions = parse_positions(df)
-    st.success(f"📈 {len(positions)} posities gevonden!")
+    st.success(f"📈 **{len(positions)} posities gevonden!**")
     
-    # ----------------- LIVE PRINSEN -----------------
-    st.sidebar.markdown("### 📡 Live Koersen")
+    if not positions:
+        st.warning("⚠️ Geen kooptransacties gevonden. Check de omschrijvingen hierboven.")
+        st.stop()
     
-    tickers = {}
+    # ----------------- LIVE KOEKSEN -----------------
+    st.sidebar.markdown("### 📡 **Live Koersen**")
+    
     live_prices = {}
-    
-    for product in list(positions.keys()):
-        with st.sidebar:
-            with st.spinner(f"Zoek ticker voor {product[:30]}..."):
-                ticker = find_best_ticker(product)
-                tickers[product] = ticker
-                st.write(f"**{product[:25]}** → {ticker}")
-                
-                if ticker:
-                    price = get_finnhub_price(ticker)
-                    live_prices[product] = price
-                    if price:
-                        st.success(f"✅ €{price:.2f}")
-                    else:
-                        st.error("❌ Geen koers")
-                else:
-                    st.error("❌ Geen ticker")
-                st.divider()
+    for product, data in positions.items():
+        ticker = find_ticker(product)
+        st.sidebar.write(f"**{product[:25]}**")
+        
+        if ticker:
+            price = get_finnhub_price(ticker)
+            live_prices[product] = price
+            if price:
+                st.sidebar.success(f"✅ {ticker}: €{price:.2f}")
+            else:
+                st.sidebar.error(f"❌ {ticker}: Geen data")
+        else:
+            st.sidebar.warning("❌ Geen bekende ticker")
+            live_prices[product] = None
+        
+        st.sidebar.divider()
     
     # ----------------- DASHBOARD -----------------
     position_data = []
-    total_cost = sum(p['total_cost'] for p in positions.values())
+    total_cost = sum(p['cost'] for p in positions.values())
     total_market = 0
     
     for product, data in positions.items():
-        quantity = data['quantity']
-        cost = data['total_cost']
+        qty = data['qty']
+        cost = data['cost']
         price = live_prices.get(product)
         
-        if price:
-            market_value = quantity * price
-            rendement = ((market_value - cost) / cost * 100)
-        else:
-            market_value = cost
-            rendement = 0
-            
-        total_market += market_value
+        market_val = qty * price if price else cost
+        rendement = ((market_val - cost) / cost * 100) if cost > 0 else 0
+        
+        total_market += market_val
         
         position_data.append({
-            'Product': product[:30],
-            'Aantal': f"{quantity:.4f}",
+            'Product': product[:25],
+            'Aantal': f"{qty:.4f}",
             'Kostprijs': f"€{cost:,.0f}",
-            'Live': f"€{price:.2f}" if price else "N.v.t.",
-            'Waarde': f"€{market_value:,.0f}",
+            'Live': f"€{price:.2f}" if price else '-',
+            'Waarde': f"€{market_val:,.0f}",
             'Rendement': f"{rendement:+.1f}%"
         })
     
     # KPIs
     rendement_total = ((total_market - total_cost) / total_cost * 100) if total_cost > 0 else 0
-    cash = df['saldo_num'].iloc[-1]
     
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("💼 Kostprijs", f"€{total_cost:,.0f}")
-    col2.metric("📈 Marktwaarde", f"€{total_market:,.0f}")
+    col1, col2, col3 = st.columns(3)
+    col1.metric("💼 Totaal Investering", f"€{total_cost:,.0f}")
+    col2.metric("📈 Huidige Waarde", f"€{total_market:,.0f}")
     col3.metric("🎯 Rendement", f"{rendement_total:+.1f}%")
-    col4.metric("💰 Cash", f"€{cash:,.0f}")
     
-    # Charts + Tabel
-    st.markdown("### 💼 Posities")
+    # Tabel
+    st.markdown("### 💼 **Je Posities**")
     st.dataframe(pd.DataFrame(position_data), use_container_width=True)
-    
+
 else:
-    st.info("👆 Upload je DEGIRO CSV export (Export > Portfolio > CSV)")
-    st.markdown("""
-    ### 🔧 Setup:
-    1. Ga naar [finnhub.io](https://finnhub.io), maak gratis account
-    2. Voeg API key toe: `.streamlit/secrets.toml`
-    ```
-    finnhub = "jouw_api_key_hier"
-    ```
-    3. Installeer: `pip install streamlit pandas matplotlib requests`
-    """)
+    st.info("👆 **Upload je DEGIRO CSV** (Rekeningoverzicht → Export)")
