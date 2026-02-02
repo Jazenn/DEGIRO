@@ -1,34 +1,44 @@
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt
-import yfinance as yf
 import re
+import requests
+
+# --- FINNHUB API KEY ---
+FINNHUB_API_KEY = st.secrets["api_keys"]["FINNHUB_API_KEY"]
 
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
 
 uploaded_file = st.file_uploader("Upload je DEGIRO CSV", type=None)
 
-# --- FUNCTIES ---
+# ----------------- FUNCTIES -----------------
+
 @st.cache_data(ttl=300)
-def get_live_price(symbol):
-    """Haal de laatste slotprijs van een ticker op en return float of None"""
+def get_finnhub_price(symbol):
+    """
+    Haal de huidige prijs van een ticker op via Finnhub.
+    Return float of None
+    """
     try:
-        data = yf.download(symbol, period="5d", interval="1d", progress=False)
-        if data.empty or 'Close' not in data.columns:
+        url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
+        r = requests.get(url)
+        data = r.json()
+        if 'c' in data and data['c'] is not None:
+            return float(data['c'])
+        else:
             return None
-        price = data['Close'].iloc[-1]
-        return float(price)
     except:
         return None
 
 def parse_buy_sell(row, positions):
-    """Parse kooptransacties en update posities"""
+    """
+    Parse kooptransacties en update posities
+    """
     oms = str(row[omschrijving_col]).lower()
     product = row[product_col]
     amount = row['bedrag']
 
-    # Koop regex
     buy_match = re.search(r'koop\s+(\d+(?:,\d+)?)', oms)
     if buy_match and amount < 0:
         quantity = float(buy_match.group(1).replace(',', '.'))
@@ -42,52 +52,28 @@ def find_ticker(product_name, isin=None):
     Zoek ticker:
     1. Handmatige mapping voor bekende producten
     2. Crypto mapping
-    3. ISIN lookup
-    4. Productnaam lookup
+    3. Finnhub fallback
     """
-    # --- HANDMATIGE TICKERS (jouw huidige portefeuille) ---
     manual_map = {
-        'BITCOIN': 'BTC-EUR',
-        'ETHEREUM': 'ETH-EUR',
-        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'VWCE.AS',  # Amsterdam, correct koers
-        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANETFDEF.AS'
+        'BITCOIN': 'BINANCE:BTC-EUR',
+        'ETHEREUM': 'BINANCE:ETH-EUR',
+        'VANGUARD FTSE ALL-WORLD UCITS - (USD)': 'EUNL.VX',  # Amsterdam EUR
+        'FUTURE OF DEFENCE UCITS - ACC ETF': 'HANDEF.AS'     # check juiste Finnhub ticker
     }
 
     upper_name = product_name.upper()
     if upper_name in manual_map:
         return manual_map[upper_name]
 
-    # --- CRYPTO ---
-    crypto_map = {
-        'BITCOIN': 'BTC-EUR',
-        'ETHEREUM': 'ETH-EUR'
-    }
-    if upper_name in crypto_map:
-        return crypto_map[upper_name]
-
-    # --- ISIN lookup ---
+    # Finnhub fallback: probeer ISIN eerst
     if isin:
-        try:
-            t = yf.Ticker(isin)
-            hist = t.history(period="5d")
-            if not hist.empty:
-                return isin
-        except:
-            pass
+        return isin
 
-    # --- Productnaam lookup ---
-    try:
-        t = yf.Ticker(product_name)
-        hist = t.history(period="5d")
-        if not hist.empty:
-            return product_name
-    except:
-        pass
+    # Als fallback, gebruik productnaam zelf
+    return product_name
 
-    # Geen ticker gevonden
-    return None
+# ----------------- MAIN APP -----------------
 
-# --- MAIN APP ---
 if uploaded_file is not None:
     st.success("✅ CSV geladen")
     
@@ -123,16 +109,14 @@ if uploaded_file is not None:
         else:
             st.sidebar.warning(f"Geen ticker gevonden voor {product}")
     
-    # --- LIVE KOERSEN ---
+    # --- LIVE KOERSEN via Finnhub ---
     live_prices = {}
     if st.sidebar.checkbox("📡 Live koersen", value=True):
         for product, symbol in tickers.items():
-            price = get_live_price(symbol)
+            price = get_finnhub_price(symbol)
+            if price is None:
+                st.sidebar.warning(f"{product[:20]}: Geen koers gevonden, fallback naar kostprijs")
             live_prices[product] = price
-            if price is not None:
-                st.sidebar.success(f"{product[:20]}: €{price:.2f}")
-            else:
-                st.sidebar.warning(f"{product[:20]}: Geen koers gevonden")
     
     # --- POSITIES TONEN ---
     position_data = []
@@ -147,18 +131,17 @@ if uploaded_file is not None:
         market_price = live_prices.get(product)
         if market_price is not None:
             market_value = quantity * market_price
-            total_market += market_value
             rendement = ((market_value - cost) / cost * 100)
         else:
             market_value = cost
-            total_market += market_value
             rendement = 0
-            
+        total_market += market_value
+        
         position_data.append({
             'Product': product[:25],
             'Aantal': f"{quantity:.6f}",
             'Kostprijs': f"€{cost:,.0f}",
-            'Live koers': f"€{market_price:,.2f}" if market_price is not None else "N.v.t.",
+            'Live koers': f"€{market_price:,.2f}" if market_price else "N.v.t.",
             'Marktwaarde': f"€{market_value:,.0f}",
             'Rendement': f"{rendement:+.1f}%"
         })
@@ -202,4 +185,4 @@ if uploaded_file is not None:
     st.dataframe(pd.DataFrame(position_data), use_container_width=True)
 
 else:
-    st.info("👆 Upload CSV! `pip install yfinance`")
+    st.info("👆 Upload CSV! `pip install requests` voor Finnhub")
