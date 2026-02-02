@@ -774,7 +774,8 @@ def main() -> None:
                         y=0.99,
                         xanchor="left",
                         x=0.01,
-                        bgcolor="rgba(255, 255, 255, 0.5)"
+                        # Transparante achtergrond zodat je de lijnen erdoorheen ziet
+                        bgcolor="rgba(255, 255, 255, 0)" 
                     ),
                     # Range slider voor in- en uitzoomen
                     xaxis=dict(
@@ -809,6 +810,9 @@ def main() -> None:
                     range=price_lims
                 )
                 
+                if st.checkbox("Vergroot grafiek (Full Screen)", key="full_hist"):
+                    fig_hist.update_layout(height=600)
+
                 st.plotly_chart(fig_hist, use_container_width=True)
                 
                 # Toon een stukje data
@@ -848,16 +852,20 @@ def main() -> None:
                 )
                 
                 # Mobiele optimalisatie voor vergelijk-grafiek
+                # Legenda hlemaal naar de BODEM verplaatsen zodat hij niet over de titel valt
                 fig_compare.update_layout(
                     legend=dict(
                         orientation="h",
-                        yanchor="bottom",
-                        y=1.02,
-                        xanchor="right",
-                        x=1
+                        yanchor="top",
+                        y=-0.4, # Ver onder x-as en slider
+                        xanchor="left",
+                        x=0
                     ),
                     xaxis=dict(rangeslider=dict(visible=True), type="date")
                 )
+                
+                if st.checkbox("Vergroot grafiek (Full Screen)", key="full_compare"):
+                    fig_compare.update_layout(height=600)
                 
                 st.plotly_chart(fig_compare, use_container_width=True)
             else:
