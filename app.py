@@ -5,7 +5,7 @@ import re
 import requests
 
 # --- FINNHUB API KEY ---
-FINNHUB_API_KEY = st.secrets["api_keys"]["FINNHUB_API_KEY"]
+FINNHUB_API_KEY = st.secrets["FINNHUB_API_KEY"]
 
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
