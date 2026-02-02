@@ -409,10 +409,9 @@ def main() -> None:
     col3.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
     col4.metric("Ontvangen dividend", format_eur(total_dividends))
 
-    col5, col6, col7 = st.columns(3)
+    col5, col6 = st.columns(2)
     col5.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col6.metric("Huidig Saldo (Cash)", format_eur(current_cash))
-    col7.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
+    col6.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
                help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
 
     st.markdown("---")
@@ -516,19 +515,6 @@ def main() -> None:
                 st.plotly_chart(fig_cf, use_container_width=True)
             else:
                 st.caption("Geen cashflow-transacties gevonden.")
-
-        st.markdown("---")
-        with st.expander("🔍 Debug: Saldo Check (Details)"):
-            st.markdown(
-                "Hieronder zie je hoe het saldo is opgebouwd per type transactie. "
-                "Cash Sweep en Reservation worden genegeerd."
-            )
-            # Groepeer op type en toon aantal + som
-            debug_df = df.groupby("type")["amount"].agg(["count", "sum"]).reset_index()
-            # Formatteer voor leesbaarheid
-            debug_df["sum_fmt"] = debug_df["sum"].apply(format_eur)
-            st.dataframe(debug_df, use_container_width=True)
-            st.info(f"Huidig berekend saldo: {format_eur(current_cash)}")
 
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
