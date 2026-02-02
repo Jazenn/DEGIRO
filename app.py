@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import yfinance as yf
 import re
+import math
 
 st.set_page_config(page_title="DEGIRO Dashboard", layout="wide")
 st.title("🔥 DEGIRO Portfolio - LIVE RENDMENT")
@@ -38,7 +39,7 @@ def find_ticker(product_name, isin=None):
     if name_upper in crypto_map:
         return crypto_map[name_upper]
 
-    # Probeer via ISIN (yfinance ondersteunt soms ISIN)
+    # Probeer via ISIN
     if isin:
         try:
             t = yf.Ticker(isin)
@@ -47,7 +48,7 @@ def find_ticker(product_name, isin=None):
         except:
             pass
 
-    # Probeer via naam (direct lookup)
+    # Probeer via productnaam
     try:
         t = yf.Ticker(product_name)
         if not t.history(period="5d").empty:
@@ -79,10 +80,12 @@ if uploaded_file is not None:
     uploaded_file.seek(0)
     df = pd.read_csv(uploaded_file, sep=',')
     
+    # Kolommen
     date_col, product_col, omschrijving_col = 'Datum', 'Product', 'Omschrijving'
     mutatie_bedrag_col, saldo_bedrag_col = 'Unnamed: 8', 'Unnamed: 10'
     isin_col = 'ISIN' if 'ISIN' in df.columns else None
     
+    # Numerieke conversie
     df['__date'] = pd.to_datetime(df[date_col], dayfirst=True, errors='coerce')
     df['bedrag'] = df[mutatie_bedrag_col].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0)
     df['saldo_num'] = df[saldo_bedrag_col].apply(lambda x: float(str(x).replace('.', '').replace(',', '.')) if pd.notna(x) else 0.0)
@@ -112,7 +115,8 @@ if uploaded_file is not None:
         for product, symbol in tickers.items():
             price = get_live_price(symbol)
             live_prices[product] = price
-            if price:
+            # Correcte check op None/NaN
+            if price is not None and not pd.isna(price):
                 st.sidebar.success(f"{product[:20]}: €{price:.2f}")
             else:
                 st.sidebar.warning(f"{product[:20]}: Geen koers gevonden")
@@ -128,7 +132,7 @@ if uploaded_file is not None:
         total_cost += cost
         
         market_price = live_prices.get(product)
-        if market_price:
+        if market_price is not None and not pd.isna(market_price):
             market_value = quantity * market_price
             total_market += market_value
             rendement = ((market_value - cost) / cost * 100)
@@ -141,7 +145,7 @@ if uploaded_file is not None:
             'Product': product[:25],
             'Aantal': f"{quantity:.6f}",
             'Kostprijs': f"€{cost:,.0f}",
-            'Live koers': f"€{market_price:,.2f}" if market_price else "N.v.t.",
+            'Live koers': f"€{market_price:,.2f}" if market_price is not None and not pd.isna(market_price) else "N.v.t.",
             'Marktwaarde': f"€{market_value:,.0f}",
             'Rendement': f"{rendement:+.1f}%"
         })
