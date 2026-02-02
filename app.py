@@ -383,10 +383,15 @@ def main() -> None:
         positions["current_value"].dropna().sum() if not positions.empty else 0.0
     )
     
-    # Bepaal huidig saldo uit de laatste regel van balance_series
-    current_cash = 0.0
-    if not balance_series.empty:
-        current_cash = balance_series.iloc[-1]["balance"]
+    # Bepaal huidig saldo NIET uit de balance-kolom (onbetrouwbaar),
+    # maar door sommatie van alle mutaties (behalve 'Reservation').
+    # User geeft aan: Reservation iDEAL moet genegeerd worden.
+    
+    # Filter 'Reservation' eruit
+    valid_cash_tx = df[df["type"] != "Reservation"]
+    
+    # Bereken saldo = som van alle bedragen
+    current_cash = valid_cash_tx["amount"].sum()
     
     # Totaal eigen vermogen = Marktwaarde + Cash
     total_equity = total_market_value + current_cash
