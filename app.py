@@ -517,6 +517,19 @@ def main() -> None:
             else:
                 st.caption("Geen cashflow-transacties gevonden.")
 
+        st.markdown("---")
+        st.subheader("🔍 Debug: Saldo Check")
+        st.markdown(
+            "Hieronder zie je hoe het saldo is opgebouwd per type transactie. "
+            "Controleer of 'Koop' negatief is en 'Deposit' positief."
+        )
+        # Groepeer op type en toon aantal + som
+        debug_df = df.groupby("type")["amount"].agg(["count", "sum"]).reset_index()
+        # Formatteer voor leesbaarheid
+        debug_df["sum_fmt"] = debug_df["sum"].apply(format_eur)
+        st.dataframe(debug_df, use_container_width=True)
+        st.info(f"Huidig berekend saldo (som van alles behalve Reservation): {format_eur(current_cash)}")
+
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
         st.dataframe(df, use_container_width=True, height=500)
