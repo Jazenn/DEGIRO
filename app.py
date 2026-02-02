@@ -2,80 +2,90 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from datetime import datetime
+import dateutil.parser  # Voor flexibele datumparsing
 
-st.set_page_config(page_title="📈 DeGiro Portfolio Dashboard", layout="wide")
-st.title("📈 DeGiro Portfolio Dashboard")
+st.set_page_config(page_title="DEGIRO Inzichten", layout="wide")
 
-st.write("""
-Upload hier je DeGiro exportbestand (CSV of TXT).
-""")
+st.title("🧠 DEGIRO Account Inzichten")
+st.markdown("Upload je DEGIRO rekeningoverzicht CSV voor analyses.")
 
-uploaded_file = st.file_uploader("", accept_multiple_files=False)
+# File uploader
+uploaded_file = st.file_uploader("Kies een DEGIRO CSV-bestand", type="csv")
 
 if uploaded_file is not None:
-    # Data inlezen
-    df = pd.read_csv(uploaded_file)
+    @st.cache_data
+    def load_data(file):
+        # Probeer veelvoorkomende encodings en separators voor DEGIRO CSV
+        try:
+            df = pd.read_csv(file, sep=';', encoding='utf-8')  # DEGIRO vaak semicolon
+        except:
+            try:
+                df = pd.read_csv(file, sep=',', encoding='latin1')
+            except:
+                df = pd.read_csv(file, sep=';', encoding='latin1')
+        return df
 
-    # Kolommen checken
-    if 'Datum' not in df.columns or 'Mutatie' not in df.columns:
-        st.error("CSV mist vereiste kolommen zoals 'Datum' of 'Mutatie'.")
+    df = load_data(uploaded_file)
+    st.success(f"✅ Geladen: {len(df)} transacties.")
+
+    # Kolomnamen tonen en aanpassen (typisch DEGIRO kolommen)
+    st.subheader("📊 Data Voorbeeld")
+    st.dataframe(df.head())
+
+    # Kolommen detecteren/mappen (flexibel voor variaties)
+    col_date = next((col for col in df.columns if any(x in col.lower() for x in ['datum', 'date', 'tijd'])), df.columns[0])
+    col_product = next((col for col in df.columns if any(x in col.lower() for x in ['product', 'isin'])), None)
+    col_quantity = next((col for col in df.columns if 'aantal' in col.lower() or 'quantity' in col.lower()), None)
+    col_price = next((col for col in df.columns if 'koers' in col.lower() or 'price' in col.lower()), None)
+    col_value = next((col for col in df.columns if any(x in col.lower() for x in ['waarde', 'value', 'total', 'totaal'])), None)
+
+    if col_date and col_product and col_quantity and col_value:
+        # Datum parsen
+        df['Datum'] = pd.to_datetime(df[col_date].astype(str), errors='coerce', dayfirst=True)
+        df['Product'] = df[col_product].fillna('')
+        df['Quantity'] = pd.to_numeric(df[col_quantity], errors='coerce')
+        df['Value_EUR'] = pd.to_numeric(df[col_value].str.replace(',', '.'), errors='coerce')  # Komma naar punt voor decimalen
+
+        # Tabs voor inzichten
+        tab1, tab2, tab3, tab4 = st.tabs(["📈 Transacties", "💼 Holdings", "📊 Grafieken", "💰 Samenvatting"])
+
+        with tab1:
+            st.subheader("Transacties Overzicht")
+            filtered_df = df[['Datum', 'Product', 'Quantity', 'Value_EUR']].dropna(subset=['Datum'])
+            st.dataframe(filtered_df.sort_values('Datum', ascending=False))
+
+        with tab2:
+            st.subheader("Huidige Holdings")
+            holdings = df.groupby('Product')['Quantity'].sum().reset_index()
+            holdings['Totaal_Waarde'] = 0  # Placeholder; voor echte waarde heb je huidige prijzen nodig
+            st.dataframe(holdings[holdings['Quantity'] != 0].sort_values('Quantity', key=abs, ascending=False))
+
+        with tab3:
+            st.subheader("Visualisaties")
+            fig = px.bar(df, x='Product', y='Value_EUR', color='Quantity', title="Transacties per Product")
+            st.plotly_chart(fig, use_container_width=True)
+
+            fig2 = px.line(df, x='Datum', y='Value_EUR', color='Product', title="Cumulatieve Waarde Over Tijd")
+            st.plotly_chart(fig2, use_container_width=True)
+
+        with tab4:
+            st.subheader("Key Metrics")
+            total_invested = df['Value_EUR'].sum()
+            avg_transaction = df['Value_EUR'].mean()
+            num_trades = len(df)
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Totaal Transacties", num_trades)
+            with col2:
+                st.metric("Gemiddelde Transactie", f"€{avg_transaction:,.2f}")
+            with col3:
+                st.metric("Totale Omzet", f"€{total_invested:,.2f}")
+
     else:
-        # Datum omzetten
-        df['Datum'] = pd.to_datetime(df['Datum'], format='%d-%m-%Y', errors='coerce')
-        df = df.sort_values('Datum')
-
-        # Mutatie omzetten naar numeriek
-        df['Mutatie'] = df['Mutatie'].astype(str).str.replace('.', '', regex=False)
-        df['Mutatie'] = df['Mutatie'].str.replace(',', '.', regex=False)
-        df['Mutatie'] = pd.to_numeric(df['Mutatie'], errors='coerce')
-
-        # Netto cumulatief
-        df['Cumulatief'] = df['Mutatie'].cumsum()
-
-        st.subheader("📌 Samenvatting")
-        totaal_gestort = df[df['Mutatie'] > 0]['Mutatie'].sum()
-        totaal_opgenomen = abs(df[df['Mutatie'] < 0]['Mutatie'].sum())
-        netto_resultaat = df['Mutatie'].sum()
-
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Totaal Gestort", f"€ {totaal_gestort:,.2f}")
-        col2.metric("Totaal Opgenomen", f"€ {totaal_opgenomen:,.2f}")
-        col3.metric("Netto Resultaat", f"€ {netto_resultaat:,.2f}")
-
-        # Portfolio waarde over tijd (Aantal x Koers)
-        if 'Aantal' in df.columns and 'Koers' in df.columns:
-            df['Waarde'] = df['Aantal'] * df['Koers']
-            portfolio_per_datum = df.groupby('Datum')['Waarde'].sum().reset_index()
-
-            st.subheader("📊 Portfolio Waarde Over Tijd")
-            fig_value = px.line(portfolio_per_datum, x='Datum', y='Waarde', title='Portfolio Ontwikkeling')
-            st.plotly_chart(fig_value, use_container_width=True)
-
-            # Rendement berekenen
-            portfolio_per_datum['Rendement'] = portfolio_per_datum['Waarde'].pct_change() * 100
-            st.subheader("📈 Rendement Over Tijd (%)")
-            fig_return = px.line(portfolio_per_datum, x='Datum', y='Rendement', title='Rendement Over Tijd (%)')
-            st.plotly_chart(fig_return, use_container_width=True)
-
-        # Asset allocatie per sector
-        if 'Sector' in df.columns and 'Waarde' in df.columns:
-            df_sector = df.groupby('Sector')['Waarde'].sum().reset_index()
-            st.subheader("🥧 Asset Allocatie per Sector")
-            fig_sector = px.pie(df_sector, names='Sector', values='Waarde', title='Asset Allocatie per Sector')
-            st.plotly_chart(fig_sector, use_container_width=True)
-
-        # Dividend overzicht
-        if 'Type' in df.columns:
-            dividends = df[df['Type'].str.contains('Dividend', case=False, na=False)]
-            if not dividends.empty:
-                dividends_per_datum = dividends.groupby('Datum')['Mutatie'].sum().reset_index()
-                st.subheader("💰 Dividend Inkomsten")
-                fig_div = px.bar(dividends_per_datum, x='Datum', y='Mutatie', title='Dividend Inkomsten')
-                st.plotly_chart(fig_div, use_container_width=True)
-
-        # Originele transacties tonen
-        st.subheader("📄 Volledige Transacties")
-        st.dataframe(df)
+        st.warning("⚠️ Kan geen standaard DEGIRO-kolommen detecteren. Controleer je CSV-koppen en probeer opnieuw.")
+        st.info("Typische kolommen: Datum/Tijd, Product/ISIN, Aantal, Koers, Waarde EUR, Totaal EUR.[web:3][web:4]")
 
 else:
-    st.info("Upload eerst je DeGiro exportbestand om te beginnen.")
+    st.info("👆 Upload je DEGIRO CSV om te beginnen.")
