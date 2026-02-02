@@ -249,26 +249,25 @@ def build_cashflow_by_month(df: pd.DataFrame) -> pd.DataFrame:
     valid["month"] = valid["value_date"].dt.to_period("M").dt.to_timestamp()
     
     # We willen per maand EN per type de som zien
-    monthly = (
-        valid.groupby(["month", "type"])["amount"]
-        .sum()
-        .reset_index()
-        .sort_values("month")
+    grouped = valid.groupby(["month", "type"])["amount"].sum()
+    
+    # Zorg voor een volledige set: elke maand moet zowel 'Deposit' als 'Withdrawal' hebben
+    # (ook met waarde 0), anders raakt de uitlijning van de grouped bar chart in de war.
+    unique_months = valid["month"].unique()
+    # Maak alle combinaties van maand + type
+    idx = pd.MultiIndex.from_product(
+        [unique_months, ["Deposit", "Withdrawal"]], 
+        names=["month", "type"]
     )
-    # Zorg dat Withdrawals negatief blijven of maak ze positief voor vergelijking?
-    # Meestal is een bar chart met negatieve waarden voor uitgaven ook duidelijk.
-    # We laten 'amount' zoals het is (Deposits +, Withdrawals -). 
-    # Of wil de user ze NAAST elkaar zien als positieve staven?
-    # "hoeveel geld ik heb gestort en uit mn account heb gehaald".
-    # Vaak is absolute waarde mooier in een grouped bar:
-    # "Januari: Storting 500, Opname 200".
+    
+    # Reindex en vul gaten met 0
+    monthly = grouped.reindex(idx, fill_value=0).reset_index()
+    monthly = monthly.sort_values("month")
     
     # Laten we ze absoluut maken voor de visualisatie
     monthly["amount_abs"] = monthly["amount"].abs()
     
     # Voeg een string-kolom toe voor de x-as (Categorical).
-    # Dit zorgt ervoor dat de bars netjes gecentreerd staan boven de maand,
-    # in plaats van dat Plotly ze op een datum-as probeert te zetten (wat vaak verschuift).
     monthly["month_str"] = monthly["month"].dt.strftime("%b %Y")
     
     return monthly
