@@ -381,40 +381,11 @@ def main() -> None:
 
     st.markdown("---")
 
-    tab_overview, tab_positions, tab_transactions, tab_costs = st.tabs(
-        ["📈 Overzicht", "📊 Posities", "📋 Transacties", "💶 Kosten & Dividend"]
+    tab_overview, tab_balance, tab_transactions = st.tabs(
+        ["📈 Overzicht", "� Saldo & Cashflow", "📋 Transacties"]
     )
 
     with tab_overview:
-        col_a, col_b = st.columns(2)
-
-        with col_a:
-            st.subheader("Kassaldo in de tijd")
-            if not balance_series.empty:
-                fig_bal = px.line(
-                    balance_series,
-                    x="value_date",
-                    y="balance",
-                    labels={"value_date": "Datum", "balance": "Saldo (EUR)"},
-                )
-                st.plotly_chart(fig_bal, use_container_width=True)
-            else:
-                st.caption("Geen saldo-informatie beschikbaar in dit bestand.")
-
-        with col_b:
-            st.subheader("Netto in-/uitstroom per maand")
-            if not cashflow_monthly.empty:
-                fig_cf = px.bar(
-                    cashflow_monthly,
-                    x="month",
-                    y="net_cashflow",
-                    labels={"month": "Maand", "net_cashflow": "Netto cashflow (EUR)"},
-                )
-                st.plotly_chart(fig_cf, use_container_width=True)
-            else:
-                st.caption("Geen cashflow-transacties gevonden.")
-
-    with tab_positions:
         st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
         if not positions.empty:
             display = positions.copy()
@@ -474,51 +445,38 @@ def main() -> None:
         else:
             st.caption("Geen open posities gevonden op basis van de transacties.")
 
+    with tab_balance:
+        col_a, col_b = st.columns(2)
+
+        with col_a:
+            st.subheader("Kassaldo in de tijd")
+            if not balance_series.empty:
+                fig_bal = px.line(
+                    balance_series,
+                    x="value_date",
+                    y="balance",
+                    labels={"value_date": "Datum", "balance": "Saldo (EUR)"},
+                )
+                st.plotly_chart(fig_bal, use_container_width=True)
+            else:
+                st.caption("Geen saldo-informatie beschikbaar in dit bestand.")
+
+        with col_b:
+            st.subheader("Netto in-/uitstroom per maand")
+            if not cashflow_monthly.empty:
+                fig_cf = px.bar(
+                    cashflow_monthly,
+                    x="month",
+                    y="net_cashflow",
+                    labels={"month": "Maand", "net_cashflow": "Netto cashflow (EUR)"},
+                )
+                st.plotly_chart(fig_cf, use_container_width=True)
+            else:
+                st.caption("Geen cashflow-transacties gevonden.")
+
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
         st.dataframe(df, use_container_width=True, height=500)
-
-    with tab_costs:
-        st.subheader("Overzicht kosten")
-        fees = df[df["is_fee"]].copy()
-        if not fees.empty:
-            fees_by_product = (
-                fees.groupby("product")["amount"].sum().reset_index(name="fees")
-            )
-            fees_by_product["fees_abs"] = -fees_by_product["fees"]
-            fig_fees = px.bar(
-                fees_by_product.sort_values("fees_abs", ascending=False),
-                x="product",
-                y="fees_abs",
-                labels={"product": "Product", "fees_abs": "Kosten (EUR)"},
-            )
-            st.plotly_chart(fig_fees, use_container_width=True)
-        else:
-            st.caption("Geen transactiekosten gevonden in deze dataset.")
-
-        st.subheader("Dividend en dividendbelasting")
-        div = df[df["is_dividend"] | df["is_tax"]].copy()
-        if not div.empty:
-            div_by_product = (
-                div.groupby(["product", "type"])["amount"]
-                .sum()
-                .reset_index(name="amount")
-            )
-            fig_div = px.bar(
-                div_by_product,
-                x="product",
-                y="amount",
-                color="type",
-                labels={
-                    "product": "Product",
-                    "amount": "Bedrag (EUR)",
-                    "type": "Type",
-                },
-                barmode="group",
-            )
-            st.plotly_chart(fig_div, use_container_width=True)
-        else:
-            st.caption("Geen dividend- of dividendbelastingtransacties gevonden.")
 
 
 if __name__ == "__main__":
