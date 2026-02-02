@@ -607,16 +607,16 @@ def main() -> None:
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
         st.markdown(f"**Periode data:** {period_str}")
     
-    # Rij 1: Gekocht, Marktwaarde, Verkocht (Gewisseld op verzoek)
+    # Rij 1: Gekocht, Marktwaarde, Resultaat (Gewisseld)
     col1, col2, col3 = st.columns(3)
     col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col3.metric("Totaal aandelen verkocht", format_eur(total_sells))
-
-    # Rij 2: Resultaat, Kosten, Dividend
-    col4, col5, col6 = st.columns(3)
-    col4.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
+    col3.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
                help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
+
+    # Rij 2: Verkocht, Kosten, Dividend
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Totaal aandelen verkocht", format_eur(total_sells))
     col5.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
     col6.metric("Ontvangen dividend", format_eur(total_dividends))
 
