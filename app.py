@@ -89,13 +89,15 @@ def load_degiro_csv(file) -> pd.DataFrame:
     _shift_if_currency("amount")
     _shift_if_currency("balance")
 
-    # Parse dates (European format)
-    if "value_date" in df.columns:
-        df["value_date"] = pd.to_datetime(
-            df["value_date"], format="%d-%m-%Y", errors="coerce"
-        )
-    if "date" in df.columns:
-        df["date"] = pd.to_datetime(df["date"], format="%d-%m-%Y", errors="coerce")
+    # Parse dates flexibly (European %d-%m-%Y OR ISO %Y-%m-%d)
+    # This prevents date loss when loading back from CSV
+    for col in ["date", "value_date"]:
+        if col in df.columns:
+            # First try dayfirst for DeGiro native exports
+            df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
+            # If everything becomes NaT, it might be ISO from our own CSV save
+            if df[col].isna().all() and not df[col].empty:
+                df[col] = pd.to_datetime(df[col], errors="coerce")
 
     # Helper to parse numeric fields with comma decimal separator
     def _to_float(series: pd.Series) -> pd.Series:
@@ -905,17 +907,30 @@ def main() -> None:
                 except Exception as e:
                     st.sidebar.error(f"Kon data niet wissen: {e}")
     
-    # Duplicaten verwijderen met een Tijdelijke Sleutel (niet vernietigend)
+    # Duplicaten verwijderen met een Hybride Sleutel (EXTREEM STRIKT)
     def _make_dedup_key(df_in: pd.DataFrame) -> pd.Series:
-        # We maken een uniek ID op basis van inhoud, maar veranderen de DATA zelf niet.
-        # Dit voorkomt dat we de hoofdletters van 'Koop' slopen (wat Share Calculation nodig heeft).
-        temp_date = pd.to_datetime(df_in["date"]).dt.strftime("%Y%m%d").fillna("00000000")
-        temp_time = df_in["time"].astype(str).str.strip().fillna("00:00")
-        temp_product = df_in["product"].astype(str).str.lower().str.strip().fillna("")
-        temp_desc = df_in["description"].astype(str).str.lower().str.strip().fillna("")
-        temp_amount = pd.to_numeric(df_in["amount"], errors="coerce").fillna(0.0).round(2).astype(str)
+        # 1. Datum & Tijd (altijd nodig)
+        d = pd.to_datetime(df_in["date"], errors='coerce').dt.strftime("%Y%m%d").fillna("00000000")
+        t = df_in["time"].astype(str).str.strip().fillna("00:00")
         
-        return temp_date + "|" + temp_time + "|" + temp_product + "|" + temp_desc + "|" + temp_amount
+        # 2. Product/ISIN stabilisatie
+        # Gebruik ISIN als die er is, anders product
+        p_val = df_in["isin"].fillna(df_in["product"]).astype(str).str.strip().str.lower().replace("nan", "")
+        
+        # 3. Slimme Omschrijving (Substring regel van Jason)
+        def _clean_desc(s):
+            s = str(s).strip().lower()
+            if any(x in s for x in ["vanguard", "future", "hanetf"]):
+                return s[:15]
+            return s
+        
+        desc = df_in["description"].apply(_clean_desc)
+        
+        # 4. Bedrag & Order ID
+        v = pd.to_numeric(df_in["amount"], errors="coerce").fillna(0.0).round(2).astype(str)
+        oid = df_in["order_id"].astype(str).str.strip().fillna("")
+        
+        return d + "|" + t + "|" + p_val + "|" + desc + "|" + v + "|" + oid
 
     before_dedup = len(df_raw)
     if not df_raw.empty:
