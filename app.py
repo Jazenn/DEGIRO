@@ -912,6 +912,23 @@ def main() -> None:
     if sort_cols:
          df_raw = df_raw.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     
+    # Knoppen voor data-beheer
+    if use_gsheets:
+        st.sidebar.markdown("---")
+        with st.sidebar.expander("🗑️ Data Beheer"):
+            if st.button("🔴 Wis ALLE data uit Google Sheet", help="Dit verwijdert alles uit de gekoppelde sheet."):
+                try:
+                    # We overschrijven met een lege dataframe die wel de kolommen heeft
+                    empty_df = pd.DataFrame(columns=df_raw.columns)
+                    conn.update(data=empty_df)
+                    st.cache_data.clear()
+                    st.toast("Alle data is gewist!", icon="🗑️")
+                    import time
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"Kon data niet wissen: {e}")
+    
     # 4. Opslaan naar Google Sheets (alleen als er nieuwe upload was EN we verbonden zijn)
     # We slaan de HELE ontdubbelde set op, zodat het een 'master' bestand wordt.
     if use_gsheets and not df_new.empty:
