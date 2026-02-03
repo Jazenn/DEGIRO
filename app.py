@@ -842,8 +842,9 @@ def main() -> None:
         df_gsheet = conn.read(ttl=0)
         use_gsheets = True
         sidebar.success("✅ Verbonden met Google Sheets")
-    except Exception:
+    except Exception as e:
         # Secrets ontbreken of sheet niet bereikbaar
+        sidebar.error(f"Fout met verbinden: {e}")
         sidebar.info("ℹ️ Google Sheets niet gekoppeld. Data wordt niet opgeslagen.")
         with sidebar.expander("Hoe te koppelen?"):
              st.markdown(
