@@ -844,7 +844,9 @@ def main() -> None:
         sidebar.success("✅ Verbonden met Google Sheets")
     except Exception as e:
         # Secrets ontbreken of sheet niet bereikbaar
+        import traceback
         sidebar.error(f"Fout met verbinden: {e}")
+        sidebar.code(traceback.format_exc())
         sidebar.info("ℹ️ Google Sheets niet gekoppeld. Data wordt niet opgeslagen.")
         with sidebar.expander("Hoe te koppelen?"):
              st.markdown(
