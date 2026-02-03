@@ -903,6 +903,11 @@ def main() -> None:
     
     if before_dedup != after_dedup and not df_new.empty:
         st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
+
+    # Sorteren op datum en tijd (zodat de sheet chronologisch blijft)
+    sort_cols = [c for c in ["date", "time"] if c in df_raw.columns]
+    if sort_cols:
+         df_raw = df_raw.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     
     # 4. Opslaan naar Google Sheets (alleen als er nieuwe upload was EN we verbonden zijn)
     # We slaan de HELE ontdubbelde set op, zodat het een 'master' bestand wordt.
