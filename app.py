@@ -833,7 +833,7 @@ def main() -> None:
         drive = DriveStorage(st.secrets["connections"]["gsheets"], DRIVE_FOLDER_ID)
         df_drive = drive.load_data()
         use_drive = True
-        sidebar.success("✅ Verbonden met Google Drive (Excel)")
+        sidebar.success("✅ Verbonden met Google Drive (CSV)")
     except Exception as e:
         import traceback
         sidebar.error(f"Fout met verbinden Google Drive: {e}")
@@ -892,7 +892,7 @@ def main() -> None:
     if use_drive:
         st.sidebar.markdown("---")
         with st.sidebar.expander("🗑️ Data Beheer"):
-            if st.button("🔴 Wis ALLE data uit Google Drive", help="Dit verwijdert de Excel file uit de gekoppelde map."):
+            if st.button("🔴 Wis ALLE data uit Google Drive", help="Dit verwijdert de CSV file uit de gekoppelde map."):
                 try:
                     # We overschrijven met een lege dataframe die wel de kolommen heeft
                     empty_df = pd.DataFrame(columns=df_raw.columns)
@@ -931,7 +931,7 @@ def main() -> None:
     if use_drive and not df_new.empty:
         try:
             drive.save_data(df_raw)
-            st.toast("Nieuwe data succesvol opgeslagen in Google Drive (Excel)!", icon="💾")
+            st.toast("Nieuwe data succesvol opgeslagen in Google Drive (CSV)!", icon="💾")
         except Exception as e:
             st.error(f"Fout bij opslaan naar Drive: {e}")
     

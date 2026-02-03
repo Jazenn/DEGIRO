@@ -31,17 +31,17 @@ class DriveStorage:
         )
         self.service = build("drive", "v3", credentials=self.creds)
         self.folder_id = folder_id
-        self.filename = "transactions_master.xlsx"
+        self.filename = "transactions_master.csv"
 
     def _find_file(self):
-        """Find the Excel file in the target folder."""
+        """Find the CSV file in the target folder."""
         query = f"name = '{self.filename}' and '{self.folder_id}' in parents and trashed = false"
         results = self.service.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
         files = results.get("files", [])
         return files[0]["id"] if files else None
 
     def load_data(self) -> pd.DataFrame:
-        """Download the Excel file and return as a DataFrame."""
+        """Download the CSV file and return as a DataFrame."""
         file_id = self._find_file()
         if not file_id:
             return pd.DataFrame()
@@ -54,17 +54,21 @@ class DriveStorage:
             status, done = downloader.next_chunk()
         
         fh.seek(0)
-        # Using openpyxl as engine
-        return pd.read_excel(fh, engine="openpyxl")
+        # Read as CSV
+        try:
+            return pd.read_csv(fh)
+        except Exception:
+            # If file is empty, return empty DF
+            return pd.DataFrame()
 
     def save_data(self, df: pd.DataFrame):
-        """Upload or update the Excel file from a DataFrame."""
+        """Upload or update the CSV file from a DataFrame."""
         fh = io.BytesIO()
-        with pd.ExcelWriter(fh, engine="openpyxl") as writer:
-            df.to_excel(writer, index=False)
+        df.to_csv(fh, index=False, encoding="utf-8")
         
         fh.seek(0)
-        media = MediaIoBaseUpload(fh, mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", resumable=True)
+        # Direct upload (resumable=False) works better for quota-less service accounts
+        media = MediaIoBaseUpload(fh, mimetype="text/csv", resumable=False)
         
         file_id = self._find_file()
         if file_id:
