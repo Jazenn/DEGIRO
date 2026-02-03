@@ -744,7 +744,7 @@ def render_overview(df: pd.DataFrame) -> None:
                 legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
                 dragmode=False
             )
-            st.plotly_chart(fig_alloc, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
+            st.plotly_chart(fig_alloc, use_container_width=True, config={'scrollZoom': False})
     else:
         st.caption("Geen open posities gevonden op basis van de transacties.")
 
@@ -772,9 +772,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 labels={"month_str": "Maand", "amount_abs": "Bedrag (EUR)", "type": "Actie"},
             )
             fig_cf.update_layout(dragmode=False)
-            fig_cf.update_xaxes(fixedrange=True)
-            fig_cf.update_yaxes(fixedrange=True)
-            st.plotly_chart(fig_cf, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
+            st.plotly_chart(fig_cf, use_container_width=True, config={'scrollZoom': False})
         else:
             st.caption("Geen aan- of verkopen gevonden.")
     
@@ -797,7 +795,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date", fixedrange=True),
+                    xaxis=dict(rangeslider=dict(visible=False), type="date"),
                     dragmode=False
                 )
                 val_min, val_max = subset["value"].min(), subset["value"].max()
@@ -806,9 +804,9 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 price_min, price_max = subset["price"].min(), subset["price"].max()
                 price_range = price_max - price_min
                 price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
-                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear", range=val_lims, fixedrange=True)
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims, fixedrange=True)
-                st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
+                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear", range=val_lims)
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims)
+                st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False})
                 with st.expander("Toon tabel data"):
                     st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
             else:
