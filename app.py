@@ -922,26 +922,9 @@ def main() -> None:
         st.warning("Geen data gevonden. Upload een bestand of koppel een Google Sheet.")
         return
 
-    # Duplicaten verwijderen
+    # Duplicaten verwijderen (Simpel, op alle kolommen)
     before_dedup = len(df_raw)
-    
-    # Normaliseer string-kolommen om NaN vs "" mismatches te voorkomen bij dedup
-    # "" is prima voor tekstkolommen.
-    str_cols = ["time", "product", "isin", "description"]
-    for c in str_cols:
-        if c in df_raw.columns:
-            df_raw[c] = df_raw[c].fillna("").astype(str).str.strip()
-
-    # We droppen duplicaten op basis van een subset: datum, tijd, product, omschrijving, bedrag.
-    # Dit voorkomt dat we per ongeluk 'echte' dubbele transacties wissen als ze unieke ID's missen,
-    # maar is strikt genoeg om dubbele uploads te vangen.
-    dedup_subset = [c for c in ["date", "time", "product", "isin", "description", "amount"] if c in df_raw.columns]
-    
-    if dedup_subset:
-        df_raw = df_raw.drop_duplicates(subset=dedup_subset)
-    else:
-        df_raw = df_raw.drop_duplicates()
-        
+    df_raw = df_raw.drop_duplicates()
     after_dedup = len(df_raw)
     
     if before_dedup != after_dedup and not df_new.empty:
