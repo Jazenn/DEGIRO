@@ -889,6 +889,9 @@ def main() -> None:
         # Kolomnamen normaliseren (lowercase, strip) om match te garanderen met nieuwe uploads
         df_gsheet.columns = [c.strip().lower() for c in df_gsheet.columns]
         
+        # Verwijder dubbele kolommen (kan gebeuren door case-insensitivity of foute headers in sheet)
+        df_gsheet = df_gsheet.loc[:, ~df_gsheet.columns.duplicated()]
+        
         # Fix datumtypes en numerieke types
         for col in ["date", "value_date"]:
             if col in df_gsheet.columns:
