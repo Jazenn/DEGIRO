@@ -915,9 +915,17 @@ def main() -> None:
     # Duplicaten verwijderen
     before_dedup = len(df_raw)
     
-    # We droppen duplicaten op basis van een subset van kolommen om kleine verschillen (zoals timestamp precisie) te negeren
-    # We nemen: datum, tijd, product, isin, omschrijving, bedrag. (Order ID is vaak leeg).
+    # Normaliseer string-kolommen om NaN vs "" mismatches te voorkomen bij dedup
+    # We doen dit op een KOPIE voor de dedup-check, of we accepteren "" in de data.
+    # "" is prima voor tekstkolommen.
+    str_cols = ["time", "product", "isin", "description"]
+    for c in str_cols:
+        if c in df_raw.columns:
+            df_raw[c] = df_raw[c].fillna("").astype(str).str.strip()
+
+    # We droppen duplicaten op basis van een subset van kolommen
     dedup_subset = [c for c in ["date", "time", "product", "isin", "description", "amount"] if c in df_raw.columns]
+    
     if dedup_subset:
         df_raw = df_raw.drop_duplicates(subset=dedup_subset)
     else:
