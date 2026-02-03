@@ -676,41 +676,49 @@ def render_overview(df: pd.DataFrame) -> None:
             axis=1,
         )
         
-        st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
-        display = positions.copy()
-        display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
-        display["Huidige waarde"] = display["current_value"].map(format_eur)
+        # Categorisatie
+        positions["Category"] = positions["isin"].apply(lambda x: "Crypto" if str(x).startswith("XFC") else "ETFs & Stocks")
         
-        # Winst/verlies berekening (inclusief cashflow/dividenden voor dat product)
-        display["Winst/verlies (EUR)"] = (
-            display["current_value"] + display["net_cashflow"]
-        ).map(format_eur)
+        st.subheader("Open posities (afgeleid uit transacties)")
+        
+        for cat in ["ETFs & Stocks", "Crypto"]:
+            cat_df = positions[positions["Category"] == cat].copy()
+            if not cat_df.empty:
+                st.markdown(f"#### {cat}")
+                display = cat_df.copy()
+                display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
+                display["Huidige waarde"] = display["current_value"].map(format_eur)
+                
+                # Winst/verlies berekening
+                display["Winst/verlies (EUR)"] = (
+                    display["current_value"] + display["net_cashflow"]
+                ).map(format_eur)
 
-        def _pl_pct(row: pd.Series) -> float | None:
-            cur = row.get("current_value")
-            net_cf = row.get("net_cashflow")
-            inv = row.get("invested")
-            if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
-                pl_amount = cur + net_cf
-                return (pl_amount / inv) * 100.0
-            return pd.NA
+                def _pl_pct(row: pd.Series) -> float | None:
+                    cur = row.get("current_value")
+                    net_cf = row.get("net_cashflow")
+                    inv = row.get("invested")
+                    if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
+                        pl_amount = cur + net_cf
+                        return (pl_amount / inv) * 100.0
+                    return pd.NA
 
-        display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
-        display = display.rename(
-            columns={
-                "product": "Product",
-                "isin": "ISIN",
-                "quantity": "Aantal",
-                "trades": "Aantal transacties",
-                "ticker": "Ticker",
-            }
-        )
-        display = display[[
-            "Product", "Totaal geinvesteerd", "Huidige waarde",
-            "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
-            "Aantal transacties", "Ticker",
-        ]]
-        st.dataframe(display, use_container_width=True, hide_index=True)
+                display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
+                display = display.rename(
+                    columns={
+                        "product": "Product",
+                        "isin": "ISIN",
+                        "quantity": "Aantal",
+                        "trades": "Transacties",
+                        "ticker": "Ticker",
+                    }
+                )
+                display = display[[
+                    "Product", "Totaal geinvesteerd", "Huidige waarde",
+                    "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
+                    "Transacties", "Ticker",
+                ]]
+                st.data_editor(display, use_container_width=True, hide_index=True, key=f"table_{cat}")
 
         # Portefeuilleverdeling
         alloc = positions.copy()
@@ -899,7 +907,7 @@ def main() -> None:
     if use_drive:
         st.sidebar.markdown("---")
         with st.sidebar.expander("🗑️ Data Beheer"):
-            if st.button("🔴 Wis ALLE data uit Google Drive", help="Dit verwijdert de CSV file uit de gekoppelde map."):
+            if st.button("🔴 Wis ALLE data", help="Verwijdert alle data uit Drive en leegt de uploader."):
                 try:
                     # We overschrijven met een lege dataframe die wel de kolommen heeft
                     empty_df = pd.DataFrame(columns=df_raw.columns)
