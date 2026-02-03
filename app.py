@@ -728,6 +728,11 @@ def render_overview(df: pd.DataFrame) -> None:
 
 # Function for static tables/charts that doesn't need constant refresh/reset
 def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
+    st.markdown("---")
+    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
+        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📋 Transacties"]
+    )
+
     with tab_overview:
         # Dit fragment ververst elke 30 seconden
         render_overview(df)
