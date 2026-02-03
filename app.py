@@ -41,31 +41,21 @@ def load_degiro_csv(file) -> pd.DataFrame:
     """Load a DeGiro CSV file into a cleaned DataFrame."""
     df = pd.read_csv(file)
 
-    # Normalise column names (strip whitespace, lowercase)
-    df.columns = [c.strip().lower() for c in df.columns]
+    # Normalise column names (strip whitespace, consistent casing)
+    df.columns = [c.strip() for c in df.columns]
 
-    # Map Dutch/English export columns to easier internal names
-    # Note: keys must be lowercase now!
+    # Map Dutch export columns to easier internal names
     rename_map = {
-        "datum": "date",
-        "date": "date", # English
-        "tijd": "time",
-        "time": "time", # English
-        "valutadatum": "value_date",
-        "value date": "value_date", # English
-        "product": "product",
-        "isin": "isin",
-        "omschrijving": "description",
-        "description": "description", # English
-        "mutatie": "amount",
-        "amount": "amount", # English? usually Mutation in EN? 'total' etc.
-        "total amount": "amount",
-        "mutation": "amount", # Check valid english header
-        "saldo": "balance",
-        "balance": "balance", # English
-        "fx": "fx",
-        "order id": "order_id",
-        "orderid": "order_id",
+        "Datum": "date",
+        "Tijd": "time",
+        "Valutadatum": "value_date",
+        "Product": "product",
+        "ISIN": "isin",
+        "Omschrijving": "description",
+        "Mutatie": "amount",
+        "Saldo": "balance",
+        "FX": "fx",
+        "Order Id": "order_id",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
@@ -894,46 +884,25 @@ def main() -> None:
     # 3. Samenvoegen van Opgeslagen + Nieuw
     df_raw = pd.DataFrame()
     
-    # Eerst sheet data verwerken
+    # Eerst sheet data verwerken (zorg dat datums goed staan)
     if not df_gsheet.empty:
-        # Kolomnamen normaliseren (lowercase, strip) om match te garanderen met nieuwe uploads
-        df_gsheet.columns = [c.strip().lower() for c in df_gsheet.columns]
-        
-        # Verwijder dubbele kolommen (kan gebeuren door case-insensitivity of foute headers in sheet)
-        df_gsheet = df_gsheet.loc[:, ~df_gsheet.columns.duplicated()]
-        
-        # Fix datumtypes en numerieke types
+        # Fix datumtypes die mogelijk als string terugkomen uit Sheets
         for col in ["date", "value_date"]:
             if col in df_gsheet.columns:
                 df_gsheet[col] = pd.to_datetime(df_gsheet[col], errors="coerce")
-        
-        numeric_cols = ["amount", "balance", "fx", "quantity", "price", "local_value", "value"]
-        for col in numeric_cols:
-            if col in df_gsheet.columns:
-                df_gsheet[col] = pd.to_numeric(df_gsheet[col], errors="coerce")
-                
         df_raw = pd.concat([df_raw, df_gsheet], ignore_index=True)
         
     if not df_new.empty:
-        # df_new komt uit load_degiro_csv en is al schoon
         df_raw = pd.concat([df_raw, df_new], ignore_index=True)
     
     if df_raw.empty:
         st.warning("Geen data gevonden. Upload een bestand of koppel een Google Sheet.")
         return
 
-    # Duplicaten verwijderen (Simpel, op alle kolommen)
+    # Duplicaten verwijderen
     before_dedup = len(df_raw)
     df_raw = df_raw.drop_duplicates()
     after_dedup = len(df_raw)
-    
-    if before_dedup != after_dedup and not df_new.empty:
-        st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
-
-    # Sorteren op datum en tijd
-    sort_cols = [c for c in ["date", "time"] if c in df_raw.columns]
-    if sort_cols:
-         df_raw = df_raw.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     
     if before_dedup != after_dedup and not df_new.empty:
         st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
