@@ -6,6 +6,15 @@ import plotly.express as px
 import streamlit as st
 import yfinance as yf
 
+# Compatibility check for st.fragment (Streamlit 1.37+)
+if hasattr(st, "fragment"):
+    fragment = st.fragment
+else:
+    # Dummy decorator if getting older version
+    def fragment(*args, **kwargs):
+        def wrapper(f): return f
+        return wrapper
+
 
 def format_eur(value: float) -> str:
     """Format a float as European-style euro string."""
@@ -26,6 +35,7 @@ def format_pct(value: float) -> str:
     return f"{s}%"
 
 
+@st.cache_data
 def load_degiro_csv(file) -> pd.DataFrame:
     """Load a DeGiro CSV file into a cleaned DataFrame."""
     df = pd.read_csv(file)
@@ -269,6 +279,7 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     return monthly
 
 
+@st.cache_data(ttl=3600)
 def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
@@ -452,6 +463,7 @@ def map_to_ticker(product: str | None, isin: str | None) -> str | None:
     return None
 
 
+@st.cache_data(ttl=30)
 def fetch_tradegate_price(isin: str) -> float | None:
     """Schraap de laatste koers van Tradegate (voor real-time nauwkeurigheid)."""
     try:
@@ -478,6 +490,7 @@ def fetch_tradegate_price(isin: str) -> float | None:
     return None
 
 
+@st.cache_data(ttl=30)
 def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
     """Vraag de laatste slotkoers op. Eerst Tradegate (voor Vanguard/bekende), dan YFinance."""
     if not tickers:
@@ -557,6 +570,214 @@ def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
     return results
 
 
+@fragment(run_every=30)
+def render_live_dashboard(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
+    """Render dat het dashboard die elke 60 sec ververst."""
+    # We berekenen positions hier binnen het fragment, zodat bij een refresh 
+    # de live koersen opnieuw worden opgehaald (via fetch_live_prices die dan expired is)
+    positions = build_positions(df)
+    
+    # Live koersen en actuele waarde per positie
+    if not positions.empty:
+        positions["ticker"] = positions.apply(
+            lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
+        )
+        price_map = fetch_live_prices(positions["ticker"].dropna().unique().tolist())
+        positions["last_price"] = positions["ticker"].map(price_map)
+        positions["current_value"] = positions.apply(
+            lambda r: (
+                r["quantity"] * r["last_price"]
+                if pd.notna(r.get("last_price")) and pd.notna(r.get("quantity"))
+                else pd.NA
+            ),
+            axis=1,
+        )
+        positions["avg_price"] = positions.apply(
+            lambda r: (
+                r["invested"] / r["quantity"]
+                if pd.notna(r.get("invested"))
+                and pd.notna(r.get("quantity"))
+                and r["quantity"] != 0
+                else pd.NA
+            ),
+            axis=1,
+        )
+    else:
+        positions["ticker"] = []
+        positions["last_price"] = []
+        positions["current_value"] = []
+        positions["avg_price"] = []
+
+    # Globale samenvatting
+    total_deposits = df.loc[df["type"] == "Deposit", "amount"].sum()
+    total_withdrawals = -df.loc[df["type"] == "Withdrawal", "amount"].sum()
+    
+    total_buys = df.loc[df["type"] == "Buy", "amount"].sum()
+    total_sells = df.loc[df["type"] == "Sell", "amount"].sum()
+    
+    total_fees = -df.loc[df["is_fee"], "amount"].sum()
+    total_dividends = df.loc[df["is_dividend"], "amount"].sum()
+    
+    total_market_value = (
+        positions["current_value"].dropna().sum() if not positions.empty else 0.0
+    )
+    
+    valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
+    current_cash = valid_cash_tx["amount"].sum()
+    
+    total_equity = total_market_value + current_cash
+    net_invested_total = total_deposits - total_withdrawals
+    total_result = total_equity - net_invested_total
+
+    # Layout: 2 rijen van 3 kolommen zoals gevraagd
+    
+    # Periode weergeven
+    if "value_date" in df.columns and not df["value_date"].empty:
+        min_date = df["value_date"].min()
+        max_date = df["value_date"].max()
+        period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
+        st.markdown(f"**Periode data:** {period_str}")
+    
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
+    col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+    col3.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
+               help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
+
+    col4, col5, col6 = st.columns(3)
+    col4.metric("Totaal aandelen verkocht", format_eur(total_sells))
+    col5.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
+    col6.metric("Ontvangen dividend", format_eur(total_dividends))
+
+    st.markdown("---")
+    
+    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
+        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📋 Transacties"]
+    )
+
+    with tab_overview:
+        st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
+        if not positions.empty:
+            display = positions.copy()
+            display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
+            display["Huidige waarde"] = display["current_value"].map(format_eur)
+            display["Winst/verlies (EUR)"] = (
+                display["current_value"] + display["net_cashflow"]
+            ).map(format_eur)
+
+            def _pl_pct(row: pd.Series) -> float | None:
+                cur = row.get("current_value")
+                net_cf = row.get("net_cashflow")
+                inv = row.get("invested")
+                
+                if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
+                    pl_amount = cur + net_cf
+                    return (pl_amount / inv) * 100.0
+                return pd.NA
+
+            display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
+            display = display.rename(
+                columns={
+                    "product": "Product",
+                    "isin": "ISIN",
+                    "quantity": "Aantal",
+                    "trades": "Aantal transacties",
+                    "ticker": "Ticker",
+                }
+            )
+            display = display[[
+                "Product", "Totaal geinvesteerd", "Huidige waarde",
+                "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
+                "Aantal transacties", "Ticker",
+            ]]
+            st.dataframe(display, use_container_width=True, hide_index=True)
+
+            alloc = positions.copy()
+            alloc["alloc_value"] = alloc["current_value"]
+            alloc["alloc_value"] = alloc["alloc_value"].fillna(alloc["invested"])
+            alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
+            if not alloc.empty:
+                st.subheader("Huidige portefeuilleverdeling")
+                fig_alloc = px.pie(alloc, names="product", values="alloc_value")
+                fig_alloc.update_layout(
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
+                )
+                st.plotly_chart(fig_alloc, use_container_width=True)
+        else:
+            st.caption("Geen open posities gevonden op basis van de transacties.")
+
+    with tab_balance:
+        st.subheader("Aandelen Gekocht vs Verkocht per maand")
+        if not trading_volume.empty:
+            fig_cf = px.bar(
+                trading_volume, x="month_str", y="amount_abs", color="type",
+                barmode="overlay", opacity=0.7,
+                color_discrete_map={"Buy": "#EF553B", "Sell": "#00CC96"},
+                labels={"month_str": "Maand", "amount_abs": "Bedrag (EUR)", "type": "Actie"},
+            )
+            st.plotly_chart(fig_cf, use_container_width=True)
+        else:
+            st.caption("Geen aan- of verkopen gevonden.")
+    
+    with tab_history:
+        st.subheader("Historische waardeontwikkeling (Indicatief)")
+        st.markdown(
+            "Hier zie je hoeveel waarde je in bezit had per week (Aantal * Koers). "
+            "Dit is gebaseerd op de wekelijkse slotkoers en je transactiehistorie."
+        )
+        if not history_df.empty:
+            products = sorted(history_df["product"].unique())
+            selected_product = st.selectbox("Selecteer een product", products)
+            subset = history_df[history_df["product"] == selected_product].copy()
+            if not subset.empty:
+                import plotly.graph_objects as go
+                from plotly.subplots import make_subplots
+                fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
+                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', line=dict(color="#636EFA")), secondary_y=False)
+                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', line=dict(color="#EF553B", dash='dot')), secondary_y=True)
+                fig_hist.update_layout(
+                    title_text=f"Historie voor {selected_product}", hovermode="x unified",
+                    legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
+                    xaxis=dict(rangeslider=dict(visible=False), type="date")
+                )
+                val_min, val_max = subset["value"].min(), subset["value"].max()
+                val_range = val_max - val_min
+                val_lims = [val_min - 0.05 * val_range, val_max + 0.05 * val_range]
+                price_min, price_max = subset["price"].min(), subset["price"].max()
+                price_range = price_max - price_min
+                price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
+                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear", range=val_lims)
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims)
+                st.plotly_chart(fig_hist, use_container_width=True)
+                with st.expander("Toon tabel data"):
+                    st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
+            else:
+                st.warning("Geen data gevonden voor dit product.")
+        
+        st.markdown("---")
+        st.subheader("Vergelijk Portefeuille")
+        st.markdown("Hieronder kun je meerdere aandelen tegelijk zien. Deselecteer de grootste posities om de dalingen/stijgingen van kleinere posities beter te zien.")
+        all_products = sorted(history_df["product"].unique())
+        selected_for_compare = st.multiselect("Selecteer aandelen om te vergelijken", all_products, default=all_products)
+        if selected_for_compare:
+            compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
+            if not compare_df.empty:
+                compare_df = compare_df.sort_values("date")
+                fig_compare = px.line(compare_df, x="date", y="value", color="product", title="Waarde per aandeel in de tijd (EUR)", labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"})
+                fig_compare.update_layout(
+                    legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
+                    xaxis=dict(rangeslider=dict(visible=False), type="date")
+                )
+                st.plotly_chart(fig_compare, use_container_width=True)
+            else:
+                st.info("Geen data om te tonen.")
+        else:
+            st.info("Selecteer minimaal één aandeel.")
+
+    with tab_transactions:
+        st.subheader("Ruwe transactiedata")
+        st.dataframe(df, use_container_width=True, height=500)
+
 def main() -> None:
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
@@ -627,363 +848,10 @@ def main() -> None:
     trading_volume = build_trading_volume_by_month(df)
     history_df = build_portfolio_history(df)
     
-    # Live koersen en actuele waarde per positie
-    if not positions.empty:
-        positions["ticker"] = positions.apply(
-            lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
-        )
-        price_map = fetch_live_prices(positions["ticker"].dropna().unique().tolist())
-        positions["last_price"] = positions["ticker"].map(price_map)
-        positions["current_value"] = positions.apply(
-            lambda r: (
-                r["quantity"] * r["last_price"]
-                if pd.notna(r.get("last_price")) and pd.notna(r.get("quantity"))
-                else pd.NA
-            ),
-            axis=1,
-        )
-        positions["avg_price"] = positions.apply(
-            lambda r: (
-                r["invested"] / r["quantity"]
-                if pd.notna(r.get("invested"))
-                and pd.notna(r.get("quantity"))
-                and r["quantity"] != 0
-                else pd.NA
-            ),
-            axis=1,
-        )
-    else:
-        positions["ticker"] = []
-        positions["last_price"] = []
-        positions["current_value"] = []
-        positions["avg_price"] = []
-
-    # Globale samenvatting
-    total_deposits = df.loc[df["type"] == "Deposit", "amount"].sum()
-    total_withdrawals = -df.loc[df["type"] == "Withdrawal", "amount"].sum()
-    
-    # Nieuwe metrics voor display (Koop/Verkoop volume)
-    # Buy is negatief (geld uit), Sell is positief (geld in). We tonen absolute waarden.
-    total_buys = df.loc[df["type"] == "Buy", "amount"].sum()
-    total_sells = df.loc[df["type"] == "Sell", "amount"].sum()
-    
-    total_fees = -df.loc[df["is_fee"], "amount"].sum()
-    total_dividends = df.loc[df["is_dividend"], "amount"].sum()
-    
-    total_market_value = (
-        positions["current_value"].dropna().sum() if not positions.empty else 0.0
-    )
-    
-    # Bepaal huidig saldo NIET uit de balance-kolom (onbetrouwbaar),
-    # maar door sommatie van alle mutaties (behalve 'Reservation' en 'Cash Sweep').
-    # Cash Sweep is interne verschuiving naar geldmarktfonds, geen netto in/uitstroom.
-    
-    # Filter 'Reservation' en 'Cash Sweep' eruit
-    valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
-    
-    # Bereken saldo = som van alle bedragen
-    current_cash = valid_cash_tx["amount"].sum()
-    
-    # Totaal eigen vermogen = Marktwaarde + Cash
-    total_equity = total_market_value + current_cash
-    
-    # Netto inleg = Stortingen - Opnames (gebruikt voor P/L berekening)
-    net_invested_total = total_deposits - total_withdrawals
-    
-    # Totaal resultaat = Eigen Vermogen Nu - Netto Inleg
-    # Dit omvat dus ALLES: koerswinst, dividenden, kosten, rente, etc.
-    total_result = total_equity - net_invested_total
-
-    # Layout: 2 rijen van 3 kolommen zoals gevraagd
-    
-    # Periode weergeven
-    if "value_date" in df.columns and not df["value_date"].empty:
-        min_date = df["value_date"].min()
-        max_date = df["value_date"].max()
-        # Format: Maand Jaar
-        period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
-        st.markdown(f"**Periode data:** {period_str}")
-    
-    # Rij 1: Gekocht, Marktwaarde, Resultaat (Gewisseld)
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
-    col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col3.metric("Totaal Resultaat (Winst/Verlies)", format_eur(total_result), 
-               help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
-
-    # Rij 2: Verkocht, Kosten, Dividend
-    col4, col5, col6 = st.columns(3)
-    col4.metric("Totaal aandelen verkocht", format_eur(total_sells))
-    col5.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
-    col6.metric("Ontvangen dividend", format_eur(total_dividends))
-
-    st.markdown("---")
-    
-    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", "� Historie", "�📋 Transacties"]
-    )
-
-    with tab_overview:
-        st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
-        if not positions.empty:
-            display = positions.copy()
-            # Totale aankoopkosten (bruto, zonder fees) en huidige marktwaarde
-            display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
-            display["Huidige waarde"] = display["current_value"].map(format_eur)
-
-            # Winst/verlies (Totaal) = Huidige Waarde + Netto Cashflow (historisch saldo van buys/sells/fees/divs)
-            # Voorbeeld: Buy -1000, Fee -2, Div +10. Net Cashflow = -992. Value = 1100. P/L = 1100 - 992 = 108.
-            display["Winst/verlies (EUR)"] = (
-                display["current_value"] + display["net_cashflow"]
-            ).map(format_eur)
-
-            def _pl_pct(row: pd.Series) -> float | None:
-                cur = row.get("current_value")
-                net_cf = row.get("net_cashflow")
-                inv = row.get("invested")
-                
-                if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
-                    pl_amount = cur + net_cf
-                    return (pl_amount / inv) * 100.0
-                return pd.NA
-
-            display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(
-                format_pct
-            )
-            display = display.rename(
-                columns={
-                    "product": "Product",
-                    "isin": "ISIN",
-                    "quantity": "Aantal",
-                    "trades": "Aantal transacties",
-                    "ticker": "Ticker",
-                }
-            )
-            # Alleen de meest relevante kolommen tonen
-            display = display[
-                [
-                    "Product",
-                    "Totaal geinvesteerd",
-                    "Huidige waarde",
-                    "Winst/verlies (EUR)",
-                    "Winst/verlies (%)",
-                    "Aantal",
-                    "Aantal transacties",
-                    "Ticker",
-                ]
-            ]
-            st.dataframe(display, use_container_width=True, hide_index=True)
-
-            # Pie chart met huidige verdeling van de portefeuille
-            alloc = positions.copy()
-            alloc["alloc_value"] = alloc["current_value"]
-            alloc["alloc_value"] = alloc["alloc_value"].fillna(alloc["invested"])
-            alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
-            if not alloc.empty:
-                st.subheader("Huidige portefeuilleverdeling")
-                fig_alloc = px.pie(
-                    alloc,
-                    names="product",
-                    values="alloc_value",
-                )
-                # Fix legend for mobile (horizontal at bottom)
-                fig_alloc.update_layout(
-                    legend=dict(
-                        orientation="h",
-                        yanchor="bottom",
-                        y=-0.2,
-                        xanchor="center",
-                        x=0.5
-                    )
-                )
-                st.plotly_chart(fig_alloc, use_container_width=True)
-        else:
-            st.caption("Geen open posities gevonden op basis van de transacties.")
-
-    with tab_balance:
-        st.subheader("Aandelen Gekocht vs Verkocht per maand")
-        if not trading_volume.empty:
-            fig_cf = px.bar(
-                trading_volume,
-                x="month_str",
-                y="amount_abs",
-                color="type",
-                barmode="overlay", 
-                opacity=0.7,
-                color_discrete_map={
-                    "Buy": "#EF553B",  # Rood/Oranje voor aankoop (geld uit account voor aandelen)
-                    "Sell": "#00CC96"  # Groen voor verkoop (geld in account van aandelen)
-                },
-                labels={
-                    "month_str": "Maand", 
-                    "amount_abs": "Bedrag (EUR)",
-                    "type": "Actie"
-                },
-            )
-            st.plotly_chart(fig_cf, use_container_width=True)
-        else:
-            st.caption("Geen aan- of verkopen gevonden.")
-    
-    with tab_history:
-        st.subheader("Historische waardeontwikkeling (Indicatief)")
-        st.markdown(
-            "Hier zie je hoeveel waarde je in bezit had per week (Aantal * Koers). "
-            "Dit is gebaseerd op de wekelijkse slotkoers en je transactiehistorie."
-        )
-        
-        if not history_df.empty:
-            # Kies een product
-            products = sorted(history_df["product"].unique())
-            selected_product = st.selectbox("Selecteer een product", products)
-            
-            # Filter data
-            subset = history_df[history_df["product"] == selected_product].copy()
-            if not subset.empty:
-                import plotly.graph_objects as go
-                from plotly.subplots import make_subplots
-                
-                # Maak figuur met secundaire y-as
-                fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
-                
-                # Lijn 1: Totale Waarde (Links)
-                fig_hist.add_trace(
-                    go.Scatter(
-                        x=subset["date"], 
-                        y=subset["value"], 
-                        name="Waarde in bezit (EUR)",
-                        mode='lines',
-                        # fill='tozeroy',  <-- Removed to allow autoscaling y-axis
-                        line=dict(color="#636EFA")
-                    ),
-                    secondary_y=False,
-                )
-                
-                # Lijn 2: Koers (Rechts)
-                fig_hist.add_trace(
-                    go.Scatter(
-                        x=subset["date"], 
-                        y=subset["price"], 
-                        name="Koers (EUR)",
-                        mode='lines',
-                        line=dict(color="#EF553B", dash='dot')
-                    ),
-                    secondary_y=True,
-                )
-                
-                # Layout updates
-                fig_hist.update_layout(
-                    title_text=f"Historie voor {selected_product}",
-                    hovermode="x unified",
-                    # Mobiele optimalisatie: Legend IN de grafiek (linksboven)
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=0.99,
-                        xanchor="left",
-                        x=0.01,
-                        # Transparante achtergrond zodat je de lijnen erdoorheen ziet
-                        bgcolor="rgba(255, 255, 255, 0)" 
-                    ),
-                    # Range slider voor in- en uitzoomen
-                    xaxis=dict(
-                        rangeslider=dict(visible=False), 
-                        type="date"
-                    )
-                )
-                
-                # Bereken ranges met padding voor "Waarde" (Links)
-                val_min, val_max = subset["value"].min(), subset["value"].max()
-                val_range = val_max - val_min
-                # 5% padding boven en onder
-                val_lims = [val_min - 0.05 * val_range, val_max + 0.05 * val_range]
-                
-                # Bereken ranges met padding voor "Prijs" (Rechts)
-                price_min, price_max = subset["price"].min(), subset["price"].max()
-                price_range = price_max - price_min
-                price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
-
-                # Forceer autoscaling door eventuele constraints los te laten, 
-                # en voeg handmatige range toe voor padding.
-                fig_hist.update_yaxes(
-                    title_text="Totale Waarde in bezit (€)", 
-                    secondary_y=False, 
-                    type="linear",
-                    range=val_lims
-                )
-                fig_hist.update_yaxes(
-                    title_text="Koers per aandeel (€)", 
-                    secondary_y=True, 
-                    type="linear",
-                    range=price_lims
-                )
-                
-                # if st.checkbox("Vergroot grafiek (Full Screen)", key="full_hist"):
-                #     fig_hist.update_layout(height=600)
-
-                st.plotly_chart(fig_hist, use_container_width=True)
-                
-                # Toon een stukje data
-                with st.expander("Toon tabel data"):
-                    st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
-            else:
-                st.warning("Geen data gevonden voor dit product.")
-        
-        st.markdown("---")
-        st.subheader("Vergelijk Portefeuille")
-        st.markdown(
-            "Hieronder kun je meerdere aandelen tegelijk zien. "
-            "Deselecteer de grootste posities om de dalingen/stijgingen van kleinere posities beter te zien."
-        )
-        
-        all_products = sorted(history_df["product"].unique())
-        # Default alles selecteren
-        selected_for_compare = st.multiselect(
-            "Selecteer aandelen om te vergelijken", 
-            all_products, 
-            default=all_products
-        )
-        
-        if selected_for_compare:
-            compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
-            if not compare_df.empty:
-                # Sorteer op datum voor correcte lijnen
-                compare_df = compare_df.sort_values("date")
-                
-                fig_compare = px.line(
-                    compare_df,
-                    x="date",
-                    y="value",
-                    color="product",
-                    title="Waarde per aandeel in de tijd (EUR)",
-                    labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
-                )
-                
-                # Mobiele optimalisatie voor vergelijk-grafiek
-                # Legenda hlemaal naar de BODEM verplaatsen zodat hij niet over de titel valt
-                fig_compare.update_layout(
-                    legend=dict(
-                        orientation="h",
-                        yanchor="top",
-                        y=-0.4, # Ver onder x-as en slider
-                        xanchor="left",
-                        x=0
-                    ),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date")
-                )
-                
-                # if st.checkbox("Vergroot grafiek (Full Screen)", key="full_compare"):
-                #     fig_compare.update_layout(height=600)
-                
-                st.plotly_chart(fig_compare, use_container_width=True)
-            else:
-                st.info("Geen data om te tonen.")
-        else:
-            st.info("Selecteer minimaal één aandeel.")
-
-    with tab_transactions:
-        st.subheader("Ruwe transactiedata")
-        st.dataframe(df, use_container_width=True, height=500)
+    render_live_dashboard(df, history_df, trading_volume)
 
 
 if __name__ == "__main__":
     main()
+
+
