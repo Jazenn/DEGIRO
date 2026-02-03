@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 import yfinance as yf
+from streamlit_gsheets import GSheetsConnection
 
 # Compatibility check for st.fragment (Streamlit 1.37+)
 if hasattr(st, "fragment"):
@@ -817,6 +818,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         st.subheader("Ruwe transactiedata")
         st.dataframe(df, use_container_width=True, height=500)
 
+
 def main() -> None:
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
@@ -824,61 +826,92 @@ def main() -> None:
     )
 
     st.title("DeGiro Portfolio Dashboard")
-    st.markdown(
-        "Upload je **DeGiro Account.csv** om "
-        "een aantal basisinzichten over je portefeuille te krijgen. "
-    )
-
+    
     sidebar = st.sidebar
     sidebar.header("Instellingen")
 
+    # 1. Google Sheets Connectie & Data Laden
+    conn = None
+    df_gsheet = pd.DataFrame()
+    use_gsheets = False
+    
+    try:
+        # Probeer verbinding te maken. Als secrets ontbreken, faalt dit meestal direct of bij read().
+        # We gebruiken een korte TTL zodat we bij herladen verse data hebben.
+        conn = st.connection("gsheets", type=GSheetsConnection)
+        df_gsheet = conn.read(ttl=0)
+        use_gsheets = True
+        sidebar.success("✅ Verbonden met Google Sheets")
+    except Exception:
+        # Secrets ontbreken of sheet niet bereikbaar
+        sidebar.info("ℹ️ Google Sheets niet gekoppeld. Data wordt niet opgeslagen.")
+        with sidebar.expander("Hoe te koppelen?"):
+             st.markdown(
+                 "Om data op te slaan, voeg je Google Service Account credentials toe "
+                 "aan `.streamlit/secrets.toml`."
+             )
+
+    # 2. File Upload (Nu optioneel als er al sheet data is)
     uploaded_files = sidebar.file_uploader(
-        "Upload DeGiro CSV-bestanden (meerdere toegestaan)",
-        # We laten 'type' weg ivm mobiele browsers.
+        "Upload nieuwe CSV's (optioneel)",
         accept_multiple_files=True,
-        help="Je kunt meerdere Account.csv bestanden selecteren om een langere periode te combineren.",
+        help="Nieuwe bestanden worden toegevoegd aan de opgeslagen data."
     )
 
-    if not uploaded_files:
-        st.info("Upload een of meerdere DeGiro CSV-bestanden om je portefeuille te analyseren.")
-        return
+    df_new = pd.DataFrame()
+    if uploaded_files:
+        df_list = []
+        for f in uploaded_files:
+            if not f.name.lower().endswith(".csv"):
+                continue
+            try:
+                f.seek(0)
+                df_part = load_degiro_csv(f)
+                if not df_part.empty:
+                    df_list.append(df_part)
+            except Exception as e:
+                st.error(f"Fout bij inlezen van '{f.name}': {e}")
+        
+        if df_list:
+            df_new = pd.concat(df_list, ignore_index=True)
 
-    # Inlezen en samenvoegen van bestanden
-    df_list = []
-    for f in uploaded_files:
-        # Handmatige check op extensie
-        if not f.name.lower().endswith(".csv"):
-            st.warning(f"Bestand '{f.name}' overgeslagen (geen .csv).")
-            continue
-            
-        try:
-            # We gebruiken de bestand-stream direct
-            # Zet de pointer voor de zekerheid aan het begin (meestal 0 bij upload)
-            f.seek(0)
-            df_part = load_degiro_csv(f)
-            if not df_part.empty:
-                df_list.append(df_part)
-        except Exception as e:
-            st.error(f"Fout bij inlezen van '{f.name}': {e}")
-
-    if not df_list:
-        st.warning("Geen geldige data gevonden in de geüploade bestanden.")
-        return
-
-    # Samenvoegen
-    df_raw = pd.concat(df_list, ignore_index=True)
+    # 3. Samenvoegen van Opgeslagen + Nieuw
+    df_raw = pd.DataFrame()
     
-    # Duplicaten verwijderen (indien bestanden overlappende periodes hebben)
-    # We ontdubbelen op basis van ALLES, omdat DeGiro geen eenduidige TransactieID in elke export heeft.
+    # Eerst sheet data verwerken (zorg dat datums goed staan)
+    if not df_gsheet.empty:
+        # Fix datumtypes die mogelijk als string terugkomen uit Sheets
+        for col in ["date", "value_date"]:
+            if col in df_gsheet.columns:
+                df_gsheet[col] = pd.to_datetime(df_gsheet[col], errors="coerce")
+        df_raw = pd.concat([df_raw, df_gsheet], ignore_index=True)
+        
+    if not df_new.empty:
+        df_raw = pd.concat([df_raw, df_new], ignore_index=True)
+    
+    if df_raw.empty:
+        st.warning("Geen data gevonden. Upload een bestand of koppel een Google Sheet.")
+        return
+
+    # Duplicaten verwijderen
     before_dedup = len(df_raw)
     df_raw = df_raw.drop_duplicates()
     after_dedup = len(df_raw)
     
-    if before_dedup != after_dedup:
-        st.caption(f"{before_dedup - after_dedup} dubbele regels verwijderd na samenvoegen.")
+    if before_dedup != after_dedup and not df_new.empty:
+        st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
+    
+    # 4. Opslaan naar Google Sheets (alleen als er nieuwe upload was EN we verbonden zijn)
+    # We slaan de HELE ontdubbelde set op, zodat het een 'master' bestand wordt.
+    if use_gsheets and not df_new.empty:
+        try:
+            conn.update(data=df_raw)
+            st.toast("Nieuwe data succesvol opgeslagen in Google Sheets!", icon="💾")
+            # Herlaad pagina of df om zeker te zijn? Niet nodig, df_raw is al up to date.
+        except Exception as e:
+            st.error(f"Fout bij opslaan naar Sheet: {e}")
     
     # Filter specifieke producten eruit op verzoek (bijv. test-aandelen)
-    # Aegon verwijderen
     if "product" in df_raw.columns:
         df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
 
