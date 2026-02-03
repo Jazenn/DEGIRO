@@ -318,6 +318,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     mask = df["type"].isin(["Buy", "Sell"]) & df["product"].isin(valid_products)
     relevant_tx = df[mask].copy()
     
+    # Drop rows where value_date is NaT (invalid date)
+    relevant_tx = relevant_tx.dropna(subset=["value_date"])
+
     if relevant_tx.empty:
         return pd.DataFrame()
 
