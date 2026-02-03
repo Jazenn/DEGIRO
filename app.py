@@ -466,8 +466,9 @@ def fetch_tradegate_price(isin: str) -> float | None:
             return None
         
         # Regex om <td id="last">123,45</td> te vinden
-        # Dit is de 'Laatst' koers op de Tradegate website
-        match = re.search(r'<td id="last">\s*([\d.,]+)\s*</td>', resp.text)
+        # Dit is de 'Laatst' koers op de Tradegate website. 
+        # We maken de regex iets flexibeler (bv. als er extra attributes zijn of spaties)
+        match = re.search(r'id="last"[^>]*>\s*([\d.,]+)\s*<', resp.text)
         if match:
             # Europees formaat: 1.234,56 -> 1234.56
             price_str = match.group(1).replace(".", "").replace(",", ".")
