@@ -884,15 +884,25 @@ def main() -> None:
     # 3. Samenvoegen van Opgeslagen + Nieuw
     df_raw = pd.DataFrame()
     
-    # Eerst sheet data verwerken (zorg dat datums goed staan)
+    # Eerst sheet data verwerken
     if not df_gsheet.empty:
-        # Fix datumtypes die mogelijk als string terugkomen uit Sheets
+        # Kolomnamen normaliseren (lowercase, strip) om match te garanderen met nieuwe uploads
+        df_gsheet.columns = [c.strip().lower() for c in df_gsheet.columns]
+        
+        # Fix datumtypes en numerieke types
         for col in ["date", "value_date"]:
             if col in df_gsheet.columns:
                 df_gsheet[col] = pd.to_datetime(df_gsheet[col], errors="coerce")
+        
+        numeric_cols = ["amount", "balance", "fx", "quantity", "price", "local_value", "value"]
+        for col in numeric_cols:
+            if col in df_gsheet.columns:
+                df_gsheet[col] = pd.to_numeric(df_gsheet[col], errors="coerce")
+                
         df_raw = pd.concat([df_raw, df_gsheet], ignore_index=True)
         
     if not df_new.empty:
+        # df_new komt uit load_degiro_csv en is al schoon
         df_raw = pd.concat([df_raw, df_new], ignore_index=True)
     
     if df_raw.empty:
@@ -901,7 +911,15 @@ def main() -> None:
 
     # Duplicaten verwijderen
     before_dedup = len(df_raw)
-    df_raw = df_raw.drop_duplicates()
+    
+    # We droppen duplicaten op basis van een subset van kolommen om kleine verschillen (zoals timestamp precisie) te negeren
+    # We nemen: datum, tijd, product, isin, omschrijving, bedrag. (Order ID is vaak leeg).
+    dedup_subset = [c for c in ["date", "time", "product", "isin", "description", "amount"] if c in df_raw.columns]
+    if dedup_subset:
+        df_raw = df_raw.drop_duplicates(subset=dedup_subset)
+    else:
+        df_raw = df_raw.drop_duplicates()
+        
     after_dedup = len(df_raw)
     
     if before_dedup != after_dedup and not df_new.empty:
