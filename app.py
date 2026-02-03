@@ -798,13 +798,16 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     xaxis=dict(rangeslider=dict(visible=False), type="date"),
                     dragmode=False
                 )
+                # Bereken 15% padding voor de assen voor een mooiere look
                 val_min, val_max = subset["value"].min(), subset["value"].max()
-                val_range = val_max - val_min
-                val_lims = [val_min - 0.05 * val_range, val_max + 0.05 * val_range]
+                val_range = max(val_max - val_min, 1.0)
+                val_lims = [val_min - 0.15 * val_range, val_max + 0.15 * val_range]
+                
                 price_min, price_max = subset["price"].min(), subset["price"].max()
-                price_range = price_max - price_min
-                price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
-                fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear", range=val_lims)
+                price_range = max(price_max - price_min, 1.0)
+                price_lims = [price_min - 0.15 * price_range, price_max + 0.15 * price_range]
+
+                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, type="linear", range=val_lims)
                 fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims)
                 st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False})
                 with st.expander("Toon tabel data"):
@@ -821,16 +824,27 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
             if not compare_df.empty:
                 compare_df = compare_df.sort_values("date")
-                # Pas ook hier naamverkorting toe voor de legenda
+                # Pas naamverkorting toe voor de legenda
                 compare_df["product"] = compare_df["product"].apply(_shorten_name)
-                fig_compare = px.line(compare_df, x="date", y="value", color="product", title="Waarde per aandeel in de tijd (EUR)", labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"})
+                
+                fig_compare = px.line(
+                    compare_df, x="date", y="value", color="product", 
+                    title="Waarde per aandeel in de tijd (EUR)", 
+                    labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
+                )
+                
+                # Bereken 15% padding voor de y-as
+                y_min, y_max = compare_df["value"].min(), compare_df["value"].max()
+                y_range = max(y_max - y_min, 1.0)
+                y_lims = [y_min - 0.15 * y_range, y_max + 0.15 * y_range]
+                
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date", fixedrange=True),
+                    xaxis=dict(rangeslider=dict(visible=False), type="date"),
+                    yaxis=dict(range=y_lims),
                     dragmode=False
                 )
-                fig_compare.update_yaxes(fixedrange=True)
-                st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
+                st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False})
             else:
                 st.info("Geen data om te tonen.")
         else:
