@@ -824,6 +824,10 @@ def main() -> None:
     sidebar = st.sidebar
     sidebar.header("Instellingen")
 
+    # Uploader key voor reset
+    if "uploader_key" not in st.session_state:
+        st.session_state["uploader_key"] = 0
+
     # 1. Google Drive Connection & Data Laden
     # DRIVE_FOLDER_ID provided by user
     DRIVE_FOLDER_ID = "16Y7kU4XDSbDjMUfBWU5695FSUWYjq26N"
@@ -851,6 +855,7 @@ def main() -> None:
     uploaded_files = sidebar.file_uploader(
         "Upload nieuwe CSV's (optioneel)",
         accept_multiple_files=True,
+        key=f"uploader_{st.session_state['uploader_key']}",
         help="Nieuwe bestanden worden toegevoegd aan de opgeslagen data."
     )
 
@@ -900,6 +905,8 @@ def main() -> None:
                     empty_df = pd.DataFrame(columns=df_raw.columns)
                     drive.save_data(empty_df)
                     st.cache_data.clear()
+                    # Reset ook de file uploader
+                    st.session_state["uploader_key"] += 1
                     st.toast("Alle data is gewist!", icon="🗑️")
                     import time
                     time.sleep(1)
