@@ -828,9 +828,11 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 fig_compare = px.line(compare_df, x="date", y="value", color="product", title="Waarde per aandeel in de tijd (EUR)", labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"})
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date")
+                    xaxis=dict(rangeslider=dict(visible=False), type="date", fixedrange=True),
+                    dragmode=False
                 )
-                st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False})
+                fig_compare.update_yaxes(fixedrange=True)
+                st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False, 'displayModeBar': False})
             else:
                 st.info("Geen data om te tonen.")
         else:
