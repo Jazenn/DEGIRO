@@ -922,26 +922,39 @@ def main() -> None:
         st.warning("Geen data gevonden. Upload een bestand of koppel een Google Sheet.")
         return
 
-    # Duplicaten verwijderen
+    # Duplicaten verwijderen met "Fingerprinting"
+    # We bouwen een unieke string per regel om subtiele verschillen (zoals float-precisie of datum-formats) te negeren.
+    
+    # 1. Datum naar vaste string (YYYYMMDD)
+    fp_date = df_raw["date"].dt.strftime("%Y%m%d").fillna("00000000")
+    
+    # 2. Tijd: pak eerste 5 tekens (HH:MM), negeer seconden
+    fp_time = df_raw["time"].astype(str).str.slice(0, 5).fillna("00:00")
+    
+    # 3. Bedrag: afronden op 2 decimalen en stringen
+    fp_amount = df_raw["amount"].fillna(0.0).round(2).astype(str)
+    
+    # 4. Strings: lowercase en strip
+    fp_desc = df_raw["description"].astype(str).str.lower().str.strip().fillna("")
+    fp_prod = df_raw["product"].astype(str).str.lower().str.strip().fillna("")
+    
+    # Maak de fingerprint
+    df_raw["_dedup_fp"] = fp_date + "_" + fp_time + "_" + fp_amount + "_" + fp_desc + "_" + fp_prod
+    
     before_dedup = len(df_raw)
-    
-    # Normaliseer string-kolommen om NaN vs "" mismatches te voorkomen bij dedup
-    # We doen dit op een KOPIE voor de dedup-check, of we accepteren "" in de data.
-    # "" is prima voor tekstkolommen.
-    str_cols = ["time", "product", "isin", "description"]
-    for c in str_cols:
-        if c in df_raw.columns:
-            df_raw[c] = df_raw[c].fillna("").astype(str).str.strip()
-
-    # We droppen duplicaten op basis van een subset van kolommen
-    dedup_subset = [c for c in ["date", "time", "product", "isin", "description", "amount"] if c in df_raw.columns]
-    
-    if dedup_subset:
-        df_raw = df_raw.drop_duplicates(subset=dedup_subset)
-    else:
-        df_raw = df_raw.drop_duplicates()
-        
+    df_raw = df_raw.drop_duplicates(subset=["_dedup_fp"])
     after_dedup = len(df_raw)
+    
+    # Gooi fingerprint weg
+    df_raw = df_raw.drop(columns=["_dedup_fp"])
+    
+    if before_dedup != after_dedup and not df_new.empty:
+        st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd (Smart Dedup).", icon="🧹")
+
+    # Sorteren op datum en tijd
+    sort_cols = [c for c in ["date", "time"] if c in df_raw.columns]
+    if sort_cols:
+         df_raw = df_raw.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     
     if before_dedup != after_dedup and not df_new.empty:
         st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
