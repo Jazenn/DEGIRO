@@ -654,14 +654,11 @@ def render_metrics(df: pd.DataFrame) -> None:
     col6.metric("Ontvangen dividend", format_eur(total_dividends))
 
 
-# Function for static tables/charts that doesn't need constant refresh/reset
-def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
-    # positions also needed here for some tabs
+@fragment(run_every=30)
+def render_overview(df: pd.DataFrame) -> None:
+    """Render de open posities tabel en allocatie chart met auto-refresh."""
     positions = build_positions(df)
     
-    # Needs prices too for current value columns in overview table
-    # We can fetch them again (cache hits) or pass them. 
-    # Calling fetch_live_prices is safe due to cache.
     if not positions.empty:
         positions["ticker"] = positions.apply(
             lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
@@ -676,78 +673,65 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             ),
             axis=1,
         )
-        positions["avg_price"] = positions.apply(
-            lambda r: (
-                r["invested"] / r["quantity"]
-                if pd.notna(r.get("invested"))
-                and pd.notna(r.get("quantity"))
-                and r["quantity"] != 0
-                else pd.NA
-            ),
-            axis=1,
-        )
-    else:
-        positions["ticker"] = []
-        positions["last_price"] = []
-        positions["current_value"] = []
-        positions["avg_price"] = []
-    
-    st.markdown("---")
-    
-    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📋 Transacties"]
-    )
-
-    with tab_overview:
+        
         st.subheader("Open posities (afgeleid uit koop/verkoop-transacties)")
-        if not positions.empty:
-            display = positions.copy()
-            display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
-            display["Huidige waarde"] = display["current_value"].map(format_eur)
-            display["Winst/verlies (EUR)"] = (
-                display["current_value"] + display["net_cashflow"]
-            ).map(format_eur)
+        display = positions.copy()
+        display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
+        display["Huidige waarde"] = display["current_value"].map(format_eur)
+        
+        # Winst/verlies berekening (inclusief cashflow/dividenden voor dat product)
+        display["Winst/verlies (EUR)"] = (
+            display["current_value"] + display["net_cashflow"]
+        ).map(format_eur)
 
-            def _pl_pct(row: pd.Series) -> float | None:
-                cur = row.get("current_value")
-                net_cf = row.get("net_cashflow")
-                inv = row.get("invested")
-                
-                if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
-                    pl_amount = cur + net_cf
-                    return (pl_amount / inv) * 100.0
-                return pd.NA
+        def _pl_pct(row: pd.Series) -> float | None:
+            cur = row.get("current_value")
+            net_cf = row.get("net_cashflow")
+            inv = row.get("invested")
+            if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
+                pl_amount = cur + net_cf
+                return (pl_amount / inv) * 100.0
+            return pd.NA
 
-            display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
-            display = display.rename(
-                columns={
-                    "product": "Product",
-                    "isin": "ISIN",
-                    "quantity": "Aantal",
-                    "trades": "Aantal transacties",
-                    "ticker": "Ticker",
-                }
+        display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
+        display = display.rename(
+            columns={
+                "product": "Product",
+                "isin": "ISIN",
+                "quantity": "Aantal",
+                "trades": "Aantal transacties",
+                "ticker": "Ticker",
+            }
+        )
+        display = display[[
+            "Product", "Totaal geinvesteerd", "Huidige waarde",
+            "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
+            "Aantal transacties", "Ticker",
+        ]]
+        st.dataframe(display, use_container_width=True, hide_index=True)
+
+        # Portefeuilleverdeling
+        alloc = positions.copy()
+        alloc["alloc_value"] = alloc["current_value"].fillna(alloc["invested"])
+        alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
+        if not alloc.empty:
+            st.subheader("Huidige portefeuilleverdeling")
+            fig_alloc = px.pie(alloc, names="product", values="alloc_value")
+            fig_alloc.update_layout(
+                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
             )
-            display = display[[
-                "Product", "Totaal geinvesteerd", "Huidige waarde",
-                "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
-                "Aantal transacties", "Ticker",
-            ]]
-            st.dataframe(display, use_container_width=True, hide_index=True)
+            st.plotly_chart(fig_alloc, use_container_width=True)
+    else:
+        st.caption("Geen open posities gevonden op basis van de transacties.")
 
-            alloc = positions.copy()
-            alloc["alloc_value"] = alloc["current_value"]
-            alloc["alloc_value"] = alloc["alloc_value"].fillna(alloc["invested"])
-            alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
-            if not alloc.empty:
-                st.subheader("Huidige portefeuilleverdeling")
-                fig_alloc = px.pie(alloc, names="product", values="alloc_value")
-                fig_alloc.update_layout(
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
-                )
-                st.plotly_chart(fig_alloc, use_container_width=True)
-        else:
-            st.caption("Geen open posities gevonden op basis van de transacties.")
+
+
+# Function for static tables/charts that doesn't need constant refresh/reset
+def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
+    with tab_overview:
+        # Dit fragment ververst elke 30 seconden
+        render_overview(df)
+
 
     with tab_balance:
         st.subheader("Aandelen Gekocht vs Verkocht per maand")
