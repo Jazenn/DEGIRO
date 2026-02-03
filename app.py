@@ -571,8 +571,8 @@ def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
 
 
 @fragment(run_every=30)
-def render_live_dashboard(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
-    """Render dat het dashboard die elke 60 sec ververst."""
+def render_metrics(df: pd.DataFrame) -> None:
+    """Render alleen de metrics die elke 30 sec verversen."""
     # We berekenen positions hier binnen het fragment, zodat bij een refresh 
     # de live koersen opnieuw worden opgehaald (via fetch_live_prices die dan expired is)
     positions = build_positions(df)
@@ -649,6 +649,45 @@ def render_live_dashboard(df: pd.DataFrame, history_df: pd.DataFrame, trading_vo
     col5.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
     col6.metric("Ontvangen dividend", format_eur(total_dividends))
 
+
+# Function for static tables/charts that doesn't need constant refresh/reset
+def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
+    # positions also needed here for some tabs
+    positions = build_positions(df)
+    
+    # Needs prices too for current value columns in overview table
+    # We can fetch them again (cache hits) or pass them. 
+    # Calling fetch_live_prices is safe due to cache.
+    if not positions.empty:
+        positions["ticker"] = positions.apply(
+            lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
+        )
+        price_map = fetch_live_prices(positions["ticker"].dropna().unique().tolist())
+        positions["last_price"] = positions["ticker"].map(price_map)
+        positions["current_value"] = positions.apply(
+            lambda r: (
+                r["quantity"] * r["last_price"]
+                if pd.notna(r.get("last_price")) and pd.notna(r.get("quantity"))
+                else pd.NA
+            ),
+            axis=1,
+        )
+        positions["avg_price"] = positions.apply(
+            lambda r: (
+                r["invested"] / r["quantity"]
+                if pd.notna(r.get("invested"))
+                and pd.notna(r.get("quantity"))
+                and r["quantity"] != 0
+                else pd.NA
+            ),
+            axis=1,
+        )
+    else:
+        positions["ticker"] = []
+        positions["last_price"] = []
+        positions["current_value"] = []
+        positions["avg_price"] = []
+    
     st.markdown("---")
     
     tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
@@ -848,7 +887,8 @@ def main() -> None:
     trading_volume = build_trading_volume_by_month(df)
     history_df = build_portfolio_history(df)
     
-    render_live_dashboard(df, history_df, trading_volume)
+    render_metrics(df)
+    render_charts(df, history_df, trading_volume)
 
 
 if __name__ == "__main__":
