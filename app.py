@@ -5,7 +5,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 import yfinance as yf
-from streamlit_gsheets import GSheetsConnection
+from drive_utils import DriveStorage
 
 # Compatibility check for st.fragment (Streamlit 1.37+)
 if hasattr(st, "fragment"):
@@ -822,24 +822,23 @@ def main() -> None:
     sidebar = st.sidebar
     sidebar.header("Instellingen")
 
-    # 1. Google Sheets Connectie & Data Laden
-    conn = None
-    df_gsheet = pd.DataFrame()
-    use_gsheets = False
+    # 1. Google Drive Connection & Data Laden
+    # DRIVE_FOLDER_ID provided by user
+    DRIVE_FOLDER_ID = "16Y7kU4XDSbDjMUfBWU5695FSUWYjq26N"
+    drive = None
+    df_drive = pd.DataFrame()
+    use_drive = False
     
     try:
-        # Probeer verbinding te maken. Als secrets ontbreken, faalt dit meestal direct of bij read().
-        # We gebruiken een korte TTL zodat we bij herladen verse data hebben.
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        df_gsheet = conn.read(ttl=0)
-        use_gsheets = True
-        sidebar.success("✅ Verbonden met Google Sheets")
+        drive = DriveStorage(st.secrets["connections"]["gsheets"], DRIVE_FOLDER_ID)
+        df_drive = drive.load_data()
+        use_drive = True
+        sidebar.success("✅ Verbonden met Google Drive (Excel)")
     except Exception as e:
-        # Secrets ontbreken of sheet niet bereikbaar
         import traceback
-        sidebar.error(f"Fout met verbinden: {e}")
+        sidebar.error(f"Fout met verbinden Google Drive: {e}")
         sidebar.code(traceback.format_exc())
-        sidebar.info("ℹ️ Google Sheets niet gekoppeld. Data wordt niet opgeslagen.")
+        sidebar.info("ℹ️ Google Drive niet gekoppeld. Data wordt niet opgeslagen.")
         with sidebar.expander("Hoe te koppelen?"):
              st.markdown(
                  "Om data op te slaan, voeg je Google Service Account credentials toe "
@@ -873,43 +872,31 @@ def main() -> None:
     # 3. Samenvoegen van Opgeslagen + Nieuw
     df_raw = pd.DataFrame()
     
-    # Eerst sheet data verwerken (zorg dat datums goed staan)
-    if not df_gsheet.empty:
-        # Fix datumtypes die mogelijk als string terugkomen uit Sheets
+    # Eerst Drive data verwerken
+    if not df_drive.empty:
+        # Fix datumtypes
         for col in ["date", "value_date"]:
-            if col in df_gsheet.columns:
-                df_gsheet[col] = pd.to_datetime(df_gsheet[col], errors="coerce")
-        df_raw = pd.concat([df_raw, df_gsheet], ignore_index=True)
+            if col in df_drive.columns:
+                df_drive[col] = pd.to_datetime(df_drive[col], errors="coerce")
+        df_raw = pd.concat([df_raw, df_drive], ignore_index=True)
         
     if not df_new.empty:
+        # df_new komt al schoon uit load_degiro_csv
         df_raw = pd.concat([df_raw, df_new], ignore_index=True)
-    
+
     if df_raw.empty:
-        st.warning("Geen data gevonden. Upload een bestand of koppel een Google Sheet.")
+        st.warning("Geen data gevonden. Upload een bestand of koppel aan Google Drive.")
         return
-
-    # Duplicaten verwijderen
-    before_dedup = len(df_raw)
-    df_raw = df_raw.drop_duplicates()
-    after_dedup = len(df_raw)
-    
-    if before_dedup != after_dedup and not df_new.empty:
-        st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
-
-    # Sorteren op datum en tijd (zodat de sheet chronologisch blijft)
-    sort_cols = [c for c in ["date", "time"] if c in df_raw.columns]
-    if sort_cols:
-         df_raw = df_raw.sort_values(by=sort_cols, ascending=True).reset_index(drop=True)
     
     # Knoppen voor data-beheer
-    if use_gsheets:
+    if use_drive:
         st.sidebar.markdown("---")
         with st.sidebar.expander("🗑️ Data Beheer"):
-            if st.button("🔴 Wis ALLE data uit Google Sheet", help="Dit verwijdert alles uit de gekoppelde sheet."):
+            if st.button("🔴 Wis ALLE data uit Google Drive", help="Dit verwijdert de Excel file uit de gekoppelde map."):
                 try:
                     # We overschrijven met een lege dataframe die wel de kolommen heeft
                     empty_df = pd.DataFrame(columns=df_raw.columns)
-                    conn.update(data=empty_df)
+                    drive.save_data(empty_df)
                     st.cache_data.clear()
                     st.toast("Alle data is gewist!", icon="🗑️")
                     import time
@@ -918,15 +905,35 @@ def main() -> None:
                 except Exception as e:
                     st.sidebar.error(f"Kon data niet wissen: {e}")
     
-    # 4. Opslaan naar Google Sheets (alleen als er nieuwe upload was EN we verbonden zijn)
-    # We slaan de HELE ontdubbelde set op, zodat het een 'master' bestand wordt.
-    if use_gsheets and not df_new.empty:
+    # Duplicaten verwijderen met een Tijdelijke Sleutel (niet vernietigend)
+    def _make_dedup_key(df_in: pd.DataFrame) -> pd.Series:
+        # We maken een uniek ID op basis van inhoud, maar veranderen de DATA zelf niet.
+        # Dit voorkomt dat we de hoofdletters van 'Koop' slopen (wat Share Calculation nodig heeft).
+        temp_date = pd.to_datetime(df_in["date"]).dt.strftime("%Y%m%d").fillna("00000000")
+        temp_time = df_in["time"].astype(str).str.strip().fillna("00:00")
+        temp_product = df_in["product"].astype(str).str.lower().str.strip().fillna("")
+        temp_desc = df_in["description"].astype(str).str.lower().str.strip().fillna("")
+        temp_amount = pd.to_numeric(df_in["amount"], errors="coerce").fillna(0.0).round(2).astype(str)
+        
+        return temp_date + "|" + temp_time + "|" + temp_product + "|" + temp_desc + "|" + temp_amount
+
+    before_dedup = len(df_raw)
+    if not df_raw.empty:
+        df_raw["_temp_key"] = _make_dedup_key(df_raw)
+        df_raw = df_raw.drop_duplicates(subset=["_temp_key"])
+        df_raw = df_raw.drop(columns=["_temp_key"])
+    after_dedup = len(df_raw)
+    
+    if before_dedup != after_dedup and not df_new.empty:
+        st.toast(f"{before_dedup - after_dedup} dubbele regels genegeerd.", icon="🧹")
+
+    # 4. Opslaan naar Google Drive (alleen als er nieuwe upload was EN we verbonden zijn)
+    if use_drive and not df_new.empty:
         try:
-            conn.update(data=df_raw)
-            st.toast("Nieuwe data succesvol opgeslagen in Google Sheets!", icon="💾")
-            # Herlaad pagina of df om zeker te zijn? Niet nodig, df_raw is al up to date.
+            drive.save_data(df_raw)
+            st.toast("Nieuwe data succesvol opgeslagen in Google Drive (Excel)!", icon="💾")
         except Exception as e:
-            st.error(f"Fout bij opslaan naar Sheet: {e}")
+            st.error(f"Fout bij opslaan naar Drive: {e}")
     
     # Filter specifieke producten eruit op verzoek (bijv. test-aandelen)
     if "product" in df_raw.columns:
