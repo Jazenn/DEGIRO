@@ -714,11 +714,14 @@ def render_overview(df: pd.DataFrame) -> None:
                     }
                 )
                 display = display[[
-                    "Product", "Totaal geinvesteerd", "Huidige waarde",
+                    "Product", "Ticker", "Totaal geinvesteerd", "Huidige waarde",
                     "Winst/verlies (EUR)", "Winst/verlies (%)", "Aantal",
-                    "Transacties", "Ticker",
+                    "Transacties",
                 ]]
-                st.data_editor(display, use_container_width=True, hide_index=True, key=f"table_{cat}")
+                
+                # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
+                display = display.set_index("Product").T
+                st.dataframe(display, use_container_width=True, key=f"table_{cat}")
 
         # Portefeuilleverdeling
         alloc = positions.copy()
