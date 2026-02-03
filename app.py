@@ -41,21 +41,31 @@ def load_degiro_csv(file) -> pd.DataFrame:
     """Load a DeGiro CSV file into a cleaned DataFrame."""
     df = pd.read_csv(file)
 
-    # Normalise column names (strip whitespace, consistent casing)
-    df.columns = [c.strip() for c in df.columns]
+    # Normalise column names (strip whitespace, lowercase)
+    df.columns = [c.strip().lower() for c in df.columns]
 
-    # Map Dutch export columns to easier internal names
+    # Map Dutch/English export columns to easier internal names
+    # Note: keys must be lowercase now!
     rename_map = {
-        "Datum": "date",
-        "Tijd": "time",
-        "Valutadatum": "value_date",
-        "Product": "product",
-        "ISIN": "isin",
-        "Omschrijving": "description",
-        "Mutatie": "amount",
-        "Saldo": "balance",
-        "FX": "fx",
-        "Order Id": "order_id",
+        "datum": "date",
+        "date": "date", # English
+        "tijd": "time",
+        "time": "time", # English
+        "valutadatum": "value_date",
+        "value date": "value_date", # English
+        "product": "product",
+        "isin": "isin",
+        "omschrijving": "description",
+        "description": "description", # English
+        "mutatie": "amount",
+        "amount": "amount", # English? usually Mutation in EN? 'total' etc.
+        "total amount": "amount",
+        "mutation": "amount", # Check valid english header
+        "saldo": "balance",
+        "balance": "balance", # English
+        "fx": "fx",
+        "order id": "order_id",
+        "orderid": "order_id",
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
