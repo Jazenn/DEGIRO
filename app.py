@@ -17,6 +17,14 @@ else:
         return wrapper
 
 
+def _shorten_name(name):
+    """Verkort de namen van ETFs voor betere leesbaarheid op mobiel."""
+    n = str(name).upper()
+    if "VANGUARD" in n: return "VANGUARD"
+    if "FUTURE OF DEFENCE" in n or "HANETF" in n: return "FOD"
+    return name
+
+
 def format_eur(value: float) -> str:
     """Format a float as European-style euro string."""
     if pd.isna(value):
@@ -676,8 +684,9 @@ def render_overview(df: pd.DataFrame) -> None:
             axis=1,
         )
         
-        # Categorisatie
+        # Categorisatie en Naamverkorting
         positions["Category"] = positions["isin"].apply(lambda x: "Crypto" if str(x).startswith("XFC") else "ETFs & Stocks")
+        positions["Display Name"] = positions["product"].apply(_shorten_name)
         
         st.subheader("Open posities (afgeleid uit transacties)")
         
@@ -706,7 +715,7 @@ def render_overview(df: pd.DataFrame) -> None:
                 display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
                 display = display.rename(
                     columns={
-                        "product": "Product",
+                        "Display Name": "Product",
                         "isin": "ISIN",
                         "quantity": "Aantal",
                         "trades": "Transacties",
@@ -729,11 +738,12 @@ def render_overview(df: pd.DataFrame) -> None:
         alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
         if not alloc.empty:
             st.subheader("Huidige portefeuilleverdeling")
-            fig_alloc = px.pie(alloc, names="product", values="alloc_value")
+            alloc["Display Name"] = alloc["product"].apply(_shorten_name)
+            fig_alloc = px.pie(alloc, names="Display Name", values="alloc_value")
             fig_alloc.update_layout(
                 legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5)
             )
-            st.plotly_chart(fig_alloc, use_container_width=True)
+            st.plotly_chart(fig_alloc, use_container_width=True, config={'scrollZoom': False})
     else:
         st.caption("Geen open posities gevonden op basis van de transacties.")
 
@@ -760,7 +770,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 color_discrete_map={"Buy": "#EF553B", "Sell": "#00CC96"},
                 labels={"month_str": "Maand", "amount_abs": "Bedrag (EUR)", "type": "Actie"},
             )
-            st.plotly_chart(fig_cf, use_container_width=True)
+            st.plotly_chart(fig_cf, use_container_width=True, config={'scrollZoom': False})
         else:
             st.caption("Geen aan- of verkopen gevonden.")
     
@@ -793,7 +803,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 price_lims = [price_min - 0.05 * price_range, price_max + 0.05 * price_range]
                 fig_hist.update_yaxes(title_text="Totale Waarde in bezit (€)", secondary_y=False, type="linear", range=val_lims)
                 fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims)
-                st.plotly_chart(fig_hist, use_container_width=True)
+                st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False})
                 with st.expander("Toon tabel data"):
                     st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
             else:
@@ -808,12 +818,14 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
             if not compare_df.empty:
                 compare_df = compare_df.sort_values("date")
+                # Pas ook hier naamverkorting toe voor de legenda
+                compare_df["product"] = compare_df["product"].apply(_shorten_name)
                 fig_compare = px.line(compare_df, x="date", y="value", color="product", title="Waarde per aandeel in de tijd (EUR)", labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"})
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
                     xaxis=dict(rangeslider=dict(visible=False), type="date")
                 )
-                st.plotly_chart(fig_compare, use_container_width=True)
+                st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False})
             else:
                 st.info("Geen data om te tonen.")
         else:
