@@ -347,12 +347,8 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     unique_tickers = list(set(product_map.values()))
     try:
         # Download DAGELIJKSE data (was wekelijks)
-        st.write(f"Downloading history for: {unique_tickers} from {start_date_str}")
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
-        st.write("Download complete. Shape:", yf_data.shape)
-        st.write("Columns:", yf_data.columns)
-        if not yf_data.empty:
-             st.write("YF Data Head:", yf_data.head())
+        # st.write(f"DEBUG: Downloaded {yf_data.shape}, Columns: {yf_data.columns}")
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
         return pd.DataFrame()
@@ -390,12 +386,23 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         daily_qty = daily_qty.reindex(full_index, fill_value=0).ffill()
         
         # Nu mergen met prijsdata (die wekelijks is).
-        if len(unique_tickers) > 1:
-            if ticker not in yf_data.columns.levels[0]:
-                continue
-            price_series = yf_data[ticker]["Close"]
-        else:
-            price_series = yf_data["Close"]
+        price_series = pd.Series(dtype=float)
+        try:
+            if len(unique_tickers) > 1:
+                # Probeer flexible access, catch KeyError
+                price_series = yf_data[ticker]["Close"]
+            else:
+                price_series = yf_data["Close"]
+        except KeyError:
+             # st.write(f"DEBUG: Could not find data for {ticker}")
+             pass
+        except Exception as e:
+             # st.write(f"DEBUG: Error accessing {ticker}: {e}")
+             pass
+             
+        if price_series.empty:
+            # st.write(f"DEBUG: Price series empty for {ticker}")
+            continue
             
         # Zorg dat de price_series tijdzone-informatie kwijtraakt
         if price_series.index.tz is not None:
@@ -456,6 +463,8 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         
         if not combined_df.empty:
             history_frames.append(combined_df)
+        # else:
+            # st.write(f"DEBUG: Combined DF empty for {ticker} after merge/dropna")
 
     if not history_frames:
         return pd.DataFrame()
