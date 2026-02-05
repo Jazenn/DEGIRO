@@ -290,7 +290,7 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     return monthly
 
 
-@st.cache_data(ttl=3600)
+# @st.cache_data(ttl=3600)
 def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
@@ -298,6 +298,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
     if df.empty or "value_date" not in df.columns:
         return pd.DataFrame()
+
+    with st.expander("DEBUG: Build Portfolio History"):
+        st.write("Function called.")
 
     # 1. Bepaal welke producten we kunnen volgen (hebben een ticker)
     #    We gebruiken de unieke producten uit de transacties.
@@ -344,8 +347,12 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     unique_tickers = list(set(product_map.values()))
     try:
         # Download DAGELIJKSE data (was wekelijks)
-        print(f"Downloading history for: {unique_tickers}")
+        st.write(f"Downloading history for: {unique_tickers} from {start_date_str}")
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
+        st.write("Download complete. Shape:", yf_data.shape)
+        st.write("Columns:", yf_data.columns)
+        if not yf_data.empty:
+             st.write("YF Data Head:", yf_data.head())
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
         return pd.DataFrame()
@@ -363,6 +370,11 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         
         # Resample naar dag om gaten te vullen, daarna cumsum
         daily_qty = tx_p.resample("D").sum().cumsum()
+        
+        # DEBUG: Check timezone of daily_qty
+        # if daily_qty.index.tz is not None:
+        #    st.write(f"Daily Qty for {p} has TZ: {daily_qty.index.tz}. Stripping...")
+        #    daily_qty.index = daily_qty.index.tz_localize(None)
         
         # Zorg dat de quantity-data doorloopt tot VANDAAG.
         # Anders stopt de grafiek bij de laatste transactie.
@@ -395,6 +407,7 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
              
         # Maak dataframe van de prices
         hist_df = price_series.to_frame(name="price")
+        # st.write(f"History DF for {ticker} head:", hist_df.head())
         
         # WEEKLY data van YF stopt vaak aan het begin van de week (maandag).
         # Als we vandaag verder zijn dan de laatste history-datum, voegen we de laatste live prijs toe.
@@ -450,6 +463,7 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     final_df = pd.concat(history_frames)
     # Zorg dat de index een naam heeft, zodat reset_index() een kolom 'date' maakt
     final_df.index.name = "date"
+    st.write(f"Final History DF: {len(final_df)} rows")
     return final_df.reset_index()
 
 
