@@ -348,9 +348,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Download DAGELIJKSE data (was wekelijks)
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
         
-        # Download HOURLY data voor de laatste 2 dagen (voor gedetailleerde 1d view)
-        # We pakken 2 dagen om zeker te zijn dat we de laatste 24u hebben.
-        yf_data_hourly = yf.download(unique_tickers, period="2d", interval="60m", group_by="ticker", progress=False)
+        # Download HOURLY data voor de laatste 5 dagen (voor gedetailleerde 1d/1w view)
+        # We pakken 5 dagen om de volledige werkweek in detail te hebben.
+        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="60m", group_by="ticker", progress=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
@@ -425,10 +425,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
                 # For now: just strip TZ.
                 price_series_hourly.index = price_series_hourly.index.tz_localize(None)
 
-        # 3. Stitch: Daily tot 1 dag geleden (gisteren), daarna Hourly
-        # Zodat 'oude' data (langer dan 1 dag geleden) gewoon daily is, 
-        # en alleen de laatste dag per uur wordt getoond.
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=1)
+        # 3. Stitch: Daily tot 5 dagen geleden, daarna Hourly
+        # Zodat 'oude' data (langer dan 5 dagen geleden) gewoon daily is, 
+        # en alleen de laatste week per uur wordt getoond.
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=5)
         
         # Filter daily to be BEFORE the hourly data starts (roughly)
         # Or just take everything before cutoff
@@ -888,7 +888,8 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     df_chart = df_chart[df_chart.index >= start_date]
 
                 if resample_rule:
-                    df_chart = df_chart.resample(resample_rule).last().dropna()
+                    # Gebruik ffill() ipv dropna() om weekend gaten te vullen (zodat lijn doorloopt)
+                    df_chart = df_chart.resample(resample_rule).last().ffill()
 
                 # Reset index voor Plotly
                 df_chart = df_chart.reset_index()
@@ -961,7 +962,8 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                          # Group by product and resample each group
                          # Check if we have columns left to resample?
                          # resample(...).last() takes the last value of the period.
-                         compare_df = compare_df.groupby("product").resample(resample_rule).last()
+                         # Use ffill() to fill weekends/gaps
+                         compare_df = compare_df.groupby("product").resample(resample_rule).last().ffill()
                          
                          # FIX: Drop columns that collide with index names before reset
                          # This prevents "ValueError: cannot insert ..., already exists"
@@ -984,6 +986,9 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         title="Waarde per aandeel in de tijd (EUR)", 
                         labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
                     )
+                    
+                    # Ensure gaps are connected visually as well
+                    fig_compare.update_traces(connectgaps=True)
                 
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
