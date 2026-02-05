@@ -962,6 +962,13 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                          # Check if we have columns left to resample?
                          # resample(...).last() takes the last value of the period.
                          compare_df = compare_df.groupby("product").resample(resample_rule).last()
+                         
+                         # FIX: Drop columns that collide with index names before reset
+                         # This prevents "ValueError: cannot insert ..., already exists"
+                         for name in compare_df.index.names:
+                             if name in compare_df.columns:
+                                 compare_df = compare_df.drop(columns=[name])
+                                 
                          # The grouping puts product in index. resample puts date in index.
                          # df has (product, date) index.
                          compare_df = compare_df.reset_index()
