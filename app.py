@@ -299,9 +299,6 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     if df.empty or "value_date" not in df.columns:
         return pd.DataFrame()
 
-    with st.expander("DEBUG: Build Portfolio History"):
-        st.write("Function called.")
-
     # 1. Bepaal welke producten we kunnen volgen (hebben een ticker)
     #    We gebruiken de unieke producten uit de transacties.
     products = df["product"].unique()
@@ -487,7 +484,6 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     final_df = pd.concat(history_frames)
     # Zorg dat de index een naam heeft, zodat reset_index() een kolom 'date' maakt
     final_df.index.name = "date"
-    st.write(f"Final History DF: {len(final_df)} rows")
     return final_df.reset_index()
 
 
@@ -847,6 +843,11 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
 
                 fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
                 fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
+                
+                # Removed manual range calculation to allow autoscaling
+                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, showgrid=True)
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, showgrid=False)
+                
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
@@ -870,17 +871,17 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     ),
                     dragmode=False
                 )
-                # Bereken 15% padding voor de assen voor een mooiere look
-                val_min, val_max = subset["value"].min(), subset["value"].max()
-                val_range = max(val_max - val_min, 1.0)
-                val_lims = [val_min - 0.15 * val_range, val_max + 0.15 * val_range]
+                # Bereken 15% padding voor de assen voor een mooiere look -- REMOVED for autoscaling
+                # val_min, val_max = subset["value"].min(), subset["value"].max()
+                # val_range = max(val_max - val_min, 1.0)
+                # val_lims = [val_min - 0.15 * val_range, val_max + 0.15 * val_range]
                 
-                price_min, price_max = subset["price"].min(), subset["price"].max()
-                price_range = max(price_max - price_min, 1.0)
-                price_lims = [price_min - 0.15 * price_range, price_max + 0.15 * price_range]
+                # price_min, price_max = subset["price"].min(), subset["price"].max()
+                # price_range = max(price_max - price_min, 1.0)
+                # price_lims = [price_min - 0.15 * price_range, price_max + 0.15 * price_range]
 
-                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, type="linear", range=val_lims)
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", range=price_lims)
+                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, type="linear", showgrid=True)
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", showgrid=False)
                 st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False})
                 with st.expander("Toon tabel data"):
                     st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
@@ -907,14 +908,14 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
                     )
                 
-                # Bereken 15% padding voor de y-as
-                y_min, y_max = compare_df["value"].min(), compare_df["value"].max()
-                y_range = max(y_max - y_min, 1.0)
-                y_lims = [y_min - 0.15 * y_range, y_max + 0.15 * y_range]
+                # Bereken 15% padding voor de y-as -- REMOVED for autoscaling
+                # y_min, y_max = compare_df["value"].min(), compare_df["value"].max()
+                # y_range = max(y_max - y_min, 1.0)
+                # y_lims = [y_min - 0.15 * y_range, y_max + 0.15 * y_range]
                 
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
-                    yaxis=dict(range=y_lims),
+                    # yaxis=dict(range=y_lims),
                     xaxis=dict(
                         range=[start_date_1m, end_date],  # Default 1M view
                         rangeslider=dict(visible=False), 
