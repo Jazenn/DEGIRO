@@ -370,28 +370,35 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         tx_p = tx_p.set_index("value_date")["quantity"].sort_index()
         
         # Resample naar dag om gaten te vullen, daarna cumsum
-        daily_qty = tx_p.resample("D").sum().cumsum()
+        # FIX: Resample("D") vernietigt de tijdcomponent (zet alles op 00:00).
+        # We willen de exacte tijd van transactie behouden voor intraday charts.
+        # Maar we hebben OOK een dagelijks rooster nodig voor de periodes tussen transacties.
         
-        # DEBUG: Check timezone of daily_qty
-        # if daily_qty.index.tz is not None:
-        #    st.write(f"Daily Qty for {p} has TZ: {daily_qty.index.tz}. Stripping...")
-        #    daily_qty.index = daily_qty.index.tz_localize(None)
+        # 1. Bereken cumstratieve stand op de exacte transactiemomenten
+        qty_on_tx = tx_p.cumsum()
         
-        # Zorg dat de quantity-data doorloopt tot VANDAAG.
-        # Anders stopt de grafiek bij de laatste transactie.
-        # En zorg OOK dat de grafiek begint bij start_date (5 jaar terug), 
-        # ook als de eerste transactie pas later was.
-        now = pd.Timestamp.now().normalize()
+        # 2. Maak ook een dagelijks rooster (nodig voor de lange historie en 'gaten' vullen)
+        #    Dit rooster moet aansluiten op start_date (5 jaar geleden)
+        now = pd.Timestamp.now()
+        full_daily_index = pd.date_range(start=start_date, end=now, freq="D")
         
-        # Bepaal het volledige bereik d.m.v. start_date en now
-        full_index = pd.date_range(start=start_date, end=now, freq="D")
+        # 3. Combineer de exacte transactiemomenten met het dagelijkse rooster
+        #    Zo hebben we én punten op 00:00 (voor de lange termijn) én punten op 13:00 (als er gekocht is)
+        combined_index = qty_on_tx.index.union(full_daily_index).sort_values()
         
-        # Reindex en vul gaten. 
-        # LOGIC FIX: Eerst reindexen (geeft NaNs), dan ffill() zodat de LAATSTE stand 
-        # doorgetrokken wordt naar 'vandaag' (als er geen recente data is).
-        # Daarna fillna(0) zodat de periode VÓÓR de eerste aankoop 0 wordt.
-        # (Oude situatie met fill_value=0 zorgde dat de toekomst ook 0 werd).
-        daily_qty = daily_qty.reindex(full_index).ffill().fillna(0)
+        # 4. Reindex naar dit gecombineerde rooster en vul vooruit (ffill)
+        #    De transacties (qty_on_tx) zijn leidend. Het dagrooster neemt de stand over van de laatste tx.
+        #    We gebruiken reindex op qty_on_tx, maar moeten opletten dat 'nieuwe' dagen de waarde krijgen.
+        #    Beter: concat en dan ffill? Of reindex met method='ffill'?
+        
+        #    Slimmer: We reindexen qty_on_tx naar de combined_index met ffill.
+        #    Echter, qty_on_tx begint pas bij de eerste aankoop. Dagen d'rvoor worden NaN (en later 0).
+        daily_qty = qty_on_tx.reindex(combined_index, method='ffill').fillna(0)
+        
+        # (Oude Code, deleted to avoid confusion)
+        # daily_qty = tx_p.resample("D").sum().cumsum()
+        # ...
+        # normal reindex logic replaced by above.
         
         # Helper functie om series op te halen uit yf resultaat
         def get_price_series(data_obj, t):
