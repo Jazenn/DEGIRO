@@ -106,6 +106,32 @@ def load_degiro_csv(file) -> pd.DataFrame:
             # If everything becomes NaT, it might be ISO from our own CSV save
             if df[col].isna().all() and not df[col].empty:
                 df[col] = pd.to_datetime(df[col], errors="coerce")
+    
+    # NEW: Combine Date and Time if both exist to get exact transaction timestamp
+    if "date" in df.columns and "time" in df.columns:
+        # DeGiro 'date' is usually just the date part (e.g. 01-01-2024)
+        # 'time' is e.g. 14:00
+        # Combine them into a single temporary datetime column
+        try:
+            # Zorg dat de kolommen strings zijn
+            d_str = df["date"].astype(str).str.split(" ").str[0] # Alleen datum deel just in case
+            t_str = df["time"].astype(str)
+            
+            # Combineer en parse
+            # Let op: Soms is Date al geparsed naar Timestamp door bovenstaande loop.
+            # Als dat zo is, zet terug naar string YYYY-MM-DD
+            if pd.api.types.is_datetime64_any_dtype(df["date"]):
+                 d_str = df["date"].dt.strftime("%Y-%m-%d")
+            
+            full_dt = pd.to_datetime(d_str + " " + t_str, errors="coerce")
+            
+            # Gebruik deze preciezere tijd als 'value_date' waar mogelijk
+            # (Overschrijf value_date met de precieze tijd, want dat is wat we willen plotten)
+            df["value_date"] = full_dt.fillna(df["value_date"])
+            
+        except Exception as e:
+            # Als het faalt, val terug op originele datum
+            pass
 
     # Helper to parse numeric fields with comma decimal separator
     def _to_float(series: pd.Series) -> pd.Series:
@@ -134,7 +160,7 @@ def load_degiro_csv(file) -> pd.DataFrame:
 
 def classify_row(description: str) -> str:
     """Zet de omschrijving om in een transaction type."""
-    desc = (description or "").strip()
+    desc = str(description or "").strip()
 
     if "Koop " in desc:
         return "Buy"
