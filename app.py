@@ -880,8 +880,12 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 # price_range = max(price_max - price_min, 1.0)
                 # price_lims = [price_min - 0.15 * price_range, price_max + 0.15 * price_range]
 
-                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, type="linear", showgrid=True)
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, type="linear", showgrid=False)
+                # FORCE AUTOSCALE:
+                # rangemode="normal" ensures it doesn't force 0 to be included.
+                # autorange=True enables dynamic scaling.
+                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, showgrid=True, autorange=True, fixedrange=False, rangemode="normal")
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, showgrid=False, autorange=True, fixedrange=False, rangemode="normal")
+                
                 st.plotly_chart(fig_hist, use_container_width=True, config={'scrollZoom': False})
                 with st.expander("Toon tabel data"):
                     st.dataframe(subset.sort_values("date", ascending=False), use_container_width=True)
@@ -915,7 +919,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
-                    # yaxis=dict(range=y_lims),
+                    yaxis=dict(autorange=True, fixedrange=False, rangemode="normal"),
                     xaxis=dict(
                         range=[start_date_1m, end_date],  # Default 1M view
                         rangeslider=dict(visible=False), 
