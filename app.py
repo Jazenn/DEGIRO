@@ -348,8 +348,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Download DAGELIJKSE data (was wekelijks)
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
         
-        # Download HOURLY data voor de laatste 5 dagen (voor gedetailleerde 1d/1w view)
-        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="60m", group_by="ticker", progress=False)
+        # Download HOURLY data voor de laatste 2 dagen (voor gedetailleerde 1d view)
+        # We pakken 2 dagen om zeker te zijn dat we de laatste 24u hebben.
+        yf_data_hourly = yf.download(unique_tickers, period="2d", interval="60m", group_by="ticker", progress=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
@@ -424,8 +425,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
                 # For now: just strip TZ.
                 price_series_hourly.index = price_series_hourly.index.tz_localize(None)
 
-        # 3. Stitch: Daily tot 5 dagen geleden, daarna Hourly
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=5)
+        # 3. Stitch: Daily tot 1 dag geleden (gisteren), daarna Hourly
+        # Zodat 'oude' data (langer dan 1 dag geleden) gewoon daily is, 
+        # en alleen de laatste dag per uur wordt getoond.
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=1)
         
         # Filter daily to be BEFORE the hourly data starts (roughly)
         # Or just take everything before cutoff
@@ -869,7 +872,9 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                             ])
                         )
                     ),
-                    dragmode=False
+                    dragmode=False,
+                    # Ensure primary y-axis also behaves normally in layout
+                    yaxis=dict(autorange=True, fixedrange=False, rangemode="normal")
                 )
                 # Bereken 15% padding voor de assen voor een mooiere look -- REMOVED for autoscaling
                 # val_min, val_max = subset["value"].min(), subset["value"].max()
