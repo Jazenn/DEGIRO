@@ -365,12 +365,17 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         daily_qty = tx_p.resample("D").sum().cumsum()
         
         # Zorg dat de quantity-data doorloopt tot VANDAAG.
-        # Anders stopt de grafiek bij de laatste transactie, of bij de laatste weekly candle.
+        # Anders stopt de grafiek bij de laatste transactie.
+        # En zorg OOK dat de grafiek begint bij start_date (5 jaar terug), 
+        # ook als de eerste transactie pas later was.
         now = pd.Timestamp.now().normalize()
-        if daily_qty.index.max() < now:
-            # Voeg een index toe tot vandaag, ffill vult de laatste stand door
-            new_index = pd.date_range(start=daily_qty.index.min(), end=now, freq="D")
-            daily_qty = daily_qty.reindex(new_index).ffill()
+        
+        # Bepaal het volledige bereik d.m.v. start_date en now
+        full_index = pd.date_range(start=start_date, end=now, freq="D")
+        
+        # Reindex en vul gaten. 
+        # fill_value=0 zorgt dat de quantity 0 is voor de eerste aankoop.
+        daily_qty = daily_qty.reindex(full_index, fill_value=0).ffill()
         
         # Nu mergen met prijsdata (die wekelijks is).
         if len(unique_tickers) > 1:
@@ -804,13 +809,15 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         type="date",
                         rangeselector=dict(
                             buttons=list([
+                                dict(count=1, label="1d", step="day", stepmode="backward"),
+                                dict(count=7, label="1w", step="day", stepmode="backward"),
                                 dict(count=1, label="1m", step="month", stepmode="backward"),
                                 dict(count=3, label="3m", step="month", stepmode="backward"),
                                 dict(count=6, label="6m", step="month", stepmode="backward"),
-                                dict(count=1, label="YTD", step="year", stepmode="todate"),
                                 dict(count=1, label="1y", step="year", stepmode="backward"),
                                 dict(count=5, label="5y", step="year", stepmode="backward"),
-                                dict(step="all")
+                                dict(step="all"),
+                                dict(count=1, label="YTD", step="year", stepmode="todate"),
                             ])
                         )
                     ),
@@ -858,8 +865,24 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date"),
                     yaxis=dict(range=y_lims),
+                    xaxis=dict(
+                        rangeslider=dict(visible=False), 
+                        type="date",
+                        rangeselector=dict(
+                            buttons=list([
+                                dict(count=1, label="1d", step="day", stepmode="backward"),
+                                dict(count=7, label="1w", step="day", stepmode="backward"),
+                                dict(count=1, label="1m", step="month", stepmode="backward"),
+                                dict(count=3, label="3m", step="month", stepmode="backward"),
+                                dict(count=6, label="6m", step="month", stepmode="backward"),
+                                dict(count=1, label="1y", step="year", stepmode="backward"),
+                                dict(count=5, label="5y", step="year", stepmode="backward"),
+                                dict(step="all"),
+                                dict(count=1, label="YTD", step="year", stepmode="todate"),
+                            ])
+                        )
+                    ),
                     dragmode=False
                 )
                 st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False})
