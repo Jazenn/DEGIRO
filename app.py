@@ -340,7 +340,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     # Bepaal startdatum voor download.
     # We halen nu altijd data vanaf 5 jaar geleden op, zodat de prijsgrafiek ook
     # zichtbaar is in periodes dat de gebruiker het aandeel nog niet bezat.
-    start_date = pd.Timestamp.now() - pd.DateOffset(years=5)
+    # CRITICAAL: normalize() gebruiken zodat we op 00:00:00 uitkomen, anders matcht de index 
+    # later niet met de normalized price data.
+    start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
     start_date_str = start_date.strftime("%Y-%m-%d")
 
     # Download data voor alle tickers in 1 keer (efficiënter)
