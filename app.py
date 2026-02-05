@@ -456,6 +456,21 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         combined_df["product"] = p
         combined_df["ticker"] = ticker
         
+        # FIX GAP: Voeg expliciet een rij toe voor 'NU' met de laatste prijs/quantity.
+        # Hierdoor trekt de lijn door tot het huidige tijdstip (bijv 23:15) ipv te stoppen op 00:00.
+        # Dit lost het "gat" aan het einde van de grafiek op.
+        if not combined_df.empty:
+            last_qty = combined_df["quantity"].iloc[-1]
+            last_price = combined_df["price"].iloc[-1]
+            # We gebruiken 'now' (die tijd bevat)
+            now_row = pd.DataFrame({
+                "price": [last_price], 
+                "quantity": [last_qty],
+                "product": [p],
+                "ticker": [ticker]
+            }, index=[pd.Timestamp.now()])
+            combined_df = pd.concat([combined_df, now_row])
+
         # Bereken waarde
         combined_df["value"] = combined_df["quantity"] * combined_df["price"]
         
