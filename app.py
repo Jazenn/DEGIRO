@@ -831,12 +831,17 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 import plotly.graph_objects as go
                 from plotly.subplots import make_subplots
                 fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
+                # Default view range: 1 Month
+                end_date = pd.Timestamp.now()
+                start_date_1m = end_date - pd.DateOffset(months=1)
+
                 fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
                 fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
                     xaxis=dict(
+                        range=[start_date_1m, end_date],  # Default 1M view
                         rangeslider=dict(visible=False), 
                         type="date",
                         rangeselector=dict(
@@ -901,6 +906,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
                     yaxis=dict(range=y_lims),
                     xaxis=dict(
+                        range=[start_date_1m, end_date],  # Default 1M view
                         rangeslider=dict(visible=False), 
                         type="date",
                         rangeselector=dict(
