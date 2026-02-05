@@ -348,9 +348,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Download DAGELIJKSE data (was wekelijks)
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
         
-        # Download HOURLY data voor de laatste 5 dagen (voor gedetailleerde 1d/1w view)
-        # We pakken 5 dagen om de volledige werkweek in detail te hebben.
-        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="60m", group_by="ticker", progress=False)
+        # Download HOURLY/INTRADAY data voor de laatste 5 dagen
+        # We pakken 5-MINUTEN data om aan het verzoek "updates elke 10 minuten" te voldoen (5m is nog beter).
+        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="5m", group_by="ticker", progress=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
@@ -843,6 +843,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             start_date = now - pd.Timedelta(days=1)
         elif selected_period == "1W":
             start_date = now - pd.Timedelta(weeks=1)
+            resample_rule = '1H' # 1 Week view: Uurlijkse updates (niet 5m) start_date = now - pd.Timedelta(weeks=1)
         elif selected_period == "1M":
             start_date = now - pd.DateOffset(months=1)
             resample_rule = 'D'
