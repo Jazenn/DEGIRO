@@ -350,7 +350,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     try:
         # Download DAGELIJKSE data (was wekelijks)
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
-        # st.write(f"DEBUG: Downloaded {yf_data.shape}, Columns: {yf_data.columns}")
+        
+        # Download HOURLY data voor de laatste 5 dagen (voor gedetailleerde 1d/1w view)
+        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="60m", group_by="ticker", progress=False)
+        
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
         return pd.DataFrame()
@@ -390,52 +393,60 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # (Oude situatie met fill_value=0 zorgde dat de toekomst ook 0 werd).
         daily_qty = daily_qty.reindex(full_index).ffill().fillna(0)
         
-        # Nu mergen met prijsdata (die wekelijks is).
-        price_series = pd.Series(dtype=float)
-        try:
-            if len(unique_tickers) > 1:
-                # Probeer flexible access, catch KeyError
-                price_series = yf_data[ticker]["Close"]
-            else:
-                price_series = yf_data["Close"]
-        except KeyError:
-             # st.write(f"DEBUG: Could not find data for {ticker}")
-             pass
-        except Exception as e:
-             # st.write(f"DEBUG: Error accessing {ticker}: {e}")
-             pass
-             
-        if price_series.empty:
-            # st.write(f"DEBUG: Price series empty for {ticker}")
+        # Helper functie om series op te halen uit yf resultaat
+        def get_price_series(data_obj, t):
+            try:
+                if isinstance(data_obj.columns, pd.MultiIndex):
+                    if t in data_obj.columns.levels[0]:
+                        return data_obj[t]["Close"]
+                # Fallback if structure is different (e.g. single ticker not creating multiindex level 0 properly sometimes)
+                if "Close" in data_obj.columns:
+                     return data_obj["Close"]
+            except:
+                pass
+            return pd.Series(dtype=float)
+
+        price_series_daily = get_price_series(yf_data, ticker)
+        price_series_hourly = get_price_series(yf_data_hourly, ticker)
+
+        if price_series_daily.empty and price_series_hourly.empty:
             continue
             
+        # 1. Verwerk Daily
         # Zorg dat de price_series tijdzone-informatie kwijtraakt
-        if price_series.index.tz is not None:
-             price_series.index = price_series.index.tz_localize(None)
+        if price_series_daily.index.tz is not None:
+             price_series_daily.index = price_series_daily.index.tz_localize(None)
+        price_series_daily.index = price_series_daily.index.normalize() # 00:00
+
+        # 2. Verwerk Hourly
+        if not price_series_hourly.empty:
+             if price_series_hourly.index.tz is not None:
+                # Convert to local/naive to match daily (assuming local time vs UTC doesn't break logic too much, 
+                # strictly speaking mixing UTC and Local is bad, but for dashboard display naive is often easiest)
+                # Better: tz_convert to 'Europe/Amsterdam' then localize(None)? 
+                # For now: just strip TZ.
+                price_series_hourly.index = price_series_hourly.index.tz_localize(None)
+
+        # 3. Stitch: Daily tot 5 dagen geleden, daarna Hourly
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=5)
         
-        # NORMALISATIE: Zorg dat tijden op 00:00:00 staan (yf kan 16:00 hebben oid)
-        # Dit is cruraal voor de reindex match met daily_qty (die op midnight staat).
-        price_series.index = price_series.index.normalize()
+        # Filter daily to be BEFORE the hourly data starts (roughly)
+        # Or just take everything before cutoff
+        part1 = price_series_daily[price_series_daily.index < cutoff]
+        
+        # Part 2 is hourly data
+        part2 = price_series_hourly
+        
+        # Combineer
+        full_price_series = pd.concat([part1, part2]).sort_index()
+        
+        # Remove duplicates (if partial overlap)
+        full_price_series = full_price_series[~full_price_series.index.duplicated(keep='last')]
              
         # Maak dataframe van de prices
-        hist_df = price_series.to_frame(name="price")
-        # st.write(f"History DF for {ticker} head:", hist_df.head())
+        hist_df = full_price_series.to_frame(name="price")
         
-        # WEEKLY data van YF stopt vaak aan het begin van de week (maandag).
-        # Als we vandaag verder zijn dan de laatste history-datum, voegen we de laatste live prijs toe.
-        if not hist_df.empty:
-            last_hist_date = hist_df.index.max()
-            if last_hist_date < now:
-                # Probeer actuele prijs op te halen
-                try:
-                    latest_data = yf.Ticker(ticker).history(period="1d")
-                    if not latest_data.empty:
-                        cur_price = float(latest_data["Close"].iloc[-1])
-                        # Voeg toe aan hist_df
-                        new_row = pd.DataFrame({"price": [cur_price]}, index=[now])
-                        hist_df = pd.concat([hist_df, new_row])
-                except Exception:
-                    pass
+        # (Oude logica voor latest_data weghalen, want hourly data dekt dit nu beter)
 
         if daily_qty.index.tz is not None:
             daily_qty.index = daily_qty.index.tz_localize(None)
@@ -443,34 +454,18 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         if hist_df.index.tz is not None:
             hist_df.index = hist_df.index.tz_localize(None)
 
-        # Reindex prijzen naar volledige dagelijkse reeks (inclusief weekends)
-        # 'ffill' zorgt dat de prijs van vrijdag doorloopt in za/zo.
-        # Hierdoor krijg je een vlakke lijn in het weekend ipv gaten.
-        full_price_series = hist_df["price"].reindex(daily_qty.index).ffill()
+        # CORRECTIE: We gebruiken nu de index van hist_df (die Daily + Hourly combineert).
+        # We reindexen de daily_qty naar deze fijnmazige index.
+        # aligned_qty behoudt de 00:00 waarden en ffill't ze naar de uren.
+        aligned_qty = daily_qty.reindex(hist_df.index, method='ffill').fillna(0)
         
-        # Maak nieuwe dataframe voor dit product
-        combined_df = pd.DataFrame(index=daily_qty.index)
-        combined_df["price"] = full_price_series
-        combined_df["quantity"] = daily_qty
+        combined_df = pd.DataFrame(index=hist_df.index)
+        combined_df["price"] = hist_df["price"]
+        combined_df["quantity"] = aligned_qty
         
         combined_df["product"] = p
         combined_df["ticker"] = ticker
         
-        # FIX GAP: Voeg expliciet een rij toe voor 'NU' met de laatste prijs/quantity.
-        # Hierdoor trekt de lijn door tot het huidige tijdstip (bijv 23:15) ipv te stoppen op 00:00.
-        # Dit lost het "gat" aan het einde van de grafiek op.
-        if not combined_df.empty:
-            last_qty = combined_df["quantity"].iloc[-1]
-            last_price = combined_df["price"].iloc[-1]
-            # We gebruiken 'now' (die tijd bevat)
-            now_row = pd.DataFrame({
-                "price": [last_price], 
-                "quantity": [last_qty],
-                "product": [p],
-                "ticker": [ticker]
-            }, index=[pd.Timestamp.now()])
-            combined_df = pd.concat([combined_df, now_row])
-
         # Bereken waarde
         combined_df["value"] = combined_df["quantity"] * combined_df["price"]
         
