@@ -388,6 +388,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Zorg dat de price_series tijdzone-informatie kwijtraakt
         if price_series.index.tz is not None:
              price_series.index = price_series.index.tz_localize(None)
+        
+        # NORMALISATIE: Zorg dat tijden op 00:00:00 staan (yf kan 16:00 hebben oid)
+        # Dit is cruraal voor de reindex match met daily_qty (die op midnight staat).
+        price_series.index = price_series.index.normalize()
              
         # Maak dataframe van de prices
         hist_df = price_series.to_frame(name="price")
