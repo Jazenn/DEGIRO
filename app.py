@@ -843,20 +843,22 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         st.markdown("---")
         st.subheader("Vergelijk Portefeuille")
         st.markdown("Hieronder kun je meerdere aandelen tegelijk zien. Deselecteer de grootste posities om de dalingen/stijgingen van kleinere posities beter te zien.")
-        all_products = sorted(history_df["product"].unique())
-        selected_for_compare = st.multiselect("Selecteer aandelen om te vergelijken", all_products, default=all_products)
-        if selected_for_compare:
-            compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
-            if not compare_df.empty:
-                compare_df = compare_df.sort_values("date")
-                # Pas naamverkorting toe voor de legenda
-                compare_df["product"] = compare_df["product"].apply(_shorten_name)
-                
-                fig_compare = px.line(
-                    compare_df, x="date", y="value", color="product", 
-                    title="Waarde per aandeel in de tijd (EUR)", 
-                    labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
-                )
+        
+        if not history_df.empty and "product" in history_df.columns:
+            all_products = sorted(history_df["product"].unique())
+            selected_for_compare = st.multiselect("Selecteer aandelen om te vergelijken", all_products, default=all_products)
+            if selected_for_compare:
+                compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
+                if not compare_df.empty:
+                    compare_df = compare_df.sort_values("date")
+                    # Pas naamverkorting toe voor de legenda
+                    compare_df["product"] = compare_df["product"].apply(_shorten_name)
+                    
+                    fig_compare = px.line(
+                        compare_df, x="date", y="value", color="product", 
+                        title="Waarde per aandeel in de tijd (EUR)", 
+                        labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
+                    )
                 
                 # Bereken 15% padding voor de y-as
                 y_min, y_max = compare_df["value"].min(), compare_df["value"].max()
@@ -889,8 +891,8 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             else:
                 st.info("Geen data om te tonen.")
         else:
-            st.info("Selecteer minimaal één aandeel.")
-
+            st.info("Geen historische data beschikbaar.")
+            
     with tab_transactions:
         st.subheader("Ruwe transactiedata")
         st.dataframe(df, use_container_width=True, height=500)
