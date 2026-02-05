@@ -366,8 +366,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         if tx_p.empty:
             continue
             
-        # Zet datum index
-        tx_p = tx_p.set_index("value_date")["quantity"].sort_index()
+        # Zet datum index.
+        # LET OP: Als er meerdere transacties op exact hetzelfde moment zijn,
+        # moeten we die sommeren, anders krijgen we duplicate index errors bij reindex().
+        tx_p = tx_p.groupby("value_date")["quantity"].sum().sort_index()
         
         # Resample naar dag om gaten te vullen, daarna cumsum
         # FIX: Resample("D") vernietigt de tijdcomponent (zet alles op 00:00).
