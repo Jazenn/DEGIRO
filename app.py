@@ -827,11 +827,49 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             st.caption("Geen aan- of verkopen gevonden.")
     
     with tab_history:
-        st.subheader("Historische waardeontwikkeling (Indicatief)")
+        st.subheader("Historische waardeontwikkeling")
+        
+        # 1. Globale Tijdselectie voor dit tabblad
+        period_options = ["1D", "1W", "1M", "3M", "6M", "1Y", "YTD", "5Y", "ALL"]
+        # Default op 1M (index 2)
+        selected_period = st.radio("Kies periode:", period_options, index=2, horizontal=True, label_visibility="collapsed")
+        
+        # Bepaal startdatum en resample-logica
+        now = pd.Timestamp.now()
+        start_date = None
+        resample_rule = None # None = keep detailed (hourly)
+        
+        if selected_period == "1D":
+            start_date = now - pd.Timedelta(days=1)
+        elif selected_period == "1W":
+            start_date = now - pd.Timedelta(weeks=1)
+        elif selected_period == "1M":
+            start_date = now - pd.DateOffset(months=1)
+            resample_rule = 'D'
+        elif selected_period == "3M":
+            start_date = now - pd.DateOffset(months=3)
+            resample_rule = 'D'
+        elif selected_period == "6M":
+            start_date = now - pd.DateOffset(months=6)
+            resample_rule = 'D'
+        elif selected_period == "1Y":
+            start_date = now - pd.DateOffset(years=1)
+            resample_rule = 'D'
+        elif selected_period == "5Y":
+            start_date = now - pd.DateOffset(years=5)
+            resample_rule = 'W-FRI'
+        elif selected_period == "YTD":
+            start_date = pd.Timestamp(year=now.year, month=1, day=1)
+            resample_rule = 'D'
+        elif selected_period == "ALL":
+            start_date = None
+            resample_rule = 'W-FRI'
+
         st.markdown(
-            "Hier zie je hoeveel waarde je in bezit had per week (Aantal * Koers). "
-            "Dit is gebaseerd op de wekelijkse slotkoers en je transactiehistorie."
+            "Hier zie je hoeveel waarde je in bezit had (Aantal * Koers). "
+            "De resolutie (uur/dag/week) past zich automatisch aan je selectie aan."
         )
+
         if not history_df.empty:
             products = sorted(history_df["product"].unique())
             selected_product = st.selectbox("Selecteer een product", products)
@@ -840,40 +878,40 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 import plotly.graph_objects as go
                 from plotly.subplots import make_subplots
                 fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
-                # Default view range: 1 Month
-                end_date = pd.Timestamp.now()
-                start_date_1m = end_date - pd.DateOffset(months=1)
-
-                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
-                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
                 
-                # Removed manual range calculation to allow autoscaling
-                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, showgrid=True)
-                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, showgrid=False)
+                # Filter & Resample logica (Obv globale selectie)
+                df_chart = subset.copy()
+                if "date" in df_chart.columns:
+                    df_chart = df_chart.set_index("date").sort_index()
+                
+                if start_date:
+                    df_chart = df_chart[df_chart.index >= start_date]
+
+                if resample_rule:
+                    df_chart = df_chart.resample(resample_rule).last().dropna()
+
+                # Reset index voor Plotly
+                df_chart = df_chart.reset_index()
+
+                # --- PLOTLY UPDATE ---
+                
+                # Gebruik nu df_chart ipv subset
+                fig_hist.add_trace(go.Scatter(x=df_chart["date"], y=df_chart["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
+                fig_hist.add_trace(go.Scatter(x=df_chart["date"], y=df_chart["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
+                
+                # Force autoscale (blijft nodig)
+                fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, showgrid=True, autorange=True, fixedrange=False, rangemode="normal")
+                fig_hist.update_yaxes(title_text="Koers per aandeel (€)", secondary_y=True, showgrid=False, autorange=True, fixedrange=False, rangemode="normal")
                 
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
+                    # XAXIS: Geen rangeslider/selector meer via Plotly
                     xaxis=dict(
-                        range=[start_date_1m, end_date],  # Default 1M view
-                        rangeslider=dict(visible=False), 
                         type="date",
-                        rangeselector=dict(
-                            buttons=list([
-                                dict(count=1, label="1d", step="day", stepmode="backward"),
-                                dict(count=7, label="1w", step="day", stepmode="backward"),
-                                dict(count=1, label="1m", step="month", stepmode="backward"),
-                                dict(count=3, label="3m", step="month", stepmode="backward"),
-                                dict(count=6, label="6m", step="month", stepmode="backward"),
-                                dict(count=1, label="1y", step="year", stepmode="backward"),
-                                dict(count=5, label="5y", step="year", stepmode="backward"),
-                                dict(step="all"),
-                                dict(count=1, label="YTD", step="year", stepmode="todate"),
-                            ])
-                        )
+                        rangeslider=dict(visible=False)
                     ),
                     dragmode=False,
-                    # Ensure primary y-axis also behaves normally in layout
                     yaxis=dict(autorange=True, fixedrange=False, rangemode="normal")
                 )
                 # Bereken 15% padding voor de assen voor een mooiere look -- REMOVED for autoscaling
@@ -908,8 +946,31 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 compare_df = history_df[history_df["product"].isin(selected_for_compare)].copy()
                 if not compare_df.empty:
                     compare_df = compare_df.sort_values("date")
+                    
+                    # --- Apply GLOBAL Filter/Resample Logic ---
+                    # We processen de compare_df als geheel, en resamplen per product (groupby?)
+                    # Eenvoudiger: Eerst filteren op datum
+                    if "date" in compare_df.columns:
+                        compare_df = compare_df.set_index("date").sort_index()
+
+                    if start_date:
+                        compare_df = compare_df[compare_df.index >= start_date]
+                    
+                    # Resampling moet per groep (product) gebeuren anders vermengen we data
+                    if resample_rule:
+                         # Group by product and resample each group
+                         # Check if we have columns left to resample?
+                         # resample(...).last() takes the last value of the period.
+                         compare_df = compare_df.groupby("product").resample(resample_rule).last()
+                         # The grouping puts product in index. resample puts date in index.
+                         # df has (product, date) index.
+                         compare_df = compare_df.reset_index()
+                    else:
+                        compare_df = compare_df.reset_index()
+
                     # Pas naamverkorting toe voor de legenda
-                    compare_df["product"] = compare_df["product"].apply(_shorten_name)
+                    if "product" in compare_df.columns:
+                        compare_df["product"] = compare_df["product"].apply(_shorten_name)
                     
                     fig_compare = px.line(
                         compare_df, x="date", y="value", color="product", 
@@ -917,31 +978,12 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
                     )
                 
-                # Bereken 15% padding voor de y-as -- REMOVED for autoscaling
-                # y_min, y_max = compare_df["value"].min(), compare_df["value"].max()
-                # y_range = max(y_max - y_min, 1.0)
-                # y_lims = [y_min - 0.15 * y_range, y_max + 0.15 * y_range]
-                
                 fig_compare.update_layout(
                     legend=dict(orientation="h", yanchor="top", y=-0.4, xanchor="left", x=0),
                     yaxis=dict(autorange=True, fixedrange=False, rangemode="normal"),
                     xaxis=dict(
-                        range=[start_date_1m, end_date],  # Default 1M view
-                        rangeslider=dict(visible=False), 
                         type="date",
-                        rangeselector=dict(
-                            buttons=list([
-                                dict(count=1, label="1d", step="day", stepmode="backward"),
-                                dict(count=7, label="1w", step="day", stepmode="backward"),
-                                dict(count=1, label="1m", step="month", stepmode="backward"),
-                                dict(count=3, label="3m", step="month", stepmode="backward"),
-                                dict(count=6, label="6m", step="month", stepmode="backward"),
-                                dict(count=1, label="1y", step="year", stepmode="backward"),
-                                dict(count=5, label="5y", step="year", stepmode="backward"),
-                                dict(step="all"),
-                                dict(count=1, label="YTD", step="year", stepmode="todate"),
-                            ])
-                        )
+                        rangeslider=dict(visible=False)
                     ),
                     dragmode=False
                 )
