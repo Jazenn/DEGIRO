@@ -894,11 +894,31 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 # Reset index voor Plotly
                 df_chart = df_chart.reset_index()
 
+                # --- GAP REMOVAL (Nights/Weekends) ---
+                # Alleen voor Stocks (Niet Crypto) en alleen in detail-view (1D/1W).
+                # Plotly 'category' as zorgt dat gaten (waar geen data is) niet getoond worden.
+                
+                is_crypto = any(x in str(selected_product).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
+                # Check ook ticker
+                ticker = map_to_ticker(selected_product, None) # Simple check
+                if ticker and ("BTC" in ticker or "ETH" in ticker):
+                    is_crypto = True
+
+                xaxis_type = "date"
+                x_values = df_chart["date"]
+                
+                if selected_period in ["1D", "1W"] and not is_crypto:
+                    xaxis_type = "category"
+                    # Format datum naar string string voor category axis
+                    # Anders plot hij lelijke timestamps
+                    x_values = df_chart["date"].dt.strftime("%d-%m %H:%M")
+                    # Let op: dit maakt x-as labels strings.
+                
                 # --- PLOTLY UPDATE ---
                 
                 # Gebruik nu df_chart ipv subset
-                fig_hist.add_trace(go.Scatter(x=df_chart["date"], y=df_chart["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
-                fig_hist.add_trace(go.Scatter(x=df_chart["date"], y=df_chart["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
+                fig_hist.add_trace(go.Scatter(x=x_values, y=df_chart["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
+                fig_hist.add_trace(go.Scatter(x=x_values, y=df_chart["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
                 
                 # Force autoscale (blijft nodig)
                 fig_hist.update_yaxes(title_text="Totale Waarde (€)", secondary_y=False, showgrid=True, autorange=True, fixedrange=False, rangemode="normal")
@@ -907,10 +927,11 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
-                    # XAXIS: Geen rangeslider/selector meer via Plotly
+                    # XAXIS: Type dynamisch zetten
                     xaxis=dict(
-                        type="date",
-                        rangeslider=dict(visible=False)
+                        type=xaxis_type,
+                        rangeslider=dict(visible=False),
+                        nticks=10 if xaxis_type == "category" else None # Voorkom clutter bij category
                     ),
                     dragmode=False,
                     yaxis=dict(autorange=True, fixedrange=False, rangemode="normal")
