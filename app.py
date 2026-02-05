@@ -384,8 +384,11 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         full_index = pd.date_range(start=start_date, end=now, freq="D")
         
         # Reindex en vul gaten. 
-        # fill_value=0 zorgt dat de quantity 0 is voor de eerste aankoop.
-        daily_qty = daily_qty.reindex(full_index, fill_value=0).ffill()
+        # LOGIC FIX: Eerst reindexen (geeft NaNs), dan ffill() zodat de LAATSTE stand 
+        # doorgetrokken wordt naar 'vandaag' (als er geen recente data is).
+        # Daarna fillna(0) zodat de periode VÓÓR de eerste aankoop 0 wordt.
+        # (Oude situatie met fill_value=0 zorgde dat de toekomst ook 0 werd).
+        daily_qty = daily_qty.reindex(full_index).ffill().fillna(0)
         
         # Nu mergen met prijsdata (die wekelijks is).
         price_series = pd.Series(dtype=float)
