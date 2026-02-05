@@ -348,9 +348,11 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Download DAGELIJKSE data (was wekelijks)
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
         
-        # Download HOURLY/INTRADAY data voor de laatste 5 dagen
-        # We pakken 5-MINUTEN data om aan het verzoek "updates elke 10 minuten" te voldoen (5m is nog beter).
-        yf_data_hourly = yf.download(unique_tickers, period="5d", interval="5m", group_by="ticker", progress=False)
+        # Download HOURLY/INTRADAY data voor de laatste 8 dagen
+        # period="5d" is te kort voor een volledige week view (7 dagen).
+        # We gebruiken start=... om expliciet 8 dagen terug te gaan.
+        start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
+        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
@@ -425,10 +427,10 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
                 # For now: just strip TZ.
                 price_series_hourly.index = price_series_hourly.index.tz_localize(None)
 
-        # 3. Stitch: Daily tot 5 dagen geleden, daarna Hourly
-        # Zodat 'oude' data (langer dan 5 dagen geleden) gewoon daily is, 
-        # en alleen de laatste week per uur wordt getoond.
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=5)
+        # 3. Stitch: Daily tot 8 dagen geleden, daarna Hourly
+        # Zodat 'oude' data (langer dan 8 dagen geleden) gewoon daily is, 
+        # en alleen de laatste week (+ beetje buffer) in detail is.
+        cutoff = pd.Timestamp.now() - pd.Timedelta(days=8)
         
         # Filter daily to be BEFORE the hourly data starts (roughly)
         # Or just take everything before cutoff
