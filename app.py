@@ -334,9 +334,11 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     if relevant_tx.empty:
         return pd.DataFrame()
 
-    # Bepaal startdatum voor download (eerste transactie - beetje marge)
-    min_date = relevant_tx["value_date"].min()
-    start_date_str = (min_date - pd.Timedelta(weeks=1)).strftime("%Y-%m-%d")
+    # Bepaal startdatum voor download.
+    # We halen nu altijd data vanaf 5 jaar geleden op, zodat de prijsgrafiek ook
+    # zichtbaar is in periodes dat de gebruiker het aandeel nog niet bezat.
+    start_date = pd.Timestamp.now() - pd.DateOffset(years=5)
+    start_date_str = start_date.strftime("%Y-%m-%d")
 
     # Download data voor alle tickers in 1 keer (efficiënter)
     unique_tickers = list(set(product_map.values()))
@@ -426,7 +428,9 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
         # Filter rijen waar we nog niks hadden
         # Na reindex kunnen er NaNs zijn in price (als daily_qty eerder begint dan available price history)
         combined_df = combined_df.dropna(subset=["price"])
-        combined_df = combined_df[combined_df["quantity"] != 0]
+        # We verwijderen rows met quantity 0 NIET meer, omdat we de prijslijn (secondary y) 
+        # ook willen zien als we het aandeel nog niet hadden.
+        # combined_df = combined_df[combined_df["quantity"] != 0]
         
         if not combined_df.empty:
             history_frames.append(combined_df)
@@ -790,12 +794,26 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 import plotly.graph_objects as go
                 from plotly.subplots import make_subplots
                 fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
-                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', line=dict(color="#636EFA")), secondary_y=False)
-                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', line=dict(color="#EF553B", dash='dot')), secondary_y=True)
+                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["value"], name="Waarde in bezit (EUR)", mode='lines', connectgaps=True, line=dict(color="#636EFA")), secondary_y=False)
+                fig_hist.add_trace(go.Scatter(x=subset["date"], y=subset["price"], name="Koers (EUR)", mode='lines', connectgaps=True, line=dict(color="#EF553B", dash='dot')), secondary_y=True)
                 fig_hist.update_layout(
                     title_text=f"Historie voor {selected_product}", hovermode="x unified",
                     legend=dict(orientation="h", yanchor="top", y=0.99, xanchor="left", x=0.01, bgcolor="rgba(255, 255, 255, 0)"),
-                    xaxis=dict(rangeslider=dict(visible=False), type="date"),
+                    xaxis=dict(
+                        rangeslider=dict(visible=False), 
+                        type="date",
+                        rangeselector=dict(
+                            buttons=list([
+                                dict(count=1, label="1m", step="month", stepmode="backward"),
+                                dict(count=3, label="3m", step="month", stepmode="backward"),
+                                dict(count=6, label="6m", step="month", stepmode="backward"),
+                                dict(count=1, label="YTD", step="year", stepmode="todate"),
+                                dict(count=1, label="1y", step="year", stepmode="backward"),
+                                dict(count=5, label="5y", step="year", stepmode="backward"),
+                                dict(step="all")
+                            ])
+                        )
+                    ),
                     dragmode=False
                 )
                 # Bereken 15% padding voor de assen voor een mooiere look
