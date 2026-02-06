@@ -948,11 +948,11 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             
             fig = go.Figure()
 
-            # Outer Ring = Huidige Verdeling (Current)
+            # Outer Ring = Doel Verdeling (Target)
             fig.add_trace(go.Pie(
                 labels=res_df["Product"],
-                values=res_df["Huidige Waarde"],
-                name="Huidig",
+                values=res_df["Doel Waarde"],
+                name="Doel",
                 hole=0.6, # Grote ring
                 sort=False,
                 direction='clockwise',
@@ -960,12 +960,12 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 marker=dict(line=dict(color='#000000', width=2))
             ))
 
-            # Inner Circle = Doel Verdeling (Target)
+            # Inner Circle = Huidige Verdeling (Current)
             fig.add_trace(go.Pie(
                 labels=res_df["Product"],
-                values=res_df["Doel Waarde"], # Target value creates the slice size
-                name="Doel",
-                hole=0, # Volle cirkel (of klein gat voor donut-in-donut: 0.3)
+                values=res_df["Huidige Waarde"], 
+                name="Huidig",
+                hole=0, 
                 domain={'x': [0.25, 0.75], 'y': [0.25, 0.75]}, # Kleiner, inside
                 sort=False,
                 direction='clockwise',
@@ -975,7 +975,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             ))
 
             fig.update_layout(
-                title="Buitenring = Huidig  |  Binnen = Doel",
+                title="Buitenring = Doel  |  Binnen = Huidig",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
                 margin=dict(t=30, b=0, l=0, r=0)
             )
