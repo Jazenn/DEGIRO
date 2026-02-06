@@ -169,6 +169,8 @@ def parse_quantity(description: str) -> float:
     return qty
 
 
+
+def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
     """Voeg extra kolommen toe: type, quantity, categorieën."""
     df = df.copy()
 
