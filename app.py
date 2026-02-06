@@ -899,22 +899,22 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 if start_date:
                     df_chart = df_chart[df_chart.index >= start_date]
 
-                if resample_rule:
-                    # Gebruik ffill() ipv dropna() om weekend gaten te vullen (zodat lijn doorloopt)
-                    df_chart = df_chart.resample(resample_rule).last().ffill()
-
-                # Reset index voor Plotly
-                df_chart = df_chart.reset_index()
-
-                # --- GAP REMOVAL (Nights/Weekends) ---
-                # Alleen voor Stocks (Niet Crypto) en alleen in detail-view (1D/1W).
-                # Plotly 'category' as zorgt dat gaten (waar geen data is) niet getoond worden.
-                
+                # --- GAP REMOVAL SETUP ---
+                # Check for Crypto BEFORE resampling
                 is_crypto = any(x in str(selected_product).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
-                # Check ook ticker
-                ticker = map_to_ticker(selected_product, None) # Simple check
+                ticker = map_to_ticker(selected_product, None)
                 if ticker and ("BTC" in ticker or "ETH" in ticker):
                     is_crypto = True
+
+                if resample_rule:
+                    if selected_period in ["1D", "1W"] and not is_crypto:
+                         # Stocks Short-Term: We want to HIDE gaps (nights/weekends).
+                         # So we drop the empty bins that resample created.
+                         df_chart = df_chart.resample(resample_rule).last().dropna()
+                    else:
+                        # Crypto or Long-Term: We want CONTINUOUS lines (no visual breaks).
+                        # So we fill the gaps with the last known value.
+                        df_chart = df_chart.resample(resample_rule).last().ffill()
 
                 xaxis_type = "date"
                 x_values = df_chart["date"]
