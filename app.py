@@ -795,8 +795,6 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 display = display.set_index("Product").T
                 st.dataframe(display, use_container_width=True, key=f"table_{cat}")
 
-                st.dataframe(display, use_container_width=True, key=f"table_{cat}")
-
         # Portefeuilleverdeling & Rebalancing
         st.subheader("Portefeuilleverdeling & Rebalancing")
         
