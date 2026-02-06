@@ -103,58 +103,6 @@ def load_degiro_csv(file) -> pd.DataFrame:
         if col in df.columns:
             # First try dayfirst for DeGiro native exports
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
-            # If everything becomes NaT, it might be ISO from our own CSV save
-            if df[col].isna().all() and not df[col].empty:
-                df[col] = pd.to_datetime(df[col], errors="coerce")
-    
-    # NEW: Combine Date and Time if both exist to get exact transaction timestamp
-    if "date" in df.columns and "time" in df.columns:
-        # DeGiro 'date' is usually just the date part (e.g. 01-01-2024)
-        # 'time' is e.g. 14:00
-        # Combine them into a single temporary datetime column
-        try:
-            # Zorg dat de kolommen strings zijn
-            d_str = df["date"].astype(str).str.split(" ").str[0] # Alleen datum deel just in case
-            t_str = df["time"].astype(str)
-            
-            # Combineer en parse
-            # Let op: Soms is Date al geparsed naar Timestamp door bovenstaande loop.
-            # Als dat zo is, zet terug naar string YYYY-MM-DD
-            if pd.api.types.is_datetime64_any_dtype(df["date"]):
-                 d_str = df["date"].dt.strftime("%Y-%m-%d")
-            
-            full_dt = pd.to_datetime(d_str + " " + t_str, errors="coerce")
-            
-            # Gebruik deze preciezere tijd als 'value_date' waar mogelijk
-            # (Overschrijf value_date met de precieze tijd, want dat is wat we willen plotten)
-            df["value_date"] = full_dt.fillna(df["value_date"])
-            
-        except Exception as e:
-            # Als het faalt, val terug op originele datum
-            pass
-
-    # Helper to parse numeric fields with comma decimal separator
-    def _to_float(series: pd.Series) -> pd.Series:
-        return (
-            series.astype(str)
-            .str.replace(".", "", regex=False)  # remove thousands separator if present
-            .str.replace(",", ".", regex=False)
-            .str.replace('"', "", regex=False)
-            .str.strip()
-            .replace({"": None})
-            .pipe(pd.to_numeric, errors="coerce")
-        )
-
-    if "amount" in df.columns:
-        df["amount"] = _to_float(df["amount"])
-    if "balance" in df.columns:
-        df["balance"] = _to_float(df["balance"])
-
-    # Sort chronologisch op valutadatum + tijd
-    sort_cols = [c for c in ["value_date", "date", "time"] if c in df.columns]
-    if sort_cols:
-        df = df.sort_values(sort_cols).reset_index(drop=True)
-
     return df
 
 
@@ -221,9 +169,33 @@ def parse_quantity(description: str) -> float:
     return qty
 
 
-def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
     """Voeg extra kolommen toe: type, quantity, categorieën."""
     df = df.copy()
+
+    # --- ENRICH TIMESTAMP (Date + Time) ---
+    # Apply here so it works for BOTH new uploads AND loaded history (df_drive)
+    if "date" in df.columns and "time" in df.columns:
+        try:
+             # Ensure date is string YYYY-MM-DD
+            if pd.api.types.is_datetime64_any_dtype(df["date"]):
+                 d_str = df["date"].dt.strftime("%Y-%m-%d")
+            else:
+                 d_str = df["date"].astype(str).str.split(" ").str[0]
+
+            t_str = df["time"].astype(str)
+            
+            # Combine
+            full_dt = pd.to_datetime(d_str + " " + t_str, errors="coerce")
+            
+            # Update value_date where successful
+            if "value_date" in df.columns:
+                df["value_date"] = full_dt.fillna(df["value_date"])
+            else:
+                df["value_date"] = full_dt
+                
+        except Exception:
+            pass
+
 
     df["type"] = df.get("description", "").apply(classify_row)
     df["quantity"] = df.get("description", "").apply(parse_quantity)
