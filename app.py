@@ -898,23 +898,28 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 
                 action = "Kopen" if diff > 0 else "Verkopen"
                 
-                # --- INTELLIGENT THRESHOLDS ---
+                # --- INTELLIGENT SCALING THRESHOLDS ---
+                # User request: "Schaal mee met portfolio size".
+                # Logic:
+                # 1. Minimum Drift: We want at least 1% deviation before we act (Noise filter for large portfolios).
+                # 2. Minimum Size: We need at least 1 Share (Stocks) or €25 (Crypto) to make a trade worth it.
+                
+                drift_threshold = total_value * 0.01 # 1% of Total Portfolio
+                abs_diff = abs(diff)
+                
                 is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
                 
                 if is_crypto:
-                    # Crypto: Only advise action if spread > 1%
-                    pct_diff = abs(target_pct - current_pct_rounded)
-                    if pct_diff <= 1.0:
+                    # Crypto Logic:
+                    # Must overlap 1% drift AND be at least €25 value
+                    if abs_diff < drift_threshold or abs_diff < 25.0:
                         action = "-"
                 else:
-                    # Stocks/ETFs: Only advise action if value > 1 Share Price
-                    # (Can't buy half a share usually)
-                    if abs(diff) < last_price:
+                    # Stock Logic:
+                    # Must overlap 1% drift AND be at least 1 Share
+                    # (Prevent 'Buy 1 share' on a 100k portfolio if it's < 1% drift)
+                    if abs_diff < drift_threshold or abs_diff < last_price:
                         action = "-"
-                
-                # Global fallback: Ignore tiny amounts < 5 EUR anyway
-                if abs(diff) < 5.0:
-                    action = "-"
                 
                 results.append({
                     "Product": product_name,
