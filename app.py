@@ -916,6 +916,10 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         # So we fill the gaps with the last known value.
                         df_chart = df_chart.resample(resample_rule).last().ffill()
 
+                # Reset index voor Plotly (zodat 'date' weer een kolom is)
+                # Als we niet geresampled hebben, willen we OOK resetten als date in de index staat.
+                df_chart = df_chart.reset_index()
+
                 xaxis_type = "date"
                 x_values = df_chart["date"]
                 
