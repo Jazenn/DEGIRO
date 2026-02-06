@@ -793,19 +793,125 @@ def render_overview(df: pd.DataFrame) -> None:
                 display = display.set_index("Product").T
                 st.dataframe(display, use_container_width=True, key=f"table_{cat}")
 
-        # Portefeuilleverdeling
+        # Portefeuilleverdeling & Rebalancing
+        st.subheader("Portefeuilleverdeling & Rebalancing")
+        
         alloc = positions.copy()
         alloc["alloc_value"] = alloc["current_value"].fillna(alloc["invested"])
         alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
+        
         if not alloc.empty:
-            st.subheader("Huidige portefeuilleverdeling")
+            total_value = alloc["alloc_value"].sum()
+            alloc["current_pct"] = (alloc["alloc_value"] / total_value) * 100.0
             alloc["Display Name"] = alloc["product"].apply(_shorten_name)
-            fig_alloc = px.pie(alloc, names="Display Name", values="alloc_value")
-            fig_alloc.update_layout(
-                legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5),
-                dragmode=False
+            
+            # --- 1. Rebalancing Input ---
+            st.write("Pas hieronder de gewenste verdeling aan:")
+            
+            # Prepare dataframe for editor
+            # We use session_state or default to current pct rounded
+            editor_df = alloc[["Display Name", "current_pct"]].copy()
+            editor_df = editor_df.rename(columns={"Display Name": "Product", "current_pct": "Huidig %"})
+            editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
+            editor_df["Doel %"] = editor_df["Huidig %"] # Default to current
+            
+            # Gebruik st.data_editor
+            edited_df = st.data_editor(
+                editor_df,
+                column_config={
+                    "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
+                    "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
+                    "Product": st.column_config.TextColumn(disabled=True),
+                },
+                use_container_width=True,
+                hide_index=True,
+                key="rebalance_editor"
             )
-            st.plotly_chart(fig_alloc, use_container_width=True, config={'scrollZoom': False})
+            
+            # --- 2. Calculate Actions ---
+            total_target = edited_df["Doel %"].sum()
+            if abs(total_target - 100.0) > 0.1:
+                st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet 100% zijn).")
+            
+            # Merge targets back to calculations
+            # We map back by Product name (Display Name)
+            
+            # Calculate Actions
+            results = []
+            for idx, row in edited_df.iterrows():
+                product_name = row["Product"]
+                target_pct = row["Doel %"]
+                
+                # Find current value
+                curr_val = alloc[alloc["Display Name"] == product_name]["alloc_value"].iloc[0]
+                
+                target_val = total_value * (target_pct / 100.0)
+                diff = target_val - curr_val
+                
+                action = "Kopen" if diff > 0 else "Verkopen"
+                if abs(diff) < 1.0: action = "-" # Ignore small dust
+                
+                results.append({
+                    "Product": product_name,
+                    "Huidig %": row["Huidig %"],
+                    "Doel %": target_pct,
+                    "Huidige Waarde": curr_val,
+                    "Doel Waarde": target_val,
+                    "Actie": action,
+                    "Verschil (EUR)": diff
+                })
+                
+            res_df = pd.DataFrame(results)
+            
+            # Show Action Table
+            st.markdown("#### Actie Advies")
+            st.dataframe(
+                res_df[["Product", "Actie", "Verschil (EUR)"]].style.format({"Verschil (EUR)": "€ {:.2f}"}),
+                use_container_width=True,
+                hide_index=True
+            )
+            
+            # --- 3. Visualize Current vs Target (Concentric Donut) ---
+            st.markdown("#### Huidig vs Doel (Overlay)")
+            
+            import plotly.graph_objects as go
+            
+            fig = go.Figure()
+
+            # Outer Ring = Huidige Verdeling (Current)
+            fig.add_trace(go.Pie(
+                labels=res_df["Product"],
+                values=res_df["Huidige Waarde"],
+                name="Huidig",
+                hole=0.6, # Grote ring
+                sort=False,
+                direction='clockwise',
+                showlegend=True,
+                marker=dict(line=dict(color='#000000', width=2))
+            ))
+
+            # Inner Circle = Doel Verdeling (Target)
+            fig.add_trace(go.Pie(
+                labels=res_df["Product"],
+                values=res_df["Doel Waarde"], # Target value creates the slice size
+                name="Doel",
+                hole=0, # Volle cirkel (of klein gat voor donut-in-donut: 0.3)
+                domain={'x': [0.25, 0.75], 'y': [0.25, 0.75]}, # Kleiner, inside
+                sort=False,
+                direction='clockwise',
+                showlegend=False, # Shared legend
+                textinfo='label+percent',
+                textposition='inside'
+            ))
+
+            fig.update_layout(
+                title="Buitenring = Huidig  |  Binnen = Doel",
+                legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
+                margin=dict(t=30, b=0, l=0, r=0)
+            )
+            
+            st.plotly_chart(fig, use_container_width=True)
+            
     else:
         st.caption("Geen open posities gevonden op basis van de transacties.")
 
