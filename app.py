@@ -873,8 +873,9 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             
             # --- 2. Calculate Actions ---
             total_target = edited_df["Doel %"].sum()
-            if abs(total_target - 100.0) > 0.1:
-                st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet 100% zijn).")
+            # Allow small float error (99.9 - 100.1 is fine)
+            if abs(total_target - 100.0) > 0.2:
+                st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet ~100% zijn).")
             
             # Merge targets back to calculations
             # We map back by Product name (Display Name)
@@ -884,6 +885,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
+                current_pct_rounded = row["Huidig %"]
                 
                 # Find current value
                 curr_val = alloc[alloc["Display Name"] == product_name]["alloc_value"].iloc[0]
@@ -892,11 +894,17 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 diff = target_val - curr_val
                 
                 action = "Kopen" if diff > 0 else "Verkopen"
-                if abs(diff) < 1.0: action = "-" # Ignore small dust
+                
+                # Filter rounding noise:
+                # If percentages match visually (delta < 0.1%), ignore the small manual amount
+                if abs(target_pct - current_pct_rounded) < 0.1: 
+                    action = "-"
+                elif abs(diff) < 5.0: # Also ignore very small amounts < 5 EUR
+                    action = "-"
                 
                 results.append({
                     "Product": product_name,
-                    "Huidig %": row["Huidig %"],
+                    "Huidig %": current_pct_rounded,
                     "Doel %": target_pct,
                     "Huidige Waarde": curr_val,
                     "Doel Waarde": target_val,
