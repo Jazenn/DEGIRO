@@ -3,6 +3,7 @@ import pandas as pd
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaIoBaseDownload, MediaIoBaseUpload
+import json
 
 class DriveStorage:
     def __init__(self, secrets, folder_id):
@@ -33,9 +34,10 @@ class DriveStorage:
         self.folder_id = folder_id
         self.filename = "transactions_master.csv"
 
-    def _find_file(self):
-        """Find the CSV file in the target folder."""
-        query = f"name = '{self.filename}' and '{self.folder_id}' in parents and trashed = false"
+    def _find_file(self, filename=None):
+        """Find the file in the target folder."""
+        target_name = filename if filename else self.filename
+        query = f"name = '{target_name}' and '{self.folder_id}' in parents and trashed = false"
         results = self.service.files().list(q=query, spaces="drive", fields="files(id, name)").execute()
         files = results.get("files", [])
         return files[0]["id"] if files else None
@@ -78,6 +80,46 @@ class DriveStorage:
             # Create new
             file_metadata = {
                 "name": self.filename,
+                "parents": [self.folder_id]
+            }
+            self.service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+    def load_json(self, filename: str) -> dict:
+        """Download a JSON file and return as dict."""
+        file_id = self._find_file(filename)
+        if not file_id:
+            return {}
+
+        request = self.service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        try:
+            return json.load(fh)
+        except Exception:
+            return {}
+
+    def save_json(self, filename: str, data: dict):
+        """Upload or update a JSON file from a dict."""
+        fh = io.BytesIO()
+        # Ensure UTF-8 text is written to the BytesIO buffer
+        fh.write(json.dumps(data, indent=2).encode('utf-8'))
+        
+        fh.seek(0)
+        media = MediaIoBaseUpload(fh, mimetype="application/json", resumable=False)
+        
+        file_id = self._find_file(filename)
+        if file_id:
+            # Update existing
+            self.service.files().update(fileId=file_id, media_body=media).execute()
+        else:
+            # Create new
+            file_metadata = {
+                "name": filename,
                 "parents": [self.folder_id]
             }
             self.service.files().create(body=file_metadata, media_body=media, fields="id").execute()

@@ -5,7 +5,9 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 import yfinance as yf
+import yfinance as yf
 from drive_utils import DriveStorage
+import json
 
 # Compatibility check for st.fragment (Streamlit 1.37+)
 if hasattr(st, "fragment"):
@@ -726,7 +728,7 @@ def render_metrics(df: pd.DataFrame) -> None:
 
 
 @fragment(run_every=30)
-def render_overview(df: pd.DataFrame) -> None:
+def render_overview(df: pd.DataFrame, drive=None) -> None:
     """Render de open posities tabel en allocatie chart met auto-refresh."""
     positions = build_positions(df)
     
@@ -793,8 +795,36 @@ def render_overview(df: pd.DataFrame) -> None:
                 display = display.set_index("Product").T
                 st.dataframe(display, use_container_width=True, key=f"table_{cat}")
 
+                st.dataframe(display, use_container_width=True, key=f"table_{cat}")
+
         # Portefeuilleverdeling & Rebalancing
         st.subheader("Portefeuilleverdeling & Rebalancing")
+        
+        # --- CONFIG PERSISTENCE ---
+        CONFIG_FILE = "target_config.json"
+        
+        def load_targets_config():
+            # Try Drive first if available
+            if drive:
+                return drive.load_json(CONFIG_FILE)
+            
+            # Fallback to local
+            if Path(CONFIG_FILE).exists():
+                try:
+                    with open(CONFIG_FILE, "r") as f:
+                        return json.load(f)
+                except:
+                    return {}
+            return {}
+
+        def save_targets_config(targets):
+            if drive:
+                drive.save_json(CONFIG_FILE, targets)
+            else:
+                with open(CONFIG_FILE, "w") as f:
+                    json.dump(targets, f)
+
+        saved_targets = load_targets_config() # Dict: {"ProductNaam": 10.0, ...}
         
         alloc = positions.copy()
         alloc["alloc_value"] = alloc["current_value"].fillna(alloc["invested"])
@@ -809,11 +839,18 @@ def render_overview(df: pd.DataFrame) -> None:
             st.write("Pas hieronder de gewenste verdeling aan:")
             
             # Prepare dataframe for editor
-            # We use session_state or default to current pct rounded
             editor_df = alloc[["Display Name", "current_pct"]].copy()
             editor_df = editor_df.rename(columns={"Display Name": "Product", "current_pct": "Huidig %"})
             editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
-            editor_df["Doel %"] = editor_df["Huidig %"] # Default to current
+            
+            # Initialize Doel % with Saved Values OR Default to Current
+            def get_target(row):
+                prod = row["Product"]
+                if prod in saved_targets:
+                    return float(saved_targets[prod])
+                return row["Huidig %"]
+
+            editor_df["Doel %"] = editor_df.apply(get_target, axis=1)
             
             # Gebruik st.data_editor
             edited_df = st.data_editor(
@@ -827,6 +864,12 @@ def render_overview(df: pd.DataFrame) -> None:
                 hide_index=True,
                 key="rebalance_editor"
             )
+            
+            # --- SAVE CHANGES ---
+            # Create a dictionary from the edited dataframe
+            new_targets = dict(zip(edited_df["Product"], edited_df["Doel %"]))
+            # Save if changed (simplest is to just save always on re-run)
+            save_targets_config(new_targets)
             
             # --- 2. Calculate Actions ---
             total_target = edited_df["Doel %"].sum()
@@ -918,7 +961,7 @@ def render_overview(df: pd.DataFrame) -> None:
 
 
 # Function for static tables/charts that doesn't need constant refresh/reset
-def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame) -> None:
+def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None) -> None:
     st.markdown("---")
     tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
         ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📋 Transacties"]
@@ -926,7 +969,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
 
     with tab_overview:
         # Dit fragment ververst elke 30 seconden
-        render_overview(df)
+        render_overview(df, drive=drive)
 
 
     with tab_balance:
@@ -1308,7 +1351,7 @@ def main() -> None:
     history_df = build_portfolio_history(df)
     
     render_metrics(df)
-    render_charts(df, history_df, trading_volume)
+    render_charts(df, history_df, trading_volume, drive=drive)
 
 
 if __name__ == "__main__":
