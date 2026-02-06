@@ -852,6 +852,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         
         if selected_period == "1D":
             start_date = now - pd.Timedelta(days=1)
+            resample_rule = '5min' # Forceer 5m rooster (zodat ffill/dropna logica werkt)
         elif selected_period == "1W":
             start_date = now - pd.Timedelta(weeks=1)
             resample_rule = '1H' # 1 Week view: Uurlijkse updates (niet 5m) start_date = now - pd.Timedelta(weeks=1)
