@@ -887,19 +887,33 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 target_pct = row["Doel %"]
                 current_pct_rounded = row["Huidig %"]
                 
-                # Find current value
-                curr_val = alloc[alloc["Display Name"] == product_name]["alloc_value"].iloc[0]
+                # Find current value and price
+                curr_row = alloc[alloc["Display Name"] == product_name].iloc[0]
+                curr_val = curr_row["alloc_value"]
+                last_price = curr_row.get("last_price", 0.0) # Price per share
+                if pd.isna(last_price): last_price = 0.0
                 
                 target_val = total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
                 action = "Kopen" if diff > 0 else "Verkopen"
                 
-                # Filter rounding noise:
-                # If percentages match visually (delta < 0.1%), ignore the small manual amount
-                if abs(target_pct - current_pct_rounded) < 0.1: 
-                    action = "-"
-                elif abs(diff) < 5.0: # Also ignore very small amounts < 5 EUR
+                # --- INTELLIGENT THRESHOLDS ---
+                is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
+                
+                if is_crypto:
+                    # Crypto: Only advise action if spread > 1%
+                    pct_diff = abs(target_pct - current_pct_rounded)
+                    if pct_diff <= 1.0:
+                        action = "-"
+                else:
+                    # Stocks/ETFs: Only advise action if value > 1 Share Price
+                    # (Can't buy half a share usually)
+                    if abs(diff) < last_price:
+                        action = "-"
+                
+                # Global fallback: Ignore tiny amounts < 5 EUR anyway
+                if abs(diff) < 5.0:
                     action = "-"
                 
                 results.append({
