@@ -971,15 +971,24 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             
             # --- 2. Calculate Actions ---
             total_target = edited_df["Doel %"].sum()
+            
+            st.markdown("---")
+            st.subheader("💡 Slimme Rebalancing met Budget")
+            extra_budget = st.number_input(
+                "Nieuwe investering (€)", 
+                min_value=0.0, 
+                step=50.0, 
+                help="Voer het bedrag in dat je extra wilt investeren."
+            )
+            
             # Allow small float error (99.9 - 100.1 is fine)
             if abs(total_target - 100.0) > 0.2:
                 st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet ~100% zijn).")
             
-            # Merge targets back to calculations
-            # We map back by Product name (Display Name)
-            
             # Calculate Actions
             results = []
+            new_total_value = total_value + extra_budget
+            
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
@@ -996,34 +1005,25 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 else:
                     # Case 2: Manually added product (Watchlist)
                     curr_val = 0.0
-                    last_price = 100.0 # Default for placeholder logic, but we might fetch it if it's a known ticker?
-                    # For now keep it simple: 0 current value.
+                    last_price = 100.0 # Default for placeholder logic
                 
-                target_val = total_value * (target_pct / 100.0)
+                # Target Value based on NEW total portfolio (Current + Budget)
+                target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
                 action = "Kopen" if diff > 0 else "Verkopen"
                 
                 # --- INTELLIGENT SCALING THRESHOLDS ---
-                # User request: "Schaal mee met portfolio size".
-                # Logic:
-                # 1. Minimum Drift: We want at least 1% deviation before we act (Noise filter for large portfolios).
-                # 2. Minimum Size: We need at least 1 Share (Stocks) or €25 (Crypto) to make a trade worth it.
-                
-                drift_threshold = total_value * 0.01 # 1% of Total Portfolio
+                # Noise filter: 1% drift or min size
+                drift_threshold = new_total_value * 0.01 
                 abs_diff = abs(diff)
                 
                 is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
                 
                 if is_crypto:
-                    # Crypto Logic:
-                    # Must overlap 1% drift AND be at least €25 value
                     if abs_diff < drift_threshold or abs_diff < 25.0:
                         action = "-"
                 else:
-                    # Stock Logic:
-                    # Must overlap 1% drift AND be at least 1 Share
-                    # (Prevent 'Buy 1 share' on a 100k portfolio if it's < 1% drift)
                     if abs_diff < drift_threshold or abs_diff < last_price:
                         action = "-"
                 
