@@ -1475,11 +1475,11 @@ def main() -> None:
     trading_volume = build_trading_volume_by_month(df)
     history_df = build_portfolio_history(df)    
     # Render Dashboard (pass drive OBJECT for saving targets, not the dataframe)
-    render_metrics(df_raw)
+    render_metrics(df)
     
     # Optimalisatie: render_charts roept build_portfolio_history aan, die nu gecached is.
     # We geven drive_instance mee voor rebalancing config opslag.
-    render_charts(df_raw, history_df, trading_volume, drive=drive_instance)
+    render_charts(df, history_df, trading_volume, drive=drive_instance)
 
 
 if __name__ == "__main__":
