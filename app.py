@@ -567,103 +567,139 @@ def fetch_tradegate_price(isin: str) -> float | None:
     return None
 
 
-@st.cache_data(ttl=30)
-def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
-    """Vraag de laatste slotkoers op. Eerst Tradegate (voor Vanguard/bekende), dan YFinance."""
-    if not tickers:
-        return {}
+# --- BACKGROUND PRICE MANAGER ---
+import threading
+import time
+import concurrent.futures
 
-    unique_tickers = sorted(list(set(t for t in tickers if t)))
-    results = {}
-    
-    # 1. Probeer Tradegate voor stocks waar we de ISIN van weten
-    ticker_to_isin = {v: k for k, v in PRICE_MAPPING_BY_ISIN.items()}
-    yf_tickers = []
-    
-    # Lijst van taken voor parallele uitvoering (Tradegate scraping is traag)
-    import concurrent.futures
-    
-    items_to_fetch = []
-    for t in unique_tickers:
-        if t in ticker_to_isin:
-            isin = ticker_to_isin[t]
-            if not isin.startswith("XFC"):
-                items_to_fetch.append((t, isin))
-        else:
-            yf_tickers.append(t)
+class PriceManager:
+    def __init__(self):
+        self.prices = {}
+        self.tickers_to_watch = set()
+        self.lock = threading.Lock()
+        self.running = True
+        # Start background thread
+        self.thread = threading.Thread(target=self._worker, daemon=True)
+        self.thread.start()
+        
+    def update_watchlist(self, tickers):
+        with self.lock:
+            # Add new tickers to the set
+            self.tickers_to_watch.update([t for t in tickers if t])
             
-    # Parallel scrapen (max 10 threads)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
-        future_to_ticker = {
-            executor.submit(fetch_tradegate_price, isin): t 
-            for t, isin in items_to_fetch
-        }
-        
-        for future in concurrent.futures.as_completed(future_to_ticker):
-            t = future_to_ticker[future]
-            try:
-                price = future.result()
-                if price:
-                    results[t] = price
-            except Exception:
-                pass
-    
-    # Wat we nog missen gaat naar YFinance
-    # Check wat we al hebben
-    already_found = set(results.keys())
-    # Voeg alles toe wat nog niet gevonden is (dus ook items die faalden op Tradegate)
-    for t in unique_tickers:
-        if t not in already_found and t not in yf_tickers:
-             yf_tickers.append(t)
-
-    if not yf_tickers:
-        return results
-
-    # 2. De overgebleven tickers via YFinance (Smart Selection)
-    download_list = yf_tickers[:]
-    alternatives = {"VWCE.DE": ["VWCE.F", "VWCE.SG"]}
-    
-    for main, alts in alternatives.items():
-        if main in yf_tickers:
-            download_list.extend(alts)
-
-    try:
-        data = yf.download(download_list, period="1d", group_by="ticker", progress=False)
-    except Exception:
-        return results
-
-    def get_latest_from_df(df_in) -> tuple[pd.Timestamp, float] | None:
-        if df_in.empty or "Close" not in df_in.columns: return None
-        valid = df_in["Close"].dropna()
-        if valid.empty: return None
-        return (valid.index[-1], float(valid.iloc[-1]))
-
-    for t in yf_tickers:
-        candidates = [t]
-        if t in alternatives: candidates += alternatives[t]
-        
-        best_ts = None
-        best_val = 0.0
-        
-        for cand in candidates:
-            try:
-                if len(download_list) == 1:
-                    df_cand = data
-                else:
-                    if cand not in data.columns.levels[0]: continue
-                    df_cand = data[cand]
+    def get_price(self, ticker):
+        with self.lock:
+            return self.prices.get(ticker)
+            
+    def _worker(self):
+        while self.running:
+            # 1. Get snapshot of tickers to avoid holding lock during fetch
+            with self.lock:
+                current_watchlist = list(self.tickers_to_watch)
+            
+            if not current_watchlist:
+                time.sleep(5)
+                continue
                 
-                res = get_latest_from_df(df_cand)
-                if res:
-                    ts, val = res
-                    if best_ts is None or ts > best_ts:
-                        best_ts = ts
-                        best_val = val
-            except Exception: pass
-        
-        if best_val > 0:
-            results[t] = best_val
+            # 2. Fetch Prices (Parallel Logic Reuse)
+            results = {}
+            ticker_to_isin = {v: k for k, v in PRICE_MAPPING_BY_ISIN.items()}
+            yf_tickers = []
             
+            items_to_fetch = []
+            for t in current_watchlist:
+                if t in ticker_to_isin:
+                    isin = ticker_to_isin[t]
+                    if not isin.startswith("XFC"):
+                        items_to_fetch.append((t, isin))
+                else:
+                    yf_tickers.append(t)
+            
+            # Parallel Scrape
+            with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+                future_to_ticker = {
+                    executor.submit(fetch_tradegate_price, isin): t 
+                    for t, isin in items_to_fetch
+                }
+                for future in concurrent.futures.as_completed(future_to_ticker):
+                    t = future_to_ticker[future]
+                    try:
+                        price = future.result()
+                        if price: results[t] = price
+                    except: pass
+            
+            # YFinance for remainder
+            already_found = set(results.keys())
+            yf_needed = [t for t in current_watchlist if t not in already_found and t not in yf_tickers]
+            yf_tickers.extend(yf_needed)
+            
+            # Deduplicate YF list
+            yf_tickers = list(set(yf_tickers))
+            
+            if yf_tickers:
+                download_list = yf_tickers[:]
+                alternatives = {"VWCE.DE": ["VWCE.F", "VWCE.SG"]}
+                for main, alts in alternatives.items():
+                    if main in yf_tickers: download_list.extend(alts)
+                
+                try:
+                    data = yf.download(download_list, period="1d", group_by="ticker", progress=False)
+                    # Helper for latest
+                    def _get_latest(df_in):
+                        if df_in.empty or "Close" not in df_in.columns: return 0.0
+                        valid = df_in["Close"].dropna()
+                        if valid.empty: return 0.0
+                        return float(valid.iloc[-1])
+
+                    for t in yf_tickers:
+                        candidates = [t]
+                        if t in alternatives: candidates += alternatives[t]
+                        best_val = 0.0
+                        for cand in candidates:
+                            try:
+                                if len(download_list) == 1: df_cand = data
+                                else: 
+                                    if cand not in data.columns.levels[0]: continue
+                                    df_cand = data[cand]
+                                val = _get_latest(df_cand)
+                                if val > best_val: best_val = val
+                            except: pass
+                        if best_val > 0: results[t] = best_val
+                except: pass
+
+            # 3. Update Shared State
+            with self.lock:
+                self.prices.update(results)
+            
+            # Sleep 60s before next update
+            time.sleep(60)
+
+# Singleton Resource
+@st.cache_resource
+def get_price_manager():
+    return PriceManager()
+
+
+def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
+    """
+    Vraag de laatste slotkoers op. 
+    NU ZERO-LATENCY: Haalt direct uit Background Manager cache.
+    """
+    if not tickers: return {}
+    
+    pm = get_price_manager()
+    
+    # 1. Register tickers so background worker knows what to fetch NEXT time
+    pm.update_watchlist(tickers)
+    
+    # 2. Return instantly known prices
+    # Note: First run might return empty or partial data, but UI won't block.
+    # Next auto-refresh (30s) will likely have the data.
+    results = {}
+    for t in tickers:
+        p = pm.get_price(t)
+        if p: results[t] = p
+        
     return results
 
 
