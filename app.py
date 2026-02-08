@@ -1011,38 +1011,56 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
-                action = "Kopen" if diff > 0 else "Verkopen"
-                
-                # --- INTELLIGENT SCALING THRESHOLDS ---
-                # Noise filter: 1% drift or min size
-                drift_threshold = new_total_value * 0.01 
-                abs_diff = abs(diff)
+                # --- CALCULATE QUANTITY (Accounting for whole shares) ---
+                qty_calculated = 0.0
+                if last_price > 0:
+                    qty_calculated = diff / last_price
                 
                 is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
                 
                 if is_crypto:
-                    if abs_diff < drift_threshold or abs_diff < 25.0:
-                        action = "-"
+                    qty_to_trade = qty_calculated
+                    executed_diff = diff
                 else:
-                    if abs_diff < drift_threshold or abs_diff < last_price:
-                        action = "-"
+                    # Stocks/ETFs use whole shares
+                    qty_to_trade = round(qty_calculated)
+                    executed_diff = qty_to_trade * last_price
+                
+                # --- PROJECTED NEW % (Based on actual execution) ---
+                new_val_projected = curr_val + executed_diff
+                new_pct_projected = (new_val_projected / new_total_value) * 100.0
+                
+                action = "Kopen" if diff > 0 else "Verkopen"
+                
+                # --- INTELLIGENT SCALING THRESHOLDS (Relaxed) ---
+                # Noise filter: Show '-' only if no action is possible/worth it.
+                abs_diff = abs(executed_diff)
+                if abs_diff < 1.0:
+                    action = "-"
+                elif not is_crypto and qty_to_trade == 0:
+                    action = "-"
                 
                 results.append({
                     "Product": product_name,
                     "Huidig %": current_pct_rounded,
                     "Doel %": target_pct,
-                    "Huidige Waarde": curr_val,
-                    "Doel Waarde": target_val,
+                    "Aantal": qty_to_trade,
                     "Actie": action,
-                    "Verschil (EUR)": diff
+                    "Verschil (EUR)": executed_diff,
+                    "Nieuw %": new_pct_projected
                 })
                 
             res_df = pd.DataFrame(results)
             
             # Show Action Table
             st.markdown("#### Actie Advies")
+            st.markdown("Dit overzicht houdt rekening met het feit dat aandelen (meestal) in hele stuks gekocht worden.")
             st.dataframe(
-                res_df[["Product", "Actie", "Verschil (EUR)"]].style.format({"Verschil (EUR)": "€ {:.2f}"}),
+                res_df[["Product", "Actie", "Verschil (EUR)", "Aantal", "Nieuw %"]].style.format({
+                    "Verschil (EUR)": "€ {:.2f}",
+                    "Aantal": "{:.4f}",
+                    "Nieuw %": "{:.2f} %"
+                }),
                 use_container_width=True,
                 hide_index=True
             )
