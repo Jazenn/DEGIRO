@@ -889,6 +889,19 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
 
         saved_targets = load_targets_config() # Dict: {"ProductNaam": 10.0, ...}
         
+        # --- UI FOR ADDING NEW ASSETS ---
+        with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
+            new_asset_name = st.text_input("Productnaam (bijv. Apple, NVIDIA)", key="new_asset_name")
+            new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
+            if st.button("Voeg toe"):
+                if new_asset_name:
+                    saved_targets[new_asset_name] = new_asset_target
+                    save_targets_config(saved_targets)
+                    st.toast(f"{new_asset_name} toegevoegd aan de lijst!", icon="✅")
+                    st.rerun()
+                else:
+                    st.error("Voer een naam in.")
+
         alloc = positions.copy()
         alloc["alloc_value"] = alloc["current_value"].fillna(alloc["invested"])
         alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
@@ -906,12 +919,20 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             editor_df = editor_df.rename(columns={"Display Name": "Product", "current_pct": "Huidig %"})
             editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
             
+            # MERGE WATCHLIST: Add products from saved_targets that are NOT in current positions
+            curr_prods = set(editor_df["Product"].unique())
+            for prod, target in saved_targets.items():
+                if prod not in curr_prods:
+                    # Append as new row with 0% current
+                    new_row = pd.DataFrame([{"Product": prod, "Huidig %": 0.0, "Doel %": target}])
+                    editor_df = pd.concat([editor_df, new_row], ignore_index=True)
+            
             # Initialize Doel % with Saved Values OR Default to Current
             def get_target(row):
                 prod = row["Product"]
                 if prod in saved_targets:
                     return float(saved_targets[prod])
-                return row["Huidig %"]
+                return row.get("Doel %", row["Huidig %"]) # Use Doel % if we just added it from watchlist
 
             editor_df["Doel %"] = editor_df.apply(get_target, axis=1)
             
@@ -927,6 +948,20 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 hide_index=True,
                 key="rebalance_editor"
             )
+            
+            # --- REMOVE OPTION ---
+            # Extract watchlist items (those with 0% current) for removal
+            watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Product"].tolist()
+            if watchlist_items:
+                to_remove = st.multiselect("Verwijder nieuwe aandelen:", watchlist_items)
+                if st.button("Verwijder geselecteerde"):
+                    for item in to_remove:
+                        if item in saved_targets:
+                            del saved_targets[item]
+                    save_targets_config(saved_targets)
+                    st.toast("Aandelen verwijderd!", icon="🗑️")
+                    st.rerun()
+
             
             # --- SAVE CHANGES ---
             # Create a dictionary from the edited dataframe
@@ -951,10 +986,18 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 current_pct_rounded = row["Huidig %"]
                 
                 # Find current value and price
-                curr_row = alloc[alloc["Display Name"] == product_name].iloc[0]
-                curr_val = curr_row["alloc_value"]
-                last_price = curr_row.get("last_price", 0.0) # Price per share
-                if pd.isna(last_price): last_price = 0.0
+                # Case 1: Product exists in current positions
+                match_rows = alloc[alloc["Display Name"] == product_name]
+                if not match_rows.empty:
+                    curr_row = match_rows.iloc[0]
+                    curr_val = curr_row["alloc_value"]
+                    last_price = curr_row.get("last_price", 0.0) 
+                    if pd.isna(last_price): last_price = 0.0
+                else:
+                    # Case 2: Manually added product (Watchlist)
+                    curr_val = 0.0
+                    last_price = 100.0 # Default for placeholder logic, but we might fetch it if it's a known ticker?
+                    # For now keep it simple: 0 current value.
                 
                 target_val = total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
