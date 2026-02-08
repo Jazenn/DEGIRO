@@ -292,6 +292,63 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     
     return monthly
 
+
+@st.cache_data(show_spinner=False)
+def build_quantity_history_cached(df: pd.DataFrame) -> dict:
+    """
+    Berekent voor ELK product de quantity op elke dag (5 jaar historie).
+    Dit is 'static' zolang de transacties (df) niet veranderen.
+    Returns: dict {ticker: pd.Series(quantity)}
+    """
+    if df.empty or "value_date" not in df.columns:
+        return {}
+
+    products = df["product"].unique()
+    valid_products = []
+    product_map = {}
+    
+    for p in products:
+        if not p: continue
+        isin_series = df.loc[df["product"] == p, "isin"]
+        isin = isin_series.iloc[0] if not isin_series.empty else None
+        ticker = map_to_ticker(p, isin)
+        if ticker:
+            product_map[p] = ticker
+            valid_products.append(p)
+            
+    if not valid_products: return {}
+    
+    mask = df["type"].isin(["Buy", "Sell"]) & df["product"].isin(valid_products)
+    relevant_tx = df[mask].copy()
+    relevant_tx = relevant_tx.dropna(subset=["value_date"])
+    
+    start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
+    now = pd.Timestamp.now()
+    full_daily_index = pd.date_range(start=start_date, end=now, freq="D")
+    
+    results = {}
+    
+    for p in valid_products:
+        ticker = product_map[p]
+        tx_p = relevant_tx[relevant_tx["product"] == p].copy()
+        if tx_p.empty: continue
+            
+        # Group by date and sum
+        tx_p = tx_p.groupby("value_date")["quantity"].sum().sort_index()
+        
+        # Cumsum on transaction moments
+        qty_on_tx = tx_p.cumsum()
+        
+        # Combine with full daily index
+        combined_index = qty_on_tx.index.union(full_daily_index).sort_values()
+        
+        # Reindex and ffill
+        daily_qty = qty_on_tx.reindex(combined_index, method='ffill').fillna(0)
+        
+        results[ticker] = daily_qty
+        
+    return results
+
 # @st.cache_data removed to allow fresh 5-min updates
 def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
@@ -352,52 +409,21 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     yf_data_5m = fetch_short_term_data_cached(unique_tickers)    # 5 min cache (2 dagen 5m)
         
     if yf_data_daily is None or yf_data_daily.empty:
-        # Als download faalt, kunnen we niet verder
         return pd.DataFrame()
+
+    # HAAL GECACHTE AANTALLEN OP (Nieuw)
+    # Dit is de zware "reindex/ffill" logica die nu maar 1x draait per upload
+    quantity_map = build_quantity_history_cached(df)
 
     # Verwerk per product
     for p in valid_products:
         ticker = product_map[p]
         
-        tx_p = relevant_tx[relevant_tx["product"] == p].copy()
-        if tx_p.empty:
+        # Haal de voorberekende daily quantities op
+        if ticker not in quantity_map:
             continue
             
-        # Zet datum index.
-        # LET OP: Als er meerdere transacties op exact hetzelfde moment zijn,
-        # moeten we die sommeren, anders krijgen we duplicate index errors bij reindex().
-        tx_p = tx_p.groupby("value_date")["quantity"].sum().sort_index()
-        
-        # Resample naar dag om gaten te vullen, daarna cumsum
-        # FIX: Resample("D") vernietigt de tijdcomponent (zet alles op 00:00).
-        # We willen de exacte tijd van transactie behouden voor intraday charts.
-        # Maar we hebben OOK een dagelijks rooster nodig voor de periodes tussen transacties.
-        
-        # 1. Bereken cumstratieve stand op de exacte transactiemomenten
-        qty_on_tx = tx_p.cumsum()
-        
-        # 2. Maak ook een dagelijks rooster (nodig voor de lange historie en 'gaten' vullen)
-        #    Dit rooster moet aansluiten op start_date (5 jaar geleden)
-        now = pd.Timestamp.now()
-        full_daily_index = pd.date_range(start=start_date, end=now, freq="D")
-        
-        # 3. Combineer de exacte transactiemomenten met het dagelijkse rooster
-        #    Zo hebben we én punten op 00:00 (voor de lange termijn) én punten op 13:00 (als er gekocht is)
-        combined_index = qty_on_tx.index.union(full_daily_index).sort_values()
-        
-        # 4. Reindex naar dit gecombineerde rooster en vul vooruit (ffill)
-        #    De transacties (qty_on_tx) zijn leidend. Het dagrooster neemt de stand over van de laatste tx.
-        #    We gebruiken reindex op qty_on_tx, maar moeten opletten dat 'nieuwe' dagen de waarde krijgen.
-        #    Beter: concat en dan ffill? Of reindex met method='ffill'?
-        
-        #    Slimmer: We reindexen qty_on_tx naar de combined_index met ffill.
-        #    Echter, qty_on_tx begint pas bij de eerste aankoop. Dagen d'rvoor worden NaN (en later 0).
-        daily_qty = qty_on_tx.reindex(combined_index, method='ffill').fillna(0)
-        
-        # (Oude Code, deleted to avoid confusion)
-        # daily_qty = tx_p.resample("D").sum().cumsum()
-        # ...
-        # normal reindex logic replaced by above.
+        daily_qty = quantity_map[ticker]
         
         # Helper functie om series op te halen uit yf resultaat
         def get_price_series(data_obj, t):
