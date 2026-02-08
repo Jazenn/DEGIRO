@@ -814,13 +814,22 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             if not cat_df.empty:
                 st.markdown(f"#### {cat}")
                 display = cat_df.copy()
-                display["Totaal geinvesteerd"] = display["invested"].map(format_eur)
-                display["Huidige waarde"] = display["current_value"].map(format_eur)
                 
-                # Winst/verlies berekening
-                display["Winst/verlies (EUR)"] = (
-                    display["current_value"] + display["net_cashflow"]
-                ).map(format_eur)
+                # --- CALCULATION LOGIC: MATCH DEGIRO (Include Fees) ---
+                # 'invested' is buy_cash (positive sum).
+                # 'total_fees' is typically negative in the CSV.
+                # We add ABS(fees) to invested to show the true 'Cost Basis' (GAK).
+                display["Totaal geinvesteerd"] = (display["invested"] + display["total_fees"].abs())
+                
+                # Winst/verlies berekening (EUR)
+                # Net profit = Current Value + Net Cashflow (which sums buys(-), sells(+), fees(-), divs(+))
+                # This already correctly factors in fees! 
+                display["Winst/verlies (EUR)"] = (display["current_value"] + display["net_cashflow"])
+                
+                # Format for display
+                display["Totaal geinvesteerd"] = display["Totaal geinvesteerd"].map(format_eur)
+                display["Huidige waarde"] = display["current_value"].map(format_eur)
+                display["Winst/verlies (EUR)"] = display["Winst/verlies (EUR)"].map(format_eur)
 
                 def _pl_pct(row: pd.Series) -> float | None:
                     cur = row.get("current_value")
@@ -1126,9 +1135,21 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 df_chart = subset.copy()
                 if "date" in df_chart.columns:
                     df_chart = df_chart.set_index("date").sort_index()
+
+                # --- TIMEZONE CONVERSION (Amsterdam) ---
+                try:
+                    if df_chart.index.tz is None:
+                        df_chart.index = df_chart.index.tz_localize("UTC")
+                    df_chart.index = df_chart.index.tz_convert("Europe/Amsterdam")
+                except:
+                    pass
                 
                 if start_date:
-                    df_chart = df_chart[df_chart.index >= start_date]
+                    # Ensure start_date is comparable (localize if needed)
+                    s_date = pd.Timestamp(start_date)
+                    if s_date.tz is None and df_chart.index.tz is not None:
+                        s_date = s_date.tz_localize(df_chart.index.tz)
+                    df_chart = df_chart[df_chart.index >= s_date]
 
                 # --- GAP REMOVAL SETUP ---
                 # Check for Crypto BEFORE resampling
@@ -1222,8 +1243,19 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     if "date" in compare_df.columns:
                         compare_df = compare_df.set_index("date").sort_index()
 
+                    # --- TIMEZONE CONVERSION (Amsterdam) ---
+                    try:
+                        if compare_df.index.tz is None:
+                            compare_df.index = compare_df.index.tz_localize("UTC")
+                        compare_df.index = compare_df.index.tz_convert("Europe/Amsterdam")
+                    except:
+                        pass
+
                     if start_date:
-                        compare_df = compare_df[compare_df.index >= start_date]
+                        s_date = pd.Timestamp(start_date)
+                        if s_date.tz is None and compare_df.index.tz is not None:
+                             s_date = s_date.tz_localize(compare_df.index.tz)
+                        compare_df = compare_df[compare_df.index >= s_date]
                     
                     # Resampling moet per groep (product) gebeuren anders vermengen we data
                     if resample_rule:
