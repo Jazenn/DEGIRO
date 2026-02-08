@@ -342,22 +342,15 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     # CRITICAAL: normalize() gebruiken zodat we op 00:00:00 uitkomen, anders matcht de index 
     # later niet met de normalized price data.
     start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
-    start_date_str = start_date.strftime("%Y-%m-%d")
 
     # Download data voor alle tickers in 1 keer (efficiënter)
     unique_tickers = list(set(product_map.values()))
-    try:
-        # Download DAGELIJKSE data (was wekelijks)
-        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
+    
+    # GEHEUGEN OPTIMALISATIE: We gebruiken nu de cached functie
+    yf_data, yf_data_hourly = fetch_historical_data_cached(unique_tickers)
         
-        # Download HOURLY/INTRADAY data voor de laatste 8 dagen
-        # period="5d" is te kort voor een volledige week view (7 dagen).
-        # We gebruiken start=... om expliciet 8 dagen terug te gaan.
-        start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
-        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False)
-        
-    except Exception as e:
-        st.error(f"Fout bij ophalen historische data: {e}")
+    if yf_data is None or yf_data.empty:
+        # Als download faalt, kunnen we niet verder
         return pd.DataFrame()
 
     # Verwerk per product
@@ -674,11 +667,38 @@ class PriceManager:
             # Sleep 60s before next update
             time.sleep(60)
 
+
 # Singleton Resource
 @st.cache_resource
 def get_price_manager():
     return PriceManager()
 
+@st.cache_data(ttl=3600)
+def fetch_historical_data_cached(tickers: list[str]):
+    """
+    Haalt historische data op voor een lijst tickers en cached dit 1 uur.
+    Geeft terug: (daily_data, hourly_data)
+    """
+    if not tickers:
+        return pd.DataFrame(), pd.DataFrame()
+        
+    # Sorteer tickers voor consistente cache key
+    sorted_tickers = sorted(list(set(tickers)))
+    
+    start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
+    start_date_str = start_date.strftime("%Y-%m-%d")
+    
+    try:
+        # 1. Daily Data (5 Jaar)
+        data_daily = yf.download(sorted_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
+        
+        # 2. Hourly Data (Laatste 8 dagen)
+        start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
+        data_hourly = yf.download(sorted_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False)
+        
+        return data_daily, data_hourly
+    except Exception:
+        return pd.DataFrame(), pd.DataFrame()
 
 def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
     """
