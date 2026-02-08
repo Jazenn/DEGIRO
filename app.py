@@ -345,7 +345,13 @@ def build_quantity_history_cached(df: pd.DataFrame) -> dict:
         # Reindex and ffill
         daily_qty = qty_on_tx.reindex(combined_index, method='ffill').fillna(0)
         
-        results[ticker] = daily_qty
+        if ticker in results:
+            # If ticker already exists (e.g. multiple products mapping to same ticker), SUM them.
+            # Align indices first (union) to be safe, though they should be identical (full_daily_index).
+            # Fast simple sum assumed safe on same daily index.
+            results[ticker] = results[ticker] + daily_qty
+        else:
+            results[ticker] = daily_qty
         
     return results
 
@@ -415,131 +421,121 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     # Dit is de zware "reindex/ffill" logica die nu maar 1x draait per upload
     quantity_map = build_quantity_history_cached(df)
 
-    # Verwerk per product
-    for p in valid_products:
-        ticker = product_map[p]
-        
-        # Haal de voorberekende daily quantities op
-        if ticker not in quantity_map:
-            continue
-            
-        daily_qty = quantity_map[ticker]
-        
-        # Helper functie om series op te halen uit yf resultaat
-        def get_price_series(data_obj, t):
+    # --- VECTORIZED IMPLEMENTATION ---
+    print("Start Vectorized Calc")
+    
+    # 1. Convert Quantity Dict to DataFrame (Index: Daily Date, Columns: Ticker)
+    if not quantity_map: return pd.DataFrame()
+    qty_df = pd.DataFrame(quantity_map) 
+    # qty_df index is Daily.
+    
+    # 2. Stitch Price Dataframes (Values: Close Price)
+    # We assume yf_data_* are MultiIndex (Ticker, "Close", ...) or just (Ticker -> Cols)
+    # yf.download(group_by='ticker') usually gives (Ticker, PriceType) columns.
+    # We need to extract just "Close" for all tickers.
+    
+    def extract_close(df_in):
+        if df_in is None or df_in.empty: return pd.DataFrame()
+        # If MultiIndex columns (Ticker, OHLCV)
+        if isinstance(df_in.columns, pd.MultiIndex):
+            # We want the "Close" column for each level 0
+            # A bit tricky to get all "Close" columns at once cleanly without iterating?
+            # df.xs('Close', axis=1, level=1, drop_level=False) works if level 1 is PriceType
             try:
-                if isinstance(data_obj.columns, pd.MultiIndex):
-                    if t in data_obj.columns.levels[0]:
-                        return data_obj[t]["Close"]
-                # Fallback if structure is different (e.g. single ticker not creating multiindex level 0 properly sometimes)
-                if "Close" in data_obj.columns:
-                     return data_obj["Close"]
+                # Check levels. Usually level 1 is 'Close'
+                closes = df_in.xs('Close', axis=1, level=1, drop_level=True)
+                return closes
             except:
                 pass
-            return pd.Series(dtype=float)
-
-        price_series_daily = get_price_series(yf_data_daily, ticker)
-        price_series_hourly = get_price_series(yf_data_hourly, ticker)
-        price_series_5m = get_price_series(yf_data_5m, ticker)
-
-        if price_series_daily.empty and price_series_hourly.empty and price_series_5m.empty:
-            continue
-            
-        # 1. Verwerk Daily
-        # Zorg dat de price_series tijdzone-informatie kwijtraakt
-        if price_series_daily.index.tz is not None:
-             price_series_daily.index = price_series_daily.index.tz_localize(None)
-        price_series_daily.index = price_series_daily.index.normalize() # 00:00
-
-        # 2. Verwerk Hourly (8 dagen)
-        if not price_series_hourly.empty:
-             if price_series_hourly.index.tz is not None:
-                price_series_hourly.index = price_series_hourly.index.tz_localize(None)
-
-        # 3. Verwerk 5m (2 dagen)
-        if not price_series_5m.empty:
-             if price_series_5m.index.tz is not None:
-                price_series_5m.index = price_series_5m.index.tz_localize(None)
-
-        # 4. Stitch Logic (3-Traps Raket)
-        # cutoff_hourly = T - 8 dagen
-        # cutoff_5m = T - 2 dagen
-        now = pd.Timestamp.now()
-        cutoff_hourly = now - pd.Timedelta(days=8)
-        cutoff_5m = now - pd.Timedelta(days=2)
-        
-        # Deel 1: Daily (Alles voor 8 dagen geleden)
-        part1 = price_series_daily[price_series_daily.index < cutoff_hourly]
-        
-        # Deel 2: Hourly (Tussen 8 en 2 dagen geleden)
-        # We pakken alles vanaf cutoff_hourly, maar stoppen voor cutoff_5m
-        # (Of we pakken alles en laten 5m het overschrijven, maar filteren is schoner)
-        if not price_series_hourly.empty:
-            part2 = price_series_hourly[
-                (price_series_hourly.index >= cutoff_hourly) & 
-                (price_series_hourly.index < cutoff_5m)
-            ]
-        else:
-            part2 = pd.Series(dtype=float)
-            
-        # Deel 3: 5m (Laatste 2 dagen)
-        if not price_series_5m.empty:
-            part3 = price_series_5m[price_series_5m.index >= cutoff_5m]
-        else:
-            # Fallback: als 5m leeg is (weekend/beurs dicht?), pak dan hourly voor laatste stuk
-            if not price_series_hourly.empty:
-                part3 = price_series_hourly[price_series_hourly.index >= cutoff_5m]
-            else:
-                part3 = pd.Series(dtype=float)
-        
-        # Combineer
-        full_price_series = pd.concat([part1, part2, part3]).sort_index()
-        
-        # Remove duplicates (if partial overlap)
-        full_price_series = full_price_series[~full_price_series.index.duplicated(keep='last')]
-             
-        # Maak dataframe van de prices
-        hist_df = full_price_series.to_frame(name="price")
-        
-        # (Oude logica voor latest_data weghalen, want hourly data dekt dit nu beter)
-
-        if daily_qty.index.tz is not None:
-            daily_qty.index = daily_qty.index.tz_localize(None)
-        
-        if hist_df.index.tz is not None:
-            hist_df.index = hist_df.index.tz_localize(None)
-
-        # CORRECTIE: We gebruiken nu de index van hist_df (die Daily + Hourly combineert).
-        # We reindexen de daily_qty naar deze fijnmazige index.
-        # aligned_qty behoudt de 00:00 waarden en ffill't ze naar de uren.
-        aligned_qty = daily_qty.reindex(hist_df.index, method='ffill').fillna(0)
-        
-        combined_df = pd.DataFrame(index=hist_df.index)
-        combined_df["price"] = hist_df["price"]
-        combined_df["quantity"] = aligned_qty
-        
-        combined_df["product"] = p
-        combined_df["ticker"] = ticker
-        
-        # Bereken waarde
-        combined_df["value"] = combined_df["quantity"] * combined_df["price"]
-        
-        # Filter rijen waar we nog niks hadden
-        # Na reindex kunnen er NaNs zijn in price (als daily_qty eerder begint dan available price history)
-        combined_df = combined_df.dropna(subset=["price"])
-        # We verwijderen rows met quantity 0 NIET meer, omdat we de prijslijn (secondary y) 
-        # ook willen zien als we het aandeel nog niet hadden.
-        # combined_df = combined_df[combined_df["quantity"] != 0]
-        
-        if not combined_df.empty:
-            history_frames.append(combined_df)
-        # else:
-            # st.write(f"DEBUG: Combined DF empty for {ticker} after merge/dropna")
-
-    if not history_frames:
         return pd.DataFrame()
+
+    daily_close = extract_close(yf_data_daily)
+    hourly_close = extract_close(yf_data_hourly)
+    m5_close = extract_close(yf_data_5m)
+    
+    # 3. Handle Timestamps & Timezones
+    # Normalize Daily to 00:00, Remove TZ from others
+    if not daily_close.empty:
+        if daily_close.index.tz is not None: daily_close.index = daily_close.index.tz_localize(None)
+        daily_close.index = daily_close.index.normalize()
         
-    final_df = pd.concat(history_frames)
+    if not hourly_close.empty:
+         if hourly_close.index.tz is not None: hourly_close.index = hourly_close.index.tz_localize(None)
+         
+    if not m5_close.empty:
+         if m5_close.index.tz is not None: m5_close.index = m5_close.index.tz_localize(None)
+
+    # 4. Stitch Time Segments (Global Cutoffs)
+    now = pd.Timestamp.now()
+    cutoff_hourly = now - pd.Timedelta(days=8)
+    cutoff_5m = now - pd.Timedelta(days=2)
+    
+    # Slice
+    p1 = daily_close[daily_close.index < cutoff_hourly] if not daily_close.empty else pd.DataFrame()
+    
+    p2 = pd.DataFrame()
+    if not hourly_close.empty:
+        p2 = hourly_close[(hourly_close.index >= cutoff_hourly) & (hourly_close.index < cutoff_5m)]
+        
+    p3 = pd.DataFrame()
+    if not m5_close.empty:
+        p3 = m5_close[m5_close.index >= cutoff_5m]
+    else:
+        # Fallback
+        if not hourly_close.empty:
+             p3 = hourly_close[hourly_close.index >= cutoff_5m]
+
+    # Concat
+    master_prices = pd.concat([p1, p2, p3]).sort_index()
+    # Deduplicate index
+    master_prices = master_prices[~master_prices.index.duplicated(keep='last')]
+    
+    if master_prices.empty: return pd.DataFrame()
+
+    # 5. Align Quantities to Master Price Index
+    # We forward fill the daily quantities to match the high-res timestamp
+    aligned_qty = qty_df.reindex(master_prices.index, method='ffill').fillna(0)
+    
+    # 6. Align Columns (Tickers)
+    # Ensure both have same columns. 
+    common_tickers = aligned_qty.columns.intersection(master_prices.columns)
+    if common_tickers.empty: return pd.DataFrame()
+    
+    aligned_qty = aligned_qty[common_tickers]
+    master_prices = master_prices[common_tickers]
+    
+    # 7. Calculate Value (Matrix Multiplication)
+    value_df = aligned_qty * master_prices
+    
+    # 8. Stack to Long Format
+    # Result index is Date, Columns are Tickers
+    # We want: date, ticker, value, price, quantity
+    
+    # Stack creates MultiIndex (Date, Ticker)
+    value_series = value_df.stack()
+    price_series = master_prices.stack()
+    qty_series = aligned_qty.stack()
+    
+    final_df = pd.DataFrame({
+        "value": value_series,
+        "price": price_series,
+        "quantity": qty_series
+    }).reset_index()
+    
+    # Columns are now: date, level_1 (Ticker), value, price, quantity
+    final_df = final_df.rename(columns={"level_1": "ticker"})
+    
+    # 9. Map Ticker back to Product Name
+    # Reverse map: ticker -> product
+    # We have product_map: product -> ticker
+    # We need ticker -> product. Note: One ticker might map to multiple products (rare but possible?).
+    # Assuming 1-to-1 or just picking one.
+    ticker_to_product = {v: k for k, v in product_map.items()} 
+    final_df["product"] = final_df["ticker"].map(ticker_to_product)
+    
+    # Drop rows where product is NaN (ticker not in map)
+    final_df = final_df.dropna(subset=["product"])
+    
     # Zorg dat de index een naam heeft, zodat reset_index() een kolom 'date' maakt
     final_df.index.name = "date"
     return final_df.reset_index()
