@@ -172,6 +172,7 @@ def parse_quantity(description: str) -> float:
 
 
 
+@st.cache_data(show_spinner=False)
 def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
     """Voeg extra kolommen toe: type, quantity, categorieën."""
     df = df.copy()
@@ -291,9 +292,7 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     
     return monthly
 
-
-# @st.cache_data(ttl=3600)
-@st.cache_data(show_spinner=False)
+# @st.cache_data removed to allow fresh 5-min updates
 def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
@@ -347,10 +346,12 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     # Download data voor alle tickers in 1 keer (efficiënter)
     unique_tickers = list(set(product_map.values()))
     
-    # GEHEUGEN OPTIMALISATIE: We gebruiken nu de cached functie
-    yf_data, yf_data_hourly = fetch_historical_data_cached(unique_tickers)
+    # GEHEUGEN OPTIMALISATIE: We gebruiken nu gesplitste cachers voor versheid vs snelheid
+    yf_data_daily = fetch_long_term_data_cached(unique_tickers)  # 1 uur cache
+    yf_data_hourly = fetch_medium_term_data_cached(unique_tickers) # 1 uur cache (8 dagen hourly)
+    yf_data_5m = fetch_short_term_data_cached(unique_tickers)    # 5 min cache (2 dagen 5m)
         
-    if yf_data is None or yf_data.empty:
+    if yf_data_daily is None or yf_data_daily.empty:
         # Als download faalt, kunnen we niet verder
         return pd.DataFrame()
 
@@ -411,10 +412,11 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
                 pass
             return pd.Series(dtype=float)
 
-        price_series_daily = get_price_series(yf_data, ticker)
+        price_series_daily = get_price_series(yf_data_daily, ticker)
         price_series_hourly = get_price_series(yf_data_hourly, ticker)
+        price_series_5m = get_price_series(yf_data_5m, ticker)
 
-        if price_series_daily.empty and price_series_hourly.empty:
+        if price_series_daily.empty and price_series_hourly.empty and price_series_5m.empty:
             continue
             
         # 1. Verwerk Daily
@@ -423,29 +425,49 @@ def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
              price_series_daily.index = price_series_daily.index.tz_localize(None)
         price_series_daily.index = price_series_daily.index.normalize() # 00:00
 
-        # 2. Verwerk Hourly
+        # 2. Verwerk Hourly (8 dagen)
         if not price_series_hourly.empty:
              if price_series_hourly.index.tz is not None:
-                # Convert to local/naive to match daily (assuming local time vs UTC doesn't break logic too much, 
-                # strictly speaking mixing UTC and Local is bad, but for dashboard display naive is often easiest)
-                # Better: tz_convert to 'Europe/Amsterdam' then localize(None)? 
-                # For now: just strip TZ.
                 price_series_hourly.index = price_series_hourly.index.tz_localize(None)
 
-        # 3. Stitch: Daily tot 8 dagen geleden, daarna Hourly
-        # Zodat 'oude' data (langer dan 8 dagen geleden) gewoon daily is, 
-        # en alleen de laatste week (+ beetje buffer) in detail is.
-        cutoff = pd.Timestamp.now() - pd.Timedelta(days=8)
+        # 3. Verwerk 5m (2 dagen)
+        if not price_series_5m.empty:
+             if price_series_5m.index.tz is not None:
+                price_series_5m.index = price_series_5m.index.tz_localize(None)
+
+        # 4. Stitch Logic (3-Traps Raket)
+        # cutoff_hourly = T - 8 dagen
+        # cutoff_5m = T - 2 dagen
+        now = pd.Timestamp.now()
+        cutoff_hourly = now - pd.Timedelta(days=8)
+        cutoff_5m = now - pd.Timedelta(days=2)
         
-        # Filter daily to be BEFORE the hourly data starts (roughly)
-        # Or just take everything before cutoff
-        part1 = price_series_daily[price_series_daily.index < cutoff]
+        # Deel 1: Daily (Alles voor 8 dagen geleden)
+        part1 = price_series_daily[price_series_daily.index < cutoff_hourly]
         
-        # Part 2 is hourly data
-        part2 = price_series_hourly
+        # Deel 2: Hourly (Tussen 8 en 2 dagen geleden)
+        # We pakken alles vanaf cutoff_hourly, maar stoppen voor cutoff_5m
+        # (Of we pakken alles en laten 5m het overschrijven, maar filteren is schoner)
+        if not price_series_hourly.empty:
+            part2 = price_series_hourly[
+                (price_series_hourly.index >= cutoff_hourly) & 
+                (price_series_hourly.index < cutoff_5m)
+            ]
+        else:
+            part2 = pd.Series(dtype=float)
+            
+        # Deel 3: 5m (Laatste 2 dagen)
+        if not price_series_5m.empty:
+            part3 = price_series_5m[price_series_5m.index >= cutoff_5m]
+        else:
+            # Fallback: als 5m leeg is (weekend/beurs dicht?), pak dan hourly voor laatste stuk
+            if not price_series_hourly.empty:
+                part3 = price_series_hourly[price_series_hourly.index >= cutoff_5m]
+            else:
+                part3 = pd.Series(dtype=float)
         
         # Combineer
-        full_price_series = pd.concat([part1, part2]).sort_index()
+        full_price_series = pd.concat([part1, part2, part3]).sort_index()
         
         # Remove duplicates (if partial overlap)
         full_price_series = full_price_series[~full_price_series.index.duplicated(keep='last')]
@@ -674,32 +696,45 @@ class PriceManager:
 def get_price_manager():
     return PriceManager()
 
-@st.cache_data(ttl=3600)
-def fetch_historical_data_cached(tickers: list[str]):
+@st.cache_data(ttl=3600, show_spinner=False)
+def fetch_long_term_data_cached(tickers: list[str]):
     """
-    Haalt historische data op voor een lijst tickers en cached dit 1 uur.
-    Geeft terug: (daily_data, hourly_data)
+    Haalt DAGELIJKSE data (5 Jaar) op en cached dit 1 uur.
     """
-    if not tickers:
-        return pd.DataFrame(), pd.DataFrame()
-        
-    # Sorteer tickers voor consistente cache key
+    if not tickers: return pd.DataFrame()
     sorted_tickers = sorted(list(set(tickers)))
-    
     start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
     start_date_str = start_date.strftime("%Y-%m-%d")
-    
     try:
-        # 1. Daily Data (5 Jaar)
-        data_daily = yf.download(sorted_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
-        
-        # 2. Hourly Data (Laatste 8 dagen)
-        start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
-        data_hourly = yf.download(sorted_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False)
-        
-        return data_daily, data_hourly
-    except Exception:
-        return pd.DataFrame(), pd.DataFrame()
+        return yf.download(sorted_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
+    except: return pd.DataFrame()
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_short_term_data_cached(tickers: list[str]):
+    """
+    Haalt SHORT TERM data (2 Dagen) op en cached dit 5 MINUTEN.
+    Voor de 1-dag grafiek.
+    """
+    if not tickers: return pd.DataFrame()
+    sorted_tickers = sorted(list(set(tickers)))
+    # 2 Dagen terug (beetje ruimer nemen voor zekerheid)
+    start_5m = (pd.Timestamp.now() - pd.Timedelta(days=3)).strftime("%Y-%m-%d")
+    try:
+        return yf.download(sorted_tickers, start=start_5m, interval="5m", group_by="ticker", progress=False)
+    except: return pd.DataFrame()
+
+@st.cache_data(ttl=3600, show_spinner=False) 
+def fetch_medium_term_data_cached(tickers: list[str]):
+    """
+    Haalt MEDIUM TERM data (8 Dagen) op en cached dit 1 UUR.
+    Voor de 1-week grafiek (Hourly is genoeg).
+    """
+    if not tickers: return pd.DataFrame()
+    sorted_tickers = sorted(list(set(tickers)))
+    start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
+    try:
+        return yf.download(sorted_tickers, start=start_hourly, interval="1h", group_by="ticker", progress=False)
+    except: return pd.DataFrame()
 
 def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
     """
