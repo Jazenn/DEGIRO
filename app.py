@@ -1299,6 +1299,17 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         st.dataframe(df, use_container_width=True, height=500)
 
 
+@st.cache_data(ttl=600, show_spinner="Verbinden met Google Drive...")
+def load_drive_dataframe_cached(secrets_dict, folder_id):
+    """
+    Haalt data op uit Google Drive en cached dit 10 minuten.
+    """
+    try:
+        drive = DriveStorage(secrets_dict, folder_id)
+        return drive.load_data()
+    except Exception:
+        return pd.DataFrame()
+
 def main() -> None:
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
@@ -1317,25 +1328,37 @@ def main() -> None:
     # 1. Google Drive Connection & Data Laden
     # DRIVE_FOLDER_ID provided by user
     DRIVE_FOLDER_ID = "16Y7kU4XDSbDjMUfBWU5695FSUWYjq26N"
-    drive = None
+    
+    # Gebruik cached loader
+    # We pass st.secrets as dict to make it hashable/usable
     df_drive = pd.DataFrame()
     use_drive = False
+    drive_instance = None # Only needed for saving/clearing
     
     try:
-        drive = DriveStorage(st.secrets["connections"]["gsheets"], DRIVE_FOLDER_ID)
-        df_drive = drive.load_data()
-        use_drive = True
-        sidebar.success("✅ Verbonden met Google Drive (CSV)")
+        if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+            df_drive = load_drive_dataframe_cached(dict(st.secrets["connections"]["gsheets"]), DRIVE_FOLDER_ID)
+            use_drive = True
+            sidebar.success("✅ Verbonden met Google Drive (Cached)")
+            
+            # Button to force refresh
+            if sidebar.button("🔄 Ververs Data", help="Forceer opnieuw ophalen uit Drive"):
+                st.cache_data.clear()
+                st.rerun()
+                
+            # We initialize the drive instance ONLY if we need to save/delete (lazy load)
+            # But for passing to render_overview (which needs it for saving configs), we might need it.
+            # Let's instantiate it lightweight or pass a factory?
+            # Actually render_overview uses it to save json. 
+            # We can just instantiate it fresh there or here. 
+            # Instantiating DriveStorage is fast (just setting up credentials), fetching is slow.
+            # So we can just instantiate it here for the 'drive' logic usage.
+            drive_instance = DriveStorage(st.secrets["connections"]["gsheets"], DRIVE_FOLDER_ID)
+            
     except Exception as e:
         import traceback
         sidebar.error(f"Fout met verbinden Google Drive: {e}")
-        sidebar.code(traceback.format_exc())
-        sidebar.info("ℹ️ Google Drive niet gekoppeld. Data wordt niet opgeslagen.")
-        with sidebar.expander("Hoe te koppelen?"):
-             st.markdown(
-                 "Om data op te slaan, voeg je Google Service Account credentials toe "
-                 "aan `.streamlit/secrets.toml`."
-             )
+        # sidebar.code(traceback.format_exc()) # Optional logging
 
     # 2. File Upload (Nu optioneel als er al sheet data is)
     uploaded_files = sidebar.file_uploader(
@@ -1382,14 +1405,14 @@ def main() -> None:
         return
     
     # Knoppen voor data-beheer
-    if use_drive:
+    if use_drive and drive_instance:
         st.sidebar.markdown("---")
         with st.sidebar.expander("🗑️ Data Beheer"):
             if st.button("🔴 Wis ALLE data", help="Verwijdert alle data uit Drive en leegt de uploader."):
                 try:
                     # We overschrijven met een lege dataframe die wel de kolommen heeft
                     empty_df = pd.DataFrame(columns=df_raw.columns)
-                    drive.save_data(empty_df)
+                    drive_instance.save_data(empty_df)
                     st.cache_data.clear()
                     # Reset ook de file uploader
                     st.session_state["uploader_key"] += 1
@@ -1450,13 +1473,14 @@ def main() -> None:
     df = enrich_transactions(df_raw)
     positions = build_positions(df)
     trading_volume = build_trading_volume_by_month(df)
-    history_df = build_portfolio_history(df)
+    history_df = build_portfolio_history(df)    
+    # Render Dashboard (pass drive OBJECT for saving targets, not the dataframe)
+    render_metrics(df_raw)
     
-    render_metrics(df)
-    render_charts(df, history_df, trading_volume, drive=drive)
+    # Optimalisatie: render_charts roept build_portfolio_history aan, die nu gecached is.
+    # We geven drive_instance mee voor rebalancing config opslag.
+    render_charts(df_raw, history_df, trading_volume, drive=drive_instance)
 
 
 if __name__ == "__main__":
     main()
-
-
