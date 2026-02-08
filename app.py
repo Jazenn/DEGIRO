@@ -1200,12 +1200,19 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 from plotly.subplots import make_subplots
                 fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
                 
-                # Filter & Resample logica (Obv globale selectie)
                 df_chart = subset.copy()
                 if "date" in df_chart.columns:
                     df_chart = df_chart.set_index("date").sort_index()
                 
+                # FIX: Ensure index is DatetimeIndex and tz-naive
+                df_chart.index = pd.to_datetime(df_chart.index)
+                if df_chart.index.tz is not None:
+                    df_chart.index = df_chart.index.tz_localize(None)
+
                 if start_date:
+                    # Ensure start_date is also naive
+                    if start_date.tz is not None:
+                        start_date = start_date.tz_localize(None)
                     df_chart = df_chart[df_chart.index >= start_date]
 
                 # --- GAP REMOVAL SETUP ---
@@ -1300,7 +1307,15 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     if "date" in compare_df.columns:
                         compare_df = compare_df.set_index("date").sort_index()
 
+                    # FIX: Ensure index is DatetimeIndex and tz-naive
+                    compare_df.index = pd.to_datetime(compare_df.index)
+                    if compare_df.index.tz is not None:
+                        compare_df.index = compare_df.index.tz_localize(None)
+
                     if start_date:
+                        # Ensure start_date is also naive (if not already handled)
+                        if start_date.tz is not None:
+                            start_date = start_date.tz_localize(None)
                         compare_df = compare_df[compare_df.index >= start_date]
                     
                     # Resampling moet per groep (product) gebeuren anders vermengen we data
