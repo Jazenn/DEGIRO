@@ -293,6 +293,7 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
 
 
 # @st.cache_data(ttl=3600)
+@st.cache_data(show_spinner=False)
 def build_portfolio_history(df: pd.DataFrame) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
