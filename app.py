@@ -580,21 +580,41 @@ def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
     ticker_to_isin = {v: k for k, v in PRICE_MAPPING_BY_ISIN.items()}
     yf_tickers = []
     
+    # Lijst van taken voor parallele uitvoering (Tradegate scraping is traag)
+    import concurrent.futures
+    
+    items_to_fetch = []
     for t in unique_tickers:
-        price_found = False
-        
-        # Specifieke check voor ISINs in onze mapping
         if t in ticker_to_isin:
             isin = ticker_to_isin[t]
-            # Crypto heeft geen Tradegate ISIN pagina die we zo makkelijk scrapen, en is 24/7 dus YF is prima
-            if not isin.startswith("XFC"): 
-                tg_price = fetch_tradegate_price(isin)
-                if tg_price:
-                    results[t] = tg_price
-                    price_found = True
-        
-        if not price_found:
+            if not isin.startswith("XFC"):
+                items_to_fetch.append((t, isin))
+        else:
             yf_tickers.append(t)
+            
+    # Parallel scrapen (max 10 threads)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        future_to_ticker = {
+            executor.submit(fetch_tradegate_price, isin): t 
+            for t, isin in items_to_fetch
+        }
+        
+        for future in concurrent.futures.as_completed(future_to_ticker):
+            t = future_to_ticker[future]
+            try:
+                price = future.result()
+                if price:
+                    results[t] = price
+            except Exception:
+                pass
+    
+    # Wat we nog missen gaat naar YFinance
+    # Check wat we al hebben
+    already_found = set(results.keys())
+    # Voeg alles toe wat nog niet gevonden is (dus ook items die faalden op Tradegate)
+    for t in unique_tickers:
+        if t not in already_found and t not in yf_tickers:
+             yf_tickers.append(t)
 
     if not yf_tickers:
         return results
