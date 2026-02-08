@@ -1047,7 +1047,10 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     "Aantal": qty_to_trade,
                     "Actie": action,
                     "Verschil (EUR)": executed_diff,
-                    "Nieuw %": new_pct_projected
+                    "Nieuw %": new_pct_projected,
+                    "Huidige Waarde": curr_val,
+                    "Doel Waarde": target_val, # Theoretical goal
+                    "Planwaarde": new_val_projected # Realistic goal with rounding
                 })
                 
             res_df = pd.DataFrame(results)
