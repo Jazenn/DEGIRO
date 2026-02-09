@@ -983,27 +983,23 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     st.toast("Aandelen verwijderd!", icon="🗑️")
                     st.rerun()
 
-            # --- 2. Calculate Actions ---
+            # --- 2. Calculate Actions (Phase 1: Determine Actions and Totals) ---
             total_target = edited_df["Doel %"].sum()
-            
             # Allow small float error (99.9 - 100.1 is fine)
             if abs(total_target - 100.0) > 0.2:
                 st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet ~100% zijn).")
-            
-            # Calculate Actions
-            results = []
+
             new_total_value = total_value + extra_budget
-            
+            raw_actions = []
+            total_executed_buys = 0.0
+            total_executed_sells = 0.0
             total_fees = 0.0
-            total_out = 0.0
-            total_in = 0.0
 
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
                 current_pct_rounded = row["Huidig %"]
                 
-                # Find current value and price
                 match_rows = alloc[alloc["Display Name"] == product_name]
                 if not match_rows.empty:
                     curr_row = match_rows.iloc[0]
@@ -1019,10 +1015,11 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
-                # --- CALCULATE QUANTITY (Accounting for whole shares) ---
-                qty_calculated = 0.0
+                # Quantities
                 if last_price > 0:
                     qty_calculated = diff / last_price
+                else:
+                    qty_calculated = 0.0
                 
                 is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
                 
@@ -1033,55 +1030,66 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     qty_to_trade = round(qty_calculated)
                     executed_diff = qty_to_trade * last_price
                 
-                # --- FEE CALCULATION ---
+                # Fees
                 fee = 0.0
                 if abs(qty_to_trade) > 0:
                     if is_crypto:
-                        fee = abs(executed_diff) * 0.0029 # 0.29%
+                        fee = abs(executed_diff) * 0.0029
                     else:
-                        # DeGiro ETF Fee Logic
                         is_core = "Vanguard" in str(product_name) or isin == "IE00BK5BQT80"
                         fee = 1.0 if is_core else 3.0
-                
-                # Cash Flow
-                if qty_to_trade > 0:
-                    total_out += executed_diff + fee
-                elif qty_to_trade < 0:
-                    total_in += abs(executed_diff) - fee
 
-                total_fees += fee
-
-                # --- PROJECTED NEW % (Based on actual execution) ---
-                new_val_projected = curr_val + (executed_diff if (qty_to_trade >= 0 or not prevent_sell) else 0.0)
-                new_pct_projected = (new_val_projected / (total_value + total_out - total_in if not prevent_sell else total_value + total_out)) * 100.0
-                
+                # Validate Action (Respecting prevent_sell and noise threshold)
                 action = "Kopen" if qty_to_trade > 0 else "Verkopen"
+                is_valid = True
+                if (prevent_sell and qty_to_trade < 0):
+                    is_valid = False
+                elif (abs(executed_diff) < 1.0) or (not is_crypto and qty_to_trade == 0):
+                    is_valid = False
                 
-                # Apply "Prevent Sell" logic
-                if prevent_sell and qty_to_trade < 0:
+                if not is_valid:
                     action = "-"
+                    qty_to_trade = 0.0
                     executed_diff = 0.0
                     fee = 0.0
-                    qty_to_trade = 0.0
+                else:
+                    if executed_diff > 0:
+                        total_executed_buys += executed_diff
+                    else:
+                        total_executed_sells += abs(executed_diff)
+                    total_fees += fee
 
-                if abs(executed_diff) < 1.0 or (not is_crypto and qty_to_trade == 0):
-                    if action != "-": # Only adjust if it was a valid action before
-                        action = "-"
-                        if qty_to_trade > 0: total_out -= (executed_diff + fee); total_fees -= fee
-                        elif qty_to_trade < 0 and not prevent_sell: total_in -= (abs(executed_diff) - fee); total_fees -= fee
-
-                results.append({
+                raw_actions.append({
                     "Product": product_name,
                     "Actie": action,
                     "Verschil (EUR)": executed_diff,
                     "Aantal": qty_to_trade,
-                    "Kosten (Fee)": fee if action != "-" else 0.0,
+                    "Kosten (Fee)": fee,
+                    "curr_val": curr_val,
+                    "target_val": target_val
+                })
+
+            # --- Phase 2: Calculate Projected Results ---
+            # The actual new total is based on what we really buy/sell
+            actual_new_total = total_value + total_executed_buys - total_executed_sells
+            
+            results = []
+            for act in raw_actions:
+                new_val_projected = act["curr_val"] + act["Verschil (EUR)"]
+                new_pct_projected = (new_val_projected / actual_new_total) * 100.0 if actual_new_total > 0 else 0.0
+                
+                results.append({
+                    "Product": act["Product"],
+                    "Actie": act["Actie"],
+                    "Verschil (EUR)": act["Verschil (EUR)"],
+                    "Aantal": act["Aantal"],
+                    "Kosten (Fee)": act["Kosten (Fee)"],
                     "Nieuw %": new_pct_projected,
-                    "Huidige Waarde": curr_val,
-                    "Doel Waarde": target_val,
+                    "Huidige Waarde": act["curr_val"],
+                    "Doel Waarde": act["target_val"],
                     "Planwaarde": new_val_projected
                 })
-                
+
             res_df = pd.DataFrame(results)
             
             # Show Action Table
@@ -1099,6 +1107,18 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             )
 
             # --- FINANCIAL SUMMARY ---
+            # net_deposit = (buys + fees_buys) - (sells - fees_sells)
+            # total_out = sum of all money leaving cash (buys + fees)
+            # total_in = sum of all money entering cash (sells - fees)
+            summary_buys = sum(r["Verschil (EUR)"] for r in results if r["Actie"] == "Kopen")
+            summary_fees_buys = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Kopen")
+            summary_sells = sum(abs(r["Verschil (EUR)"]) for r in results if r["Actie"] == "Verkopen")
+            summary_fees_sells = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Verkopen")
+
+            total_out = summary_buys + summary_fees_buys
+            total_in = max(0, summary_sells - summary_fees_sells)
+            net_deposit = total_out - total_in
+
             st.markdown("#### 💰 Financieel Overzicht")
             col_s1, col_s2, col_s3 = st.columns(3)
             with col_s1:
