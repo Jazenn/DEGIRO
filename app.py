@@ -1004,14 +1004,9 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             total_buys_needed = sum(buy_gaps)
             budget_scaling_factor = 1.0
             if prevent_sell and extra_budget > 0 and total_buys_needed > extra_budget:
-                # Scale down so total buys match budget
                 budget_scaling_factor = extra_budget / total_buys_needed
 
             raw_actions = []
-            total_executed_buys = 0.0
-            total_executed_sells = 0.0
-            total_fees = 0.0
-
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
@@ -1031,12 +1026,9 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
-                
-                # Apply budget scaling if buying and in prevent_sell mode
                 if prevent_sell and diff > 0:
                     diff *= budget_scaling_factor
 
-                # Quantities
                 if last_price > 0:
                     qty_calculated = diff / last_price
                 else:
@@ -1051,7 +1043,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     qty_to_trade = round(qty_calculated)
                     executed_diff = qty_to_trade * last_price
                 
-                # Fees
+                # Preliminary Fee
                 fee = 0.0
                 if abs(qty_to_trade) > 0:
                     if is_crypto:
@@ -1060,7 +1052,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                         is_core = "Vanguard" in str(product_name) or isin == "IE00BK5BQT80"
                         fee = 1.0 if is_core else 3.0
 
-                # Validate Action (Respecting prevent_sell and noise threshold)
+                # Validate Action
                 action = "Kopen" if qty_to_trade > 0 else "Verkopen"
                 is_valid = True
                 if (prevent_sell and qty_to_trade < 0):
@@ -1069,16 +1061,10 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     is_valid = False
                 
                 if not is_valid:
-                    action = "-"
                     qty_to_trade = 0.0
                     executed_diff = 0.0
                     fee = 0.0
-                else:
-                    if executed_diff > 0:
-                        total_executed_buys += executed_diff
-                    else:
-                        total_executed_sells += abs(executed_diff)
-                    total_fees += fee
+                    action = "-"
 
                 raw_actions.append({
                     "Product": product_name,
@@ -1087,11 +1073,47 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     "Aantal": qty_to_trade,
                     "Kosten (Fee)": fee,
                     "curr_val": curr_val,
-                    "target_val": target_val
+                    "target_val": target_val,
+                    "last_price": last_price,
+                    "is_crypto": is_crypto,
+                    "isin": isin
                 })
 
+            # --- PHASE 1.5: Budget Adjustment (Lumpy Correction) ---
+            # If net deposit > budget + 10, reduce buys
+            def calc_net(actions):
+                buys = sum(a["Verschil (EUR)"] + a["Kosten (Fee)"] for a in actions if a["Actie"] == "Kopen")
+                sells = sum(abs(a["Verschil (EUR)"]) - a["Kosten (Fee)"] for a in actions if a["Actie"] == "Verkopen")
+                return buys - max(0, sells)
+
+            current_net = calc_net(raw_actions)
+            if current_net > extra_budget + 10:
+                # Sort buys by price (descending) to tackle lumpy ETFs first
+                buys_indices = [i for i, a in enumerate(raw_actions) if a["Actie"] == "Kopen" and not a["is_crypto"]]
+                buys_indices.sort(key=lambda i: raw_actions[i]["last_price"], reverse=True)
+                
+                for idx in buys_indices:
+                    action_item = raw_actions[idx]
+                    # Reduce by 1 share
+                    if action_item["Aantal"] >= 1:
+                        action_item["Aantal"] -= 1
+                        action_item["Verschil (EUR)"] = action_item["Aantal"] * action_item["last_price"]
+                        # Adjust fee if zero
+                        if action_item["Aantal"] == 0:
+                            action_item["Kosten (Fee)"] = 0.0
+                            action_item["Actie"] = "-"
+                        else:
+                            # Re-calc fee (usually remains same for ETFs, but good practice)
+                            is_core = "Vanguard" in str(action_item["Product"]) or action_item["isin"] == "IE00BK5BQT80"
+                            action_item["Kosten (Fee)"] = 1.0 if is_core else 3.0
+                        
+                        current_net = calc_net(raw_actions)
+                        if current_net <= extra_budget + 10:
+                            break
+
             # --- Phase 2: Calculate Projected Results ---
-            # The actual new total is based on what we really buy/sell
+            total_executed_buys = sum(a["Verschil (EUR)"] for a in raw_actions if a["Actie"] == "Kopen")
+            total_executed_sells = sum(abs(a["Verschil (EUR)"]) for a in raw_actions if a["Actie"] == "Verkopen")
             actual_new_total = total_value + total_executed_buys - total_executed_sells
             
             results = []
@@ -1128,17 +1150,12 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             )
 
             # --- FINANCIAL SUMMARY ---
-            # net_deposit = (buys + fees_buys) - (sells - fees_sells)
-            # total_out = sum of all money leaving cash (buys + fees)
-            # total_in = sum of all money entering cash (sells - fees)
-            summary_buys = sum(r["Verschil (EUR)"] for r in results if r["Actie"] == "Kopen")
             summary_fees_buys = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Kopen")
-            summary_sells = sum(abs(r["Verschil (EUR)"]) for r in results if r["Actie"] == "Verkopen")
             summary_fees_sells = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Verkopen")
-
-            total_out = summary_buys + summary_fees_buys
-            total_in = max(0, summary_sells - summary_fees_sells)
+            total_out = total_executed_buys + summary_fees_buys
+            total_in = max(0, total_executed_sells - summary_fees_sells)
             net_deposit = total_out - total_in
+            total_fees = summary_fees_buys + summary_fees_sells
 
             st.markdown("#### 💰 Financieel Overzicht")
             col_s1, col_s2, col_s3 = st.columns(3)
