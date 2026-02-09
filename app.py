@@ -989,25 +989,28 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             results = []
             new_total_value = total_value + extra_budget
             
+            total_fees = 0.0
+            total_out = 0.0
+            total_in = 0.0
+
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
                 current_pct_rounded = row["Huidig %"]
                 
                 # Find current value and price
-                # Case 1: Product exists in current positions
                 match_rows = alloc[alloc["Display Name"] == product_name]
                 if not match_rows.empty:
                     curr_row = match_rows.iloc[0]
                     curr_val = curr_row["alloc_value"]
                     last_price = curr_row.get("last_price", 0.0) 
                     if pd.isna(last_price): last_price = 0.0
+                    isin = curr_row.get("isin", "")
                 else:
-                    # Case 2: Manually added product (Watchlist)
                     curr_val = 0.0
-                    last_price = 100.0 # Default for placeholder logic
+                    last_price = 100.0 
+                    isin = ""
                 
-                # Target Value based on NEW total portfolio (Current + Budget)
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
@@ -1022,51 +1025,82 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     qty_to_trade = qty_calculated
                     executed_diff = diff
                 else:
-                    # Stocks/ETFs use whole shares
                     qty_to_trade = round(qty_calculated)
                     executed_diff = qty_to_trade * last_price
                 
+                # --- FEE CALCULATION ---
+                fee = 0.0
+                if abs(qty_to_trade) > 0:
+                    if is_crypto:
+                        fee = abs(executed_diff) * 0.0029 # 0.29%
+                    else:
+                        # DeGiro ETF Fee Logic
+                        is_core = "Vanguard" in str(product_name) or isin == "IE00BK5BQT80"
+                        fee = 1.0 if is_core else 3.0
+                
+                # Cash Flow
+                if qty_to_trade > 0:
+                    total_out += executed_diff + fee
+                elif qty_to_trade < 0:
+                    total_in += abs(executed_diff) - fee
+
+                total_fees += fee
+
                 # --- PROJECTED NEW % (Based on actual execution) ---
                 new_val_projected = curr_val + executed_diff
                 new_pct_projected = (new_val_projected / new_total_value) * 100.0
                 
-                action = "Kopen" if diff > 0 else "Verkopen"
-                
-                # --- INTELLIGENT SCALING THRESHOLDS (Relaxed) ---
-                # Noise filter: Show '-' only if no action is possible/worth it.
-                abs_diff = abs(executed_diff)
-                if abs_diff < 1.0:
+                action = "Kopen" if qty_to_trade > 0 else "Verkopen"
+                if abs(executed_diff) < 1.0 or (not is_crypto and qty_to_trade == 0):
                     action = "-"
-                elif not is_crypto and qty_to_trade == 0:
-                    action = "-"
-                
+                    # Reset cashflow if no action
+                    if qty_to_trade > 0: total_out -= (executed_diff + fee); total_fees -= fee
+                    elif qty_to_trade < 0: total_in -= (abs(executed_diff) - fee); total_fees -= fee
+
                 results.append({
                     "Product": product_name,
-                    "Huidig %": current_pct_rounded,
-                    "Doel %": target_pct,
-                    "Aantal": qty_to_trade,
                     "Actie": action,
                     "Verschil (EUR)": executed_diff,
+                    "Aantal": qty_to_trade,
+                    "Kosten (Fee)": fee if action != "-" else 0.0,
                     "Nieuw %": new_pct_projected,
                     "Huidige Waarde": curr_val,
-                    "Doel Waarde": target_val, # Theoretical goal
-                    "Planwaarde": new_val_projected # Realistic goal with rounding
+                    "Doel Waarde": target_val,
+                    "Planwaarde": new_val_projected
                 })
                 
             res_df = pd.DataFrame(results)
             
             # Show Action Table
             st.markdown("#### Actie Advies")
-            st.markdown("Dit overzicht houdt rekening met het feit dat aandelen (meestal) in hele stuks gekocht worden.")
+            st.markdown("Dit overzicht houdt rekening met het feit dat aandelen in hele stuks gekocht worden en bevat de transactiekosten.")
             st.dataframe(
-                res_df[["Product", "Actie", "Verschil (EUR)", "Aantal", "Nieuw %"]].style.format({
+                res_df[["Product", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
                     "Verschil (EUR)": "€ {:.2f}",
                     "Aantal": "{:.4f}",
+                    "Kosten (Fee)": "€ {:.2f}",
                     "Nieuw %": "{:.2f} %"
                 }),
                 use_container_width=True,
                 hide_index=True
             )
+
+            # --- FINANCIAL SUMMARY ---
+            st.markdown("#### 💰 Financieel Overzicht")
+            col_s1, col_s2, col_s3 = st.columns(3)
+            with col_s1:
+                st.metric("Totaal aankopen (incl. fees)", f"€ {total_out:.2f}")
+            with col_s2:
+                st.metric("Totaal verkopen (na fees)", f"€ {total_in:.2f}")
+            with col_s3:
+                net_deposit = total_out - total_in
+                st.metric("Netto bijstorten", f"€ {max(0, net_deposit):.2f}", 
+                          delta=f"Kosten: € {total_fees:.2f}", delta_color="inverse")
+            
+            if net_deposit > 0:
+                st.info(f"💡 **Advies:** Stort exact **€ {net_deposit:.2f}** bij om dit plan uit te voeren.")
+            elif net_deposit < 0:
+                st.success(f"✅ **Resultaat:** Je houdt **€ {abs(net_deposit):.2f}** cash over na deze transacties.")
             
             # --- 3. Visualize Current vs Target (Concentric Donut) ---
             st.markdown("#### Huidig vs Doel (Overlay)")
