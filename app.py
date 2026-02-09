@@ -990,6 +990,23 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 st.warning(f"Totaal doelpercentage is {total_target:.1f}% (moet ~100% zijn).")
 
             new_total_value = total_value + extra_budget
+            
+            # PRE-CALCULATE SCALING FOR BUY-ONLY MODE
+            buy_gaps = []
+            for idx, row in edited_df.iterrows():
+                match_rows = alloc[alloc["Display Name"] == row["Product"]]
+                curr_val = match_rows.iloc[0]["alloc_value"] if not match_rows.empty else 0.0
+                target_val = new_total_value * (row["Doel %"] / 100.0)
+                gap = target_val - curr_val
+                if gap > 0:
+                    buy_gaps.append(gap)
+            
+            total_buys_needed = sum(buy_gaps)
+            budget_scaling_factor = 1.0
+            if prevent_sell and extra_budget > 0 and total_buys_needed > extra_budget:
+                # Scale down so total buys match budget
+                budget_scaling_factor = extra_budget / total_buys_needed
+
             raw_actions = []
             total_executed_buys = 0.0
             total_executed_sells = 0.0
@@ -1015,6 +1032,10 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
                 
+                # Apply budget scaling if buying and in prevent_sell mode
+                if prevent_sell and diff > 0:
+                    diff *= budget_scaling_factor
+
                 # Quantities
                 if last_price > 0:
                     qty_calculated = diff / last_price
