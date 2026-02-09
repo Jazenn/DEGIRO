@@ -950,12 +950,17 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 
                 st.markdown("---")
                 st.subheader("💡 Slimme Rebalancing met Budget")
-                extra_budget = st.number_input(
-                    "Nieuwe investering (€)", 
-                    min_value=0.0, 
-                    step=50.0, 
-                    help="Voer het bedrag in dat je extra wilt investeren."
-                )
+                col_b1, col_b2 = st.columns([2, 1])
+                with col_b1:
+                    extra_budget = st.number_input(
+                        "Nieuwe investering (€)", 
+                        min_value=0.0, 
+                        step=50.0, 
+                        help="Voer het bedrag in dat je extra wilt investeren."
+                    )
+                with col_b2:
+                    st.write("") # Padding
+                    prevent_sell = st.checkbox("Voorkom verkoop", value=False, help="Schakel dit in om alleen bijkopen te suggereren.")
                 
                 submitted = st.form_submit_button("📊 Update Berekening & Grafiek", type="primary")
 
@@ -1047,15 +1052,23 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 total_fees += fee
 
                 # --- PROJECTED NEW % (Based on actual execution) ---
-                new_val_projected = curr_val + executed_diff
-                new_pct_projected = (new_val_projected / new_total_value) * 100.0
+                new_val_projected = curr_val + (executed_diff if (qty_to_trade >= 0 or not prevent_sell) else 0.0)
+                new_pct_projected = (new_val_projected / (total_value + total_out - total_in if not prevent_sell else total_value + total_out)) * 100.0
                 
                 action = "Kopen" if qty_to_trade > 0 else "Verkopen"
-                if abs(executed_diff) < 1.0 or (not is_crypto and qty_to_trade == 0):
+                
+                # Apply "Prevent Sell" logic
+                if prevent_sell and qty_to_trade < 0:
                     action = "-"
-                    # Reset cashflow if no action
-                    if qty_to_trade > 0: total_out -= (executed_diff + fee); total_fees -= fee
-                    elif qty_to_trade < 0: total_in -= (abs(executed_diff) - fee); total_fees -= fee
+                    executed_diff = 0.0
+                    fee = 0.0
+                    qty_to_trade = 0.0
+
+                if abs(executed_diff) < 1.0 or (not is_crypto and qty_to_trade == 0):
+                    if action != "-": # Only adjust if it was a valid action before
+                        action = "-"
+                        if qty_to_trade > 0: total_out -= (executed_diff + fee); total_fees -= fee
+                        elif qty_to_trade < 0 and not prevent_sell: total_in -= (abs(executed_diff) - fee); total_fees -= fee
 
                 results.append({
                     "Product": product_name,
