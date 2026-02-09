@@ -911,9 +911,6 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             alloc["current_pct"] = (alloc["alloc_value"] / total_value) * 100.0
             alloc["Display Name"] = alloc["product"].apply(_shorten_name)
             
-            # --- 1. Rebalancing Input ---
-            st.write("Pas hieronder de gewenste verdeling aan:")
-            
             # Prepare dataframe for editor
             editor_df = alloc[["Display Name", "current_pct"]].copy()
             editor_df = editor_df.rename(columns={"Display Name": "Product", "current_pct": "Huidig %"})
@@ -935,20 +932,39 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 return row.get("Doel %", row["Huidig %"]) # Use Doel % if we just added it from watchlist
 
             editor_df["Doel %"] = editor_df.apply(get_target, axis=1)
-            
-            # Gebruik st.data_editor
-            edited_df = st.data_editor(
-                editor_df,
-                column_config={
-                    "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
-                    "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
-                    "Product": st.column_config.TextColumn(disabled=True),
-                },
-                use_container_width=True,
-                hide_index=True,
-                key="rebalance_editor"
-            )
-            
+
+            # Gebruik st.form om meerdere wijzigingen te batchen (voorkomt refreshes bij elke klik)
+            with st.form("rebalance_form"):
+                st.write("Pas hieronder de gewenste verdeling aan:")
+                edited_df = st.data_editor(
+                    editor_df,
+                    column_config={
+                        "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
+                        "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
+                        "Product": st.column_config.TextColumn(disabled=True),
+                    },
+                    use_container_width=True,
+                    hide_index=True,
+                    key="rebalance_editor"
+                )
+                
+                st.markdown("---")
+                st.subheader("💡 Slimme Rebalancing met Budget")
+                extra_budget = st.number_input(
+                    "Nieuwe investering (€)", 
+                    min_value=0.0, 
+                    step=50.0, 
+                    help="Voer het bedrag in dat je extra wilt investeren."
+                )
+                
+                submitted = st.form_submit_button("📊 Update Berekening & Grafiek", type="primary")
+
+            if submitted:
+                # Save changes when submitted
+                new_targets = dict(zip(edited_df["Product"], edited_df["Doel %"]))
+                save_targets_config(new_targets)
+                st.toast("Verdeling opgeslagen!", icon="💾")
+
             # --- REMOVE OPTION ---
             # Extract watchlist items (those with 0% current) for removal
             watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Product"].tolist()
@@ -962,24 +978,8 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     st.toast("Aandelen verwijderd!", icon="🗑️")
                     st.rerun()
 
-            
-            # --- SAVE CHANGES ---
-            # Create a dictionary from the edited dataframe
-            new_targets = dict(zip(edited_df["Product"], edited_df["Doel %"]))
-            # Save if changed (simplest is to just save always on re-run)
-            save_targets_config(new_targets)
-            
             # --- 2. Calculate Actions ---
             total_target = edited_df["Doel %"].sum()
-            
-            st.markdown("---")
-            st.subheader("💡 Slimme Rebalancing met Budget")
-            extra_budget = st.number_input(
-                "Nieuwe investering (€)", 
-                min_value=0.0, 
-                step=50.0, 
-                help="Voer het bedrag in dat je extra wilt investeren."
-            )
             
             # Allow small float error (99.9 - 100.1 is fine)
             if abs(total_target - 100.0) > 0.2:
