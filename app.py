@@ -1080,14 +1080,15 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 })
 
             # --- PHASE 1.5: Budget Adjustment (Lumpy Correction) ---
-            # If net deposit > budget + 10, reduce buys
+            # If net deposit > budget + tolerance (10%), reduce buys
             def calc_net(actions):
                 buys = sum(a["Verschil (EUR)"] + a["Kosten (Fee)"] for a in actions if a["Actie"] == "Kopen")
                 sells = sum(abs(a["Verschil (EUR)"]) - a["Kosten (Fee)"] for a in actions if a["Actie"] == "Verkopen")
                 return buys - max(0, sells)
 
+            tolerance = extra_budget * 0.1
             current_net = calc_net(raw_actions)
-            if current_net > extra_budget + 10:
+            if current_net > extra_budget + tolerance:
                 # Sort buys by price (descending) to tackle lumpy ETFs first
                 buys_indices = [i for i, a in enumerate(raw_actions) if a["Actie"] == "Kopen" and not a["is_crypto"]]
                 buys_indices.sort(key=lambda i: raw_actions[i]["last_price"], reverse=True)
@@ -1108,7 +1109,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                             action_item["Kosten (Fee)"] = 1.0 if is_core else 3.0
                         
                         current_net = calc_net(raw_actions)
-                        if current_net <= extra_budget + 10:
+                        if current_net <= extra_budget + tolerance:
                             break
 
             # --- Phase 2: Calculate Projected Results ---
