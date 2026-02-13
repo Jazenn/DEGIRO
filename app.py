@@ -887,7 +887,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     lambda r: (
                         ( (r["last_price"] - r["prev_close"]) * r["quantity"] )
                         / r["invested"] * 100.0
-                        if pd.notna(r.get("prev_close")) and pd.notna(r.get("invested")) and r["invested"] not in (0, pd.NA)
+                        if pd.notna(r.get("prev_close")) and pd.notna(r.get("invested")) and r["invested"] not in (0,)
                         else pd.NA
                     ),
                     axis=1,
