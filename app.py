@@ -707,7 +707,7 @@ def fetch_live_prices(tickers: list[str]) -> dict[str, float]:
 @st.cache_data
 def fetch_prev_close(tickers: list[str]) -> dict[str, float]:
     """Return the previous trading-day close for each ticker using yfinance.
-    This is used to calculate daily profit/loss figures.
+    This is used by older logic but may not match Degiro's midnight reference.
     """
     results = {}
     for t in tickers:
@@ -717,6 +717,34 @@ def fetch_prev_close(tickers: list[str]) -> dict[str, float]:
                 results[t] = hist["Close"].iloc[-2]
             elif hist.shape[0] == 1:
                 results[t] = hist["Close"].iloc[0]
+            else:
+                results[t] = pd.NA
+        except Exception:
+            results[t] = pd.NA
+    return results
+
+
+def fetch_midnight_price(tickers: list[str]) -> dict[str, float]:
+    """Fetch the price at or immediately after midnight today for each ticker.
+    Degiro seems to base its intraday gain on the price at 00:00.
+    We'll request 1d of hourly data and pick the first timestamp of today.
+    """
+    results = {}
+    today = pd.Timestamp.now().normalize()
+    for t in tickers:
+        try:
+            hist = yf.Ticker(t).history(period="1d", interval="1h")
+            if not hist.empty:
+                # find first index >= today
+                hist = hist.reset_index()
+                # pandas Timestamp comparisons
+                hist["Datetime"] = pd.to_datetime(hist["Datetime"])
+                mask = hist["Datetime"].dt.normalize() == today
+                if mask.any():
+                    first = hist.loc[mask].iloc[0]
+                    results[t] = first["Close"]
+                else:
+                    results[t] = pd.NA
             else:
                 results[t] = pd.NA
         except Exception:
@@ -739,8 +767,10 @@ def render_metrics(df: pd.DataFrame) -> None:
         ticker_list = positions["ticker"].dropna().unique().tolist()
         price_map = fetch_live_prices(ticker_list)
         prev_map = fetch_prev_close(ticker_list)
+        mid_map = fetch_midnight_price(ticker_list)
         positions["last_price"] = positions["ticker"].map(price_map)
         positions["prev_close"] = positions["ticker"].map(prev_map)
+        positions["midnight_price"] = positions["ticker"].map(mid_map)
         positions["current_value"] = positions.apply(
             lambda r: (
                 r["quantity"] * r["last_price"]
@@ -749,19 +779,19 @@ def render_metrics(df: pd.DataFrame) -> None:
             ),
             axis=1,
         )
-        # daily p/l columns for later summary or table use
-        positions["daily_pl"] = positions.apply(
-            lambda r: (
-                r["quantity"] * (r["last_price"] - r["prev_close"])
-                if pd.notna(r.get("prev_close"))
-                else pd.NA
-            ),
-            axis=1,
-        )
+        # daily p/l columns for later summary or table use (using midnight price)
+        def calc_daily(r):
+            mp = r.get("midnight_price")
+            lp = r.get("last_price")
+            qty = r.get("quantity")
+            if pd.notna(mp) and pd.notna(lp) and pd.notna(qty):
+                return qty * (lp - mp)
+            return pd.NA
+        positions["daily_pl"] = positions.apply(calc_daily, axis=1)
         positions["daily_pct"] = positions.apply(
             lambda r: (
-                ((r["last_price"] - r["prev_close"]) / r["prev_close"]) * 100.0
-                if pd.notna(r.get("prev_close")) and r["prev_close"] not in (0,) 
+                ((r["last_price"] - r["midnight_price"]) / r["midnight_price"]) * 100.0
+                if pd.notna(r.get("midnight_price")) and r["midnight_price"] not in (0,)
                 else pd.NA
             ),
             axis=1,
