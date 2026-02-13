@@ -802,22 +802,18 @@ def render_metrics(df: pd.DataFrame) -> None:
     valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     current_cash = valid_cash_tx["amount"].sum()
     
-    # compute total costs for result
-    total_costs = abs(total_buys) + total_fees - abs(total_sells)
-    # include current cash balance in equity similar to Degiro summary
-    total_account = total_market_value + current_cash
-    # Simplified profit: account value minus total costs
-    total_result = total_account - total_costs
+    # compute total P/L as sum of each position's profit/loss (current + net cashflow)
+    if not positions.empty:
+        positions["pl_eur"] = positions.apply(
+            lambda r: r.get("current_value", 0.0) + r.get("net_cashflow", 0.0),
+            axis=1,
+        )
+        total_result = positions["pl_eur"].sum()
+    else:
+        total_result = 0.0
 
-    # compute daily P/L summary (price moves)
+    # compute daily P/L only from price movement since prev_close
     total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
-    # include cashflow from today (realised profits/sales)
-    try:
-        today = pd.Timestamp.now().normalize()
-        cash_today = df[df["value_date"].dt.normalize() == today]["amount"].sum()
-    except Exception:
-        cash_today = 0.0
-    total_daily_pl += cash_today
     # percentage relative to total amount spent buying (including fees)
     total_spent = abs(total_buys) + total_fees
     if pd.notna(total_spent) and total_spent != 0:
@@ -847,9 +843,7 @@ def render_metrics(df: pd.DataFrame) -> None:
     col4.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: (Marktwaarde + Cash) - Totale kosten")
     col5.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal",
-               help="Koersverandering + kasstromen vandaag")
-    if cash_today != 0:
-        st.caption(f"📌 Inclusief kasstroom vandaag: {format_eur(cash_today)}")
+               help="Koersverandering sinds vorige sluiting")
 
     # second row of other metrics (dividend only now)
     col5, col6 = st.columns(2)
