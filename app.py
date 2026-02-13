@@ -826,8 +826,6 @@ def render_metrics(df: pd.DataFrame) -> None:
         st.markdown(f"**Periode data:** {period_str}")
     
     col1, col2, col3, col4 = st.columns(4)
-    # total costs = absolute purchases + fees minus absolute sales
-    total_costs = abs(total_buys) + total_fees - abs(total_sells)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
