@@ -804,11 +804,20 @@ def render_metrics(df: pd.DataFrame) -> None:
     
     # compute total costs for result
     total_costs = abs(total_buys) + total_fees - abs(total_sells)
-    # Simplified profit: current market value minus total costs
-    total_result = total_market_value - total_costs
+    # include current cash balance in equity similar to Degiro summary
+    total_account = total_market_value + current_cash
+    # Simplified profit: account value minus total costs
+    total_result = total_account - total_costs
 
-    # compute daily P/L summary
+    # compute daily P/L summary (price moves)
     total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
+    # include cashflow from today (realised profits/sales)
+    try:
+        today = pd.Timestamp.now().normalize()
+        cash_today = df[df["value_date"].dt.normalize() == today]["amount"].sum()
+    except Exception:
+        cash_today = 0.0
+    total_daily_pl += cash_today
     # percentage relative to total amount spent buying (including fees)
     total_spent = abs(total_buys) + total_fees
     if pd.notna(total_spent) and total_spent != 0:
@@ -826,7 +835,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
         st.markdown(f"**Periode data:** {period_str}")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3, col4, col5 = st.columns(5)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -834,9 +843,13 @@ def render_metrics(df: pd.DataFrame) -> None:
     )
     col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-               help="Berekening: Marktwaarde - Totale kosten")
-    col4.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal")
+    col3.metric("Cash saldo", format_eur(current_cash))
+    col4.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
+               help="Berekening: (Marktwaarde + Cash) - Totale kosten")
+    col5.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal",
+               help="Koersverandering + kasstromen vandaag")
+    if cash_today != 0:
+        st.caption(f"📌 Inclusief kasstroom vandaag: {format_eur(cash_today)}")
 
     # second row of other metrics (dividend only now)
     col5, col6 = st.columns(2)
