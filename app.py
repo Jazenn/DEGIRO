@@ -800,13 +800,13 @@ def render_metrics(df: pd.DataFrame) -> None:
                 return qty * (lp - base)
             return pd.NA
         positions["daily_pl"] = positions.apply(calc_daily, axis=1)
-        # if midnight_price missing, fall back to prev_close for percentage
+        # if midnight_price missing, fall back to prev_close/tradegate for percentage
         def pct_calc(r):
             is_crypto = isinstance(r.get("ticker"), str) and any(x in r.get("ticker").upper() for x in ["BTC","ETH"])
             if is_crypto:
                 base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
             else:
-                base = r.get("prev_close")
+                base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
             lp = r.get("last_price")
             if pd.notna(base) and base != 0 and pd.notna(lp):
                 return ((lp - base) / base) * 100.0
