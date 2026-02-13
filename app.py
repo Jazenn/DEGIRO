@@ -834,7 +834,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
         st.markdown(f"**Periode data:** {period_str}")
     
-    col1, col2, col3, col4, col5 = st.columns(5)
+    col1, col2, col3, col4 = st.columns(4)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -842,10 +842,9 @@ def render_metrics(df: pd.DataFrame) -> None:
     )
     col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col3.metric("Cash saldo", format_eur(current_cash))
-    col4.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-               help="Berekening: (Marktwaarde + Cash) - Totale kosten")
-    col5.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal",
+    col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
+               help="Berekening: Marktwaarde - Totale kosten")
+    col4.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal",
                help="Koersverandering sinds vorige sluiting")
 
     # second row of other metrics (dividend only now)
