@@ -802,6 +802,9 @@ def render_metrics(df: pd.DataFrame) -> None:
     valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     current_cash = valid_cash_tx["amount"].sum()
     
+    # compute total costs for display
+    total_costs = abs(total_buys) + total_fees - abs(total_sells)
+    
     # compute total P/L as sum of each position's profit/loss (current + net cashflow)
     if not positions.empty:
         positions["pl_eur"] = positions.apply(
