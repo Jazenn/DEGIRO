@@ -768,8 +768,6 @@ def render_metrics(df: pd.DataFrame) -> None:
         price_map = fetch_live_prices(ticker_list)
         prev_map = fetch_prev_close(ticker_list)
         mid_map = fetch_midnight_price(ticker_list)
-        # additionally get tradegate price for ETFs/aandelen
-        positions["tradegate_price"] = positions["isin"].apply(lambda i: fetch_tradegate_price(i) if pd.notna(i) else pd.NA)
         positions["last_price"] = positions["ticker"].map(price_map)
         positions["prev_close"] = positions["ticker"].map(prev_map)
         positions["midnight_price"] = positions["ticker"].map(mid_map)
