@@ -781,21 +781,22 @@ def render_metrics(df: pd.DataFrame) -> None:
         )
         # daily p/l columns for later summary or table use (using midnight price)
         def calc_daily(r):
-            mp = r.get("midnight_price")
             lp = r.get("last_price")
             qty = r.get("quantity")
-            if pd.notna(mp) and pd.notna(lp) and pd.notna(qty):
-                return qty * (lp - mp)
+            # prefer midnight_price, but fall back to prev_close if absent
+            base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            if pd.notna(base) and pd.notna(lp) and pd.notna(qty):
+                return qty * (lp - base)
             return pd.NA
         positions["daily_pl"] = positions.apply(calc_daily, axis=1)
-        positions["daily_pct"] = positions.apply(
-            lambda r: (
-                ((r["last_price"] - r["midnight_price"]) / r["midnight_price"]) * 100.0
-                if pd.notna(r.get("midnight_price")) and r["midnight_price"] not in (0,)
-                else pd.NA
-            ),
-            axis=1,
-        )
+        # if midnight_price missing, fall back to prev_close for percentage
+        def pct_calc(r):
+            base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            lp = r.get("last_price")
+            if pd.notna(base) and base not in (0, pd.NA) and pd.notna(lp):
+                return ((lp - base) / base) * 100.0
+            return pd.NA
+        positions["daily_pct"] = positions.apply(pct_calc, axis=1)
         positions["avg_price"] = positions.apply(
             lambda r: (
                 r["invested"] / r["quantity"]
