@@ -802,8 +802,9 @@ def render_metrics(df: pd.DataFrame) -> None:
     valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     current_cash = valid_cash_tx["amount"].sum()
     
+    # compute total costs for result
+    total_costs = abs(total_buys) + total_fees - abs(total_sells)
     # Simplified profit: current market value minus total costs
-    # total_costs already computed earlier as buys+fees-sells
     total_result = total_market_value - total_costs
 
     # compute daily P/L summary
