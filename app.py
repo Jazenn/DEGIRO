@@ -761,7 +761,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         positions["daily_pct"] = positions.apply(
             lambda r: (
                 ((r["last_price"] - r["prev_close"]) / r["prev_close"]) * 100.0
-                if pd.notna(r.get("prev_close")) and r["prev_close"] not in (0, pd.NA)
+                if pd.notna(r.get("prev_close")) and r["prev_close"] not in (0,) 
                 else pd.NA
             ),
             axis=1,
