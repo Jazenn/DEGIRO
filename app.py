@@ -826,17 +826,23 @@ def render_metrics(df: pd.DataFrame) -> None:
         st.markdown(f"**Periode data:** {period_str}")
     
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Gekochte aandelen", format_eur(abs(total_buys)))
+    # total costs = purchases + fees - sales
+    total_costs = total_buys + total_fees - total_sells
+    help_txt = (
+        f"Aankopen: {format_eur(abs(total_buys))}  |  "
+        f"Fees: {format_eur(total_fees)}  |  "
+        f"Verkopen: {format_eur(total_sells)}"
+    )
+    col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
     col4.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal")
 
-    # second row of other metrics
-    col5, col6, col7 = st.columns(3)
-    col5.metric("Totaal aandelen verkocht", format_eur(total_sells))
-    col6.metric("Totale Kosten (Transacties + Derden)", format_eur(total_fees))
-    col7.metric("Ontvangen dividend", format_eur(total_dividends))
+    # second row of other metrics (dividend only now)
+    col5, col6 = st.columns(2)
+    col5.metric("Ontvangen dividend", format_eur(total_dividends))
+    col6.write("")  # placeholder column
 
 
 @fragment(run_every=30)
@@ -923,8 +929,9 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 display["Dag P/L (%)"] = display["daily_pct"].map(format_pct)
 
                 # combine euro+% columns into single strings
-                display["Resultaat"] = display["Winst/verlies (EUR)"] + "\n" + display["Winst/verlies (%)"]
-                display["Dag Resultaat"] = display["Dag P/L (EUR)"] + "\n" + display["Dag P/L (%)"]
+                # combine euro and pct inside parentheses
+                display["Resultaat"] = display["Winst/verlies (EUR)"] + " (" + display["Winst/verlies (%)"] + ")"
+                display["Dag Resultaat"] = display["Dag P/L (EUR)"] + " (" + display["Dag P/L (%)"] + ")"
 
                 display = display.rename(
                     columns={
@@ -948,8 +955,8 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 def _color_row(row):
                     # row.name is the metric label after transpose
                     if row.name in ("Resultaat", "Dag Resultaat"):
-                        # color each cell based on leading minus sign
-                        return ["color: red" if isinstance(v, str) and v.strip().startswith("-") else "color: green" for v in row]
+                        # color each cell based on presence of '-' anywhere
+                        return ["color: red" if isinstance(v, str) and "-" in v and not v.strip().startswith("(0") else "color: green" for v in row]
                     else:
                         return ["" for _ in row]
 
