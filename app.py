@@ -768,6 +768,12 @@ def render_metrics(df: pd.DataFrame) -> None:
         price_map = fetch_live_prices(ticker_list)
         prev_map = fetch_prev_close(ticker_list)
         mid_map = fetch_midnight_price(ticker_list)
+        # compute tradegate price only for ETFs that trade there (e.g. VWCE.DE)
+        TRADEGATE_TICKERS = {"VWCE.DE"}
+        positions["tradegate_price"] = positions.apply(
+            lambda r: fetch_tradegate_price(r.get("isin")) if r.get("ticker") in TRADEGATE_TICKERS else pd.NA,
+            axis=1,
+        )
         positions["last_price"] = positions["ticker"].map(price_map)
         positions["prev_close"] = positions["ticker"].map(prev_map)
         positions["midnight_price"] = positions["ticker"].map(mid_map)
@@ -783,11 +789,12 @@ def render_metrics(df: pd.DataFrame) -> None:
         def calc_daily(r):
             lp = r.get("last_price")
             qty = r.get("quantity")
-            # determine base price per asset type
+            # determine base price per asset type: crypto uses midnight, others use previous close/tradegate
             is_crypto = isinstance(r.get("ticker"), str) and any(x in r.get("ticker").upper() for x in ["BTC","ETH"])
             if is_crypto:
                 base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
             else:
+                # prefer tradegate price for securities where available
                 base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
             if pd.notna(base) and pd.notna(lp) and pd.notna(qty):
                 return qty * (lp - base)
@@ -799,7 +806,7 @@ def render_metrics(df: pd.DataFrame) -> None:
             if is_crypto:
                 base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
             else:
-                base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
+                base = r.get("prev_close")
             lp = r.get("last_price")
             if pd.notna(base) and base != 0 and pd.notna(lp):
                 return ((lp - base) / base) * 100.0
