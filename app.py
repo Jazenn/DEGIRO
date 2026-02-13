@@ -952,9 +952,13 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     cur = row.get("current_value")
                     net_cf = row.get("net_cashflow")
                     inv = row.get("invested")
-                    if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and inv != 0:
+                    fees = row.get("total_fees")
+                    if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and pd.notna(fees) and inv != 0:
                         pl_amount = cur + net_cf
-                        return (pl_amount / inv) * 100.0
+                        # Divide by cost basis INCLUDING fees (same as "Totaal geinvesteerd")
+                        cost_basis = inv + abs(fees)
+                        if cost_basis != 0:
+                            return (pl_amount / cost_basis) * 100.0
                     return pd.NA
 
                 display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
