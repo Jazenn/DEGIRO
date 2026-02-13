@@ -944,16 +944,16 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
                 display = display.set_index("Product").T
                 
-                # apply simple coloring based on sign for result rows
-                def _color(val):
-                    if isinstance(val, str) and "-" in val:
-                        return "color: red"
-                    return "color: green"
+                # apply coloring only on the two result rows (total & daily)
+                def _color_row(row):
+                    # row.name is the metric label after transpose
+                    if row.name in ("Resultaat", "Dag Resultaat"):
+                        # color each cell based on leading minus sign
+                        return ["color: red" if isinstance(v, str) and v.strip().startswith("-") else "color: green" for v in row]
+                    else:
+                        return ["" for _ in row]
 
-                styled = display.style.applymap(
-                    _color,
-                    subset=[r for r in display.index if "Resultaat" in r or "Dag" in r]
-                )
+                styled = display.style.apply(_color_row, axis=1)
 
                 st.dataframe(styled, use_container_width=True, key=f"table_{cat}")
 
