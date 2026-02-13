@@ -810,8 +810,12 @@ def render_metrics(df: pd.DataFrame) -> None:
     total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
     # percentage relative to total amount spent buying (including fees)
     total_spent = abs(total_buys) + total_fees
-    pct_total = (total_result / total_spent * 100.0) if total_spent not in (0, pd.NA) else 0.0
-    pct_daily = (total_daily_pl / total_spent * 100.0) if total_spent not in (0, pd.NA) else 0.0
+    if pd.notna(total_spent) and total_spent != 0:
+        pct_total = (total_result / total_spent * 100.0)
+        pct_daily = (total_daily_pl / total_spent * 100.0)
+    else:
+        pct_total = 0.0
+        pct_daily = 0.0
 
     # Layout: metrics row (now 4 columns)
     # Periode weergeven
