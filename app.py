@@ -46,6 +46,17 @@ def format_pct(value: float) -> str:
     return f"{s}%"
 
 
+def is_tradegate_open() -> bool:
+    """Check if TradeGate is open (09:00-22:00 CET, Mon-Fri)."""
+    now = pd.Timestamp.now(tz='Europe/Amsterdam')
+    # Only weekdays (Mon=0, Fri=4)
+    if now.weekday() > 4:
+        return False
+    # Trading hours: 09:00 to 22:00
+    hour = now.hour
+    return 9 <= hour < 22
+
+
 @st.cache_data
 def load_degiro_csv(file) -> pd.DataFrame:
     """Load a DeGiro CSV file into a cleaned DataFrame."""
@@ -576,16 +587,6 @@ def fetch_tradegate_price(isin: str) -> float | None:
 import threading
 import time
 import concurrent.futures
-
-def is_tradegate_open() -> bool:
-    """Check if TradeGate is open (09:00-22:00 CET, Mon-Fri)."""
-    now = pd.Timestamp.now(tz='Europe/Amsterdam')
-    # Only weekdays (Mon=0, Fri=4)
-    if now.weekday() > 4:
-        return False
-    # Trading hours: 09:00 to 22:00
-    hour = now.hour
-    return 9 <= hour < 22
 
 class PriceManager:
     def __init__(self):
