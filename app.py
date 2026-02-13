@@ -826,12 +826,12 @@ def render_metrics(df: pd.DataFrame) -> None:
         st.markdown(f"**Periode data:** {period_str}")
     
     col1, col2, col3, col4 = st.columns(4)
-    # total costs = purchases + fees - sales
-    total_costs = total_buys + total_fees - total_sells
+    # total costs = absolute purchases + fees minus absolute sales
+    total_costs = abs(total_buys) + total_fees - abs(total_sells)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
-        f"Verkopen: {format_eur(total_sells)}"
+        f"Verkopen: {format_eur(abs(total_sells))}"
     )
     col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
