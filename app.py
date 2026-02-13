@@ -816,19 +816,6 @@ def render_metrics(df: pd.DataFrame) -> None:
             if pd.notna(base) and pd.notna(lp) and pd.notna(qty):
                 return qty * (lp - base)
             return pd.NA
-        positions["daily_pl"] = positions.apply(calc_daily, axis=1)
-        # if midnight_price missing, fall back to prev_close/tradegate for percentage
-        def pct_calc(r):
-            is_crypto = isinstance(r.get("ticker"), str) and any(x in r.get("ticker").upper() for x in ["BTC","ETH"])
-            if is_crypto:
-                base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
-            else:
-                base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
-            lp = r.get("last_price")
-            if pd.notna(base) and base != 0 and pd.notna(lp):
-                return ((lp - base) / base) * 100.0
-            return pd.NA
-        positions["daily_pct"] = positions.apply(pct_calc, axis=1)
         positions["avg_price"] = positions.apply(
             lambda r: (
                 r["invested"] / r["quantity"]
@@ -845,8 +832,6 @@ def render_metrics(df: pd.DataFrame) -> None:
         positions["prev_close"] = []
         positions["current_value"] = []
         positions["avg_price"] = []
-        positions["daily_pl"] = []
-        positions["daily_pct"] = []
 
     # Globale samenvatting
     total_deposits = df.loc[df["type"] == "Deposit", "amount"].sum()
@@ -878,16 +863,12 @@ def render_metrics(df: pd.DataFrame) -> None:
     else:
         total_result = 0.0
 
-    # compute daily P/L only from price movement since prev_close
-    total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
     # percentage relative to total amount spent buying (including fees)
     total_spent = abs(total_buys) + total_fees
     if pd.notna(total_spent) and total_spent != 0:
         pct_total = (total_result / total_spent * 100.0)
-        pct_daily = (total_daily_pl / total_spent * 100.0)
     else:
         pct_total = 0.0
-        pct_daily = 0.0
 
     # Layout: metrics row (now 4 columns)
     # Periode weergeven
@@ -897,7 +878,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
         st.markdown(f"**Periode data:** {period_str}")
     
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -907,8 +888,6 @@ def render_metrics(df: pd.DataFrame) -> None:
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: Marktwaarde - Totale kosten")
-    col4.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal",
-               help="Koersverandering sinds vorige sluiting")
 
     # second row of other metrics (dividend only now)
     col5, col6 = st.columns(2)
@@ -948,27 +927,10 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 st.markdown(f"#### {cat}")
                 display = cat_df.copy()
                 
-                # include previous close and daily P/L if available
+                # include previous close if available (for reference)
                 display["prev_close"] = display["ticker"].map(fetch_prev_close(
                     display["ticker"].dropna().unique().tolist()
                 ))
-                display["daily_pl"] = display.apply(
-                    lambda r: (
-                        r["quantity"] * (r["last_price"] - r["prev_close"])
-                        if pd.notna(r.get("prev_close"))
-                        else pd.NA
-                    ),
-                    axis=1,
-                )
-                display["daily_pct"] = display.apply(
-                    lambda r: (
-                        ( (r["last_price"] - r["prev_close"]) * r["quantity"] )
-                        / r["invested"] * 100.0
-                        if pd.notna(r.get("prev_close")) and pd.notna(r.get("invested")) and r["invested"] not in (0,)
-                        else pd.NA
-                    ),
-                    axis=1,
-                )
                 
                 # --- CALCULATION LOGIC: MATCH DEGIRO (Include Fees) ---
                 # 'invested' is buy_cash (positive sum).
@@ -985,7 +947,6 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 display["Totaal geinvesteerd"] = display["Totaal geinvesteerd"].map(format_eur)
                 display["Huidige waarde"] = display["current_value"].map(format_eur)
                 display["Winst/verlies (EUR)"] = display["Winst/verlies (EUR)"].map(format_eur)
-                display["Dag P/L (EUR)"] = display["daily_pl"].map(format_eur)
 
                 def _pl_pct(row: pd.Series) -> float | None:
                     cur = row.get("current_value")
@@ -997,12 +958,10 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     return pd.NA
 
                 display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
-                display["Dag P/L (%)"] = display["daily_pct"].map(format_pct)
 
                 # combine euro+% columns into single strings
                 # combine euro and pct inside parentheses
                 display["Resultaat"] = display["Winst/verlies (EUR)"] + " (" + display["Winst/verlies (%)"] + ")"
-                display["Dag Resultaat"] = display["Dag P/L (EUR)"] + " (" + display["Dag P/L (%)"] + ")"
 
                 display = display.rename(
                     columns={
@@ -1015,17 +974,17 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 )
                 display = display[[
                     "Product", "Ticker", "Totaal geinvesteerd", "Huidige waarde",
-                    "Resultaat", "Dag Resultaat", "Aantal",
+                    "Resultaat", "Aantal",
                     "Transacties",
                 ]]
                 
                 # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
                 display = display.set_index("Product").T
                 
-                # apply coloring only on the two result rows (total & daily)
+                # apply coloring only on the result row
                 def _color_row(row):
                     # row.name is the metric label after transpose
-                    if row.name in ("Resultaat", "Dag Resultaat"):
+                    if row.name == "Resultaat":
                         # color each cell based on presence of '-' anywhere
                         return ["color: red" if isinstance(v, str) and "-" in v and not v.strip().startswith("(0") else "color: green" for v in row]
                     else:
@@ -1662,12 +1621,6 @@ def main() -> None:
     )
 
     st.title("DeGiro Portfolio Dashboard")
-    
-    # Show TradeGate market status in the top bar
-    if is_tradegate_open():
-        st.success("🟢 **TradeGate is open (9:00-22:00)** – Vanguard gegevens elke 10 seconden vernieuwd")
-    else:
-        st.info("🔴 **TradeGate is gesloten** – Normale refresh rate (30s)")
     
     sidebar = st.sidebar
     sidebar.header("Instellingen")
