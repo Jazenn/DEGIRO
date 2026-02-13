@@ -8,3 +8,5 @@ yfinance
 google-api-python-client
 google-auth
 openpyxl
+
+# Force deployment refresh
