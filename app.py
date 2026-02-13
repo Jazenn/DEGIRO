@@ -802,9 +802,15 @@ def render_metrics(df: pd.DataFrame) -> None:
     valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     current_cash = valid_cash_tx["amount"].sum()
     
-    total_equity = total_market_value + current_cash
-    net_invested_total = total_deposits - total_withdrawals
-    total_result = total_equity - net_invested_total
+    # derive total result from individual position profit + cash
+    if not positions.empty:
+        position_profits = positions.apply(
+            lambda r: (r.get("current_value", 0.0) + r.get("net_cashflow", 0.0)),
+            axis=1,
+        )
+        total_result = position_profits.sum() + current_cash
+    else:
+        total_result = current_cash
 
     # compute daily P/L summary
     total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
