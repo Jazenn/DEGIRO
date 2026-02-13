@@ -802,15 +802,9 @@ def render_metrics(df: pd.DataFrame) -> None:
     valid_cash_tx = df[~df["type"].isin(["Reservation", "Cash Sweep"])]
     current_cash = valid_cash_tx["amount"].sum()
     
-    # derive total result from individual position profit + cash
-    if not positions.empty:
-        position_profits = positions.apply(
-            lambda r: (r.get("current_value", 0.0) + r.get("net_cashflow", 0.0)),
-            axis=1,
-        )
-        total_result = position_profits.sum() + current_cash
-    else:
-        total_result = current_cash
+    # Simplified profit: current market value minus total costs
+    # total_costs already computed earlier as buys+fees-sells
+    total_result = total_market_value - total_costs
 
     # compute daily P/L summary
     total_daily_pl = positions["daily_pl"].dropna().sum() if not positions.empty else 0.0
@@ -842,7 +836,7 @@ def render_metrics(df: pd.DataFrame) -> None:
     col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-               help="Berekening: (Waarde + Saldo) - (Stortingen - Opnames)")
+               help="Berekening: Marktwaarde - Totale kosten")
     col4.metric("Dag P/L", format_eur(total_daily_pl), delta=format_pct(pct_daily), delta_color="normal")
 
     # second row of other metrics (dividend only now)
