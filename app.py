@@ -793,7 +793,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         def pct_calc(r):
             base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
             lp = r.get("last_price")
-            if pd.notna(base) and base not in (0, pd.NA) and pd.notna(lp):
+            if pd.notna(base) and base != 0 and pd.notna(lp):
                 return ((lp - base) / base) * 100.0
             return pd.NA
         positions["daily_pct"] = positions.apply(pct_calc, axis=1)
