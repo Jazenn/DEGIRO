@@ -540,9 +540,14 @@ def map_to_ticker(product: str | None, isin: str | None) -> str | None:
     return None
 
 
-@st.cache_data(ttl=30)
+@st.cache_data(ttl=10 if is_tradegate_open() else 60)
 def fetch_tradegate_price(isin: str) -> float | None:
-    """Schraap de laatste koers van Tradegate (voor real-time nauwkeurigheid)."""
+    """Schraap de laatste koers van Tradegate (voor real-time nauwkeurigheid).
+    
+    Cache TTL adapts based on market hours:
+    - 9:00-22:00 (weekdays): 10s refresh for live updates
+    - Outside hours: 60s refresh
+    """
     try:
         import requests
         # Tradegate Orderboek pagina
@@ -571,6 +576,16 @@ def fetch_tradegate_price(isin: str) -> float | None:
 import threading
 import time
 import concurrent.futures
+
+def is_tradegate_open() -> bool:
+    """Check if TradeGate is open (09:00-22:00 CET, Mon-Fri)."""
+    now = pd.Timestamp.now(tz='Europe/Amsterdam')
+    # Only weekdays (Mon=0, Fri=4)
+    if now.weekday() > 4:
+        return False
+    # Trading hours: 09:00 to 22:00
+    hour = now.hour
+    return 9 <= hour < 22
 
 class PriceManager:
     def __init__(self):
@@ -671,8 +686,9 @@ class PriceManager:
             with self.lock:
                 self.prices.update(results)
             
-            # Sleep 60s before next update
-            time.sleep(60)
+            # Adaptive sleep: if TradeGate is open, refresh every 10s; otherwise 60s
+            sleep_duration = 10 if is_tradegate_open() else 60
+            time.sleep(sleep_duration)
 
 # Singleton Resource
 @st.cache_resource
@@ -752,7 +768,7 @@ def fetch_midnight_price(tickers: list[str]) -> dict[str, float]:
     return results
 
 
-@fragment(run_every=30)
+@fragment(run_every=10 if is_tradegate_open() else 30)
 def render_metrics(df: pd.DataFrame) -> None:
     """Render alleen de metrics die elke 30 sec verversen."""
     # We berekenen positions hier binnen het fragment, zodat bij een refresh 
@@ -899,7 +915,7 @@ def render_metrics(df: pd.DataFrame) -> None:
     col6.write("")  # placeholder column
 
 
-@fragment(run_every=30)
+@fragment(run_every=10 if is_tradegate_open() else 30)
 def render_overview(df: pd.DataFrame, drive=None) -> None:
     """Render de open posities tabel en allocatie chart met auto-refresh."""
     positions = build_positions(df)
@@ -1645,6 +1661,12 @@ def main() -> None:
     )
 
     st.title("DeGiro Portfolio Dashboard")
+    
+    # Show TradeGate market status in the top bar
+    if is_tradegate_open():
+        st.success("🟢 **TradeGate is open (9:00-22:00)** – Vanguard gegevens elke 10 seconden vernieuwd")
+    else:
+        st.info("🔴 **TradeGate is gesloten** – Normale refresh rate (30s)")
     
     sidebar = st.sidebar
     sidebar.header("Instellingen")
