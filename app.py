@@ -654,7 +654,10 @@ class PriceManager:
             
             if yf_tickers:
                 download_list = yf_tickers[:]
-                alternatives = {"VWCE.DE": ["VWCE.F", "VWCE.SG"]}
+                alternatives = {
+                    "VWCE.DE": ["VWCE.F", "VWCE.SG"],
+                    "ASWC.DE": ["ASWC.F", "ASWC.SG"]  # FOD also has alternative listings
+                }
                 for main, alts in alternatives.items():
                     if main in yf_tickers: download_list.extend(alts)
                 
@@ -785,8 +788,8 @@ def render_metrics(df: pd.DataFrame) -> None:
         price_map = fetch_live_prices(ticker_list)
         prev_map = fetch_prev_close(ticker_list)
         mid_map = fetch_midnight_price(ticker_list)
-        # compute tradegate price only for ETFs that trade there (e.g. VWCE.DE)
-        TRADEGATE_TICKERS = {"VWCE.DE"}
+        # compute tradegate price for ETFs that trade there (VWCE.DE, ASWC.DE/FOD)
+        TRADEGATE_TICKERS = {"VWCE.DE", "ASWC.DE"}
         positions["tradegate_price"] = positions.apply(
             lambda r: fetch_tradegate_price(r.get("isin")) if r.get("ticker") in TRADEGATE_TICKERS else pd.NA,
             axis=1,
@@ -905,7 +908,21 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             lambda r: map_to_ticker(r.get("product"), r.get("isin")), axis=1
         )
         price_map = fetch_live_prices(positions["ticker"].dropna().unique().tolist())
-        positions["last_price"] = positions["ticker"].map(price_map)
+        
+        # Get TradeGate prices for tickers that trade there
+        TRADEGATE_TICKERS = {"VWCE.DE", "ASWC.DE"}
+        tradegate_map = {}
+        for idx, row in positions.iterrows():
+            ticker = row.get("ticker")
+            isin = row.get("isin")
+            if ticker in TRADEGATE_TICKERS and pd.notna(isin):
+                price = fetch_tradegate_price(isin)
+                if price:
+                    tradegate_map[ticker] = price
+        
+        # Merge: prefer TradeGate, fall back to yfinance
+        merged_prices = {**price_map, **tradegate_map}
+        positions["last_price"] = positions["ticker"].map(merged_prices)
         positions["current_value"] = positions.apply(
             lambda r: (
                 r["quantity"] * r["last_price"]
