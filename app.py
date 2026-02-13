@@ -768,6 +768,8 @@ def render_metrics(df: pd.DataFrame) -> None:
         price_map = fetch_live_prices(ticker_list)
         prev_map = fetch_prev_close(ticker_list)
         mid_map = fetch_midnight_price(ticker_list)
+        # additionally get tradegate price for ETFs/aandelen
+        positions["tradegate_price"] = positions["isin"].apply(lambda i: fetch_tradegate_price(i) if pd.notna(i) else pd.NA)
         positions["last_price"] = positions["ticker"].map(price_map)
         positions["prev_close"] = positions["ticker"].map(prev_map)
         positions["midnight_price"] = positions["ticker"].map(mid_map)
@@ -783,15 +785,23 @@ def render_metrics(df: pd.DataFrame) -> None:
         def calc_daily(r):
             lp = r.get("last_price")
             qty = r.get("quantity")
-            # prefer midnight_price, but fall back to prev_close if absent
-            base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            # determine base price per asset type
+            is_crypto = isinstance(r.get("ticker"), str) and any(x in r.get("ticker").upper() for x in ["BTC","ETH"])
+            if is_crypto:
+                base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            else:
+                base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
             if pd.notna(base) and pd.notna(lp) and pd.notna(qty):
                 return qty * (lp - base)
             return pd.NA
         positions["daily_pl"] = positions.apply(calc_daily, axis=1)
         # if midnight_price missing, fall back to prev_close for percentage
         def pct_calc(r):
-            base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            is_crypto = isinstance(r.get("ticker"), str) and any(x in r.get("ticker").upper() for x in ["BTC","ETH"])
+            if is_crypto:
+                base = r.get("midnight_price") if pd.notna(r.get("midnight_price")) else r.get("prev_close")
+            else:
+                base = r.get("tradegate_price") if pd.notna(r.get("tradegate_price")) else r.get("prev_close")
             lp = r.get("last_price")
             if pd.notna(base) and base != 0 and pd.notna(lp):
                 return ((lp - base) / base) * 100.0
