@@ -862,9 +862,17 @@ def render_metrics(df: pd.DataFrame) -> None:
             lambda r: r.get("current_value", 0.0) + r.get("net_cashflow", 0.0),
             axis=1,
         )
-        total_result = positions["pl_eur"].sum()
+        # OUDE METHODE (mist gerealiseerde resultaten van gesloten posities):
+        # total_result = positions["pl_eur"].sum()
+        
+        # NIEUWE METHODE: Consistentie met Totale Kosten
+        # Totaal Resultaat = Huidige Waarde - (Netto Inleg + Kosten)
+        # Oftewel: Huidige Waarde - Totale Kosten
+        total_result = total_market_value - total_costs
     else:
-        total_result = 0.0
+        # Ook als er geen open posities zijn, kan er nog wel gerealiseerd resultaat zijn (uit transacties)
+        # Bijv. alles verkocht -> waarde=0, kosten=negatief (winst) of positief (verlies)
+        total_result = total_market_value - total_costs
 
     # percentage relative to total amount spent buying (including fees)
     total_spent = abs(total_buys) + total_fees
@@ -890,7 +898,7 @@ def render_metrics(df: pd.DataFrame) -> None:
     col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-               help="Berekening: Marktwaarde - Totale kosten")
+               help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
 
     # second row of other metrics (dividend only now)
     col5, col6 = st.columns(2)
