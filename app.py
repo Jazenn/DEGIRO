@@ -854,7 +854,8 @@ def render_metrics(df: pd.DataFrame) -> None:
     current_cash = valid_cash_tx["amount"].sum()
     
     # compute total costs for display
-    total_costs = abs(total_buys) + total_fees - abs(total_sells)
+    # Totaal Kosten = Netto Inleg = (Aankopen + Fees) - (Verkopen + Dividenden)
+    total_costs = abs(total_buys) + total_fees - abs(total_sells) - total_dividends
     
     # compute total P/L as sum of each position's profit/loss (current + net cashflow)
     if not positions.empty:
@@ -866,7 +867,7 @@ def render_metrics(df: pd.DataFrame) -> None:
         # total_result = positions["pl_eur"].sum()
         
         # NIEUWE METHODE: Consistentie met Totale Kosten
-        # Totaal Resultaat = Huidige Waarde - (Netto Inleg + Kosten)
+        # Totaal Resultaat = Huidige Waarde - (Netto Inleg + Kosten - Dividenden)
         # Oftewel: Huidige Waarde - Totale Kosten
         total_result = total_market_value - total_costs
     else:
@@ -893,9 +894,10 @@ def render_metrics(df: pd.DataFrame) -> None:
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
-        f"Verkopen: {format_eur(abs(total_sells))}"
+        f"Verkopen: -{format_eur(abs(total_sells))}  |  "
+        f"Dividend: -{format_eur(total_dividends)}"
     )
-    col1.metric("Totale Kosten", format_eur(total_costs), help=help_txt)
+    col1.metric("Totale Kosten (Netto Inleg)", format_eur(total_costs), help=help_txt)
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
