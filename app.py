@@ -551,6 +551,45 @@ def map_to_ticker(product: str | None, isin: str | None) -> str | None:
     return None
 
 
+def resolve_ticker_input(s: str) -> str | None:
+    """Try to resolve a user-provided string to a usable yfinance ticker.
+
+    Strategy:
+    - If string looks like an ISIN and is present in PRICE_MAPPING_BY_ISIN, return mapped ticker.
+    - If string already looks like a ticker, test it with yfinance (quick history lookup).
+    - Try a small set of common listing suffixes ('.DE', '.F', '.SG') as fallback.
+    - Return None if unresolved.
+    """
+    if not s or not isinstance(s, str):
+        return None
+    s_clean = s.strip()
+
+    # ISIN pattern: 2 letters + 10 alnum (basic check)
+    if re.match(r"^[A-Z]{2}[A-Z0-9]{10}$", s_clean.upper()):
+        if s_clean in PRICE_MAPPING_BY_ISIN:
+            return PRICE_MAPPING_BY_ISIN[s_clean]
+        # also try upper-cased
+        if s_clean.upper() in PRICE_MAPPING_BY_ISIN:
+            return PRICE_MAPPING_BY_ISIN[s_clean.upper()]
+
+    # If the input is already one of our mapped tickers, return it
+    if s_clean in PRICE_MAPPING_BY_ISIN.values():
+        return s_clean
+
+    # Heuristic: try as ticker via yfinance quick check
+    candidates = [s_clean, s_clean + ".DE", s_clean + ".F", s_clean + ".SG"]
+    for cand in candidates:
+        try:
+            t = yf.Ticker(cand)
+            hist = t.history(period="1d", interval="1d")
+            if not hist.empty:
+                return cand
+        except Exception:
+            continue
+
+    return None
+
+
 @st.cache_data(ttl=10 if is_tradegate_open() else 60)
 def fetch_tradegate_price(isin: str) -> float | None:
     """Schraap de laatste koers van Tradegate (voor real-time nauwkeurigheid).
@@ -1111,7 +1150,12 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     # live prices will be available for the next refresh.
                     try:
                         pm = get_price_manager()
-                        pm.update_watchlist([new_asset_name])
+                        resolved = resolve_ticker_input(new_asset_name)
+                        if resolved:
+                            pm.update_watchlist([resolved])
+                        else:
+                            # still add the raw name so user can keep the string; resolution may happen later
+                            pm.update_watchlist([new_asset_name])
                     except:
                         pass
 
@@ -1256,20 +1300,38 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     isin = ""
                     # Try to fetch live price for the product name (user may have supplied a ticker)
                     last_price = 0.0
-                    try:
-                        price_map_new = fetch_live_prices([product_name])
-                        last_price = float(price_map_new.get(product_name) or 0.0)
-                    except:
-                        last_price = 0.0
-
-                    # Fallback to yfinance quick query if still missing
-                    if not last_price:
+                    # Try to resolve product string to a real ticker or ISIN mapping
+                    resolved = resolve_ticker_input(product_name)
+                    if resolved:
                         try:
-                            hist = yf.Ticker(product_name).history(period="2d", interval="1d")
-                            if not hist.empty:
-                                last_price = float(hist["Close"].iloc[-1])
+                            price_map_new = fetch_live_prices([resolved])
+                            last_price = float(price_map_new.get(resolved) or 0.0)
                         except:
                             last_price = 0.0
+
+                        # yfinance fallback using resolved ticker
+                        if not last_price:
+                            try:
+                                hist = yf.Ticker(resolved).history(period="2d", interval="1d")
+                                if not hist.empty:
+                                    last_price = float(hist["Close"].iloc[-1])
+                            except:
+                                last_price = 0.0
+                    else:
+                        # Last resort: try raw product_name as ticker/search
+                        try:
+                            price_map_new = fetch_live_prices([product_name])
+                            last_price = float(price_map_new.get(product_name) or 0.0)
+                        except:
+                            last_price = 0.0
+
+                        if not last_price:
+                            try:
+                                hist = yf.Ticker(product_name).history(period="2d", interval="1d")
+                                if not hist.empty:
+                                    last_price = float(hist["Close"].iloc[-1])
+                            except:
+                                last_price = 0.0
                 
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
