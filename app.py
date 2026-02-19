@@ -1030,6 +1030,7 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
         
         # --- CONFIG PERSISTENCE ---
         CONFIG_FILE = "target_config.json"
+        SETTINGS_FILE = "target_config_settings.json"
         
         def load_targets_config():
             # Try Drive first if available
@@ -1052,16 +1053,68 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                 with open(CONFIG_FILE, "w") as f:
                     json.dump(targets, f)
 
+        def load_rebalance_settings():
+            # Return defaults if no settings file exists
+            defaults = {
+                "stock_fee_eur": 1.0,
+                "crypto_fee_pct": 0.29
+            }
+            if drive:
+                try:
+                    s = drive.load_json(SETTINGS_FILE)
+                    if isinstance(s, dict):
+                        return {**defaults, **s}
+                except:
+                    return defaults
+
+            if Path(SETTINGS_FILE).exists():
+                try:
+                    with open(SETTINGS_FILE, "r") as f:
+                        s = json.load(f)
+                        if isinstance(s, dict):
+                            return {**defaults, **s}
+                except:
+                    return defaults
+            return defaults
+
+        def save_rebalance_settings(settings: dict):
+            if drive:
+                drive.save_json(SETTINGS_FILE, settings)
+            else:
+                with open(SETTINGS_FILE, "w") as f:
+                    json.dump(settings, f)
+
         saved_targets = load_targets_config() # Dict: {"ProductNaam": 10.0, ...}
         
         # --- UI FOR ADDING NEW ASSETS ---
         with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
             new_asset_name = st.text_input("Productnaam (bijv. Apple, NVIDIA)", key="new_asset_name")
             new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
+            # Load persisted settings (stock fee in EUR, crypto fee in %)
+            rb_settings = load_rebalance_settings()
+            col_fee_1, col_fee_2 = st.columns(2)
+            with col_fee_1:
+                stock_fee_eur = st.number_input("Standaard fee aandelen (€)", min_value=0.0, step=0.1, value=float(rb_settings.get("stock_fee_eur", 1.0)), help="Standaard transactiekosten per order voor aandelen (EUR)")
+            with col_fee_2:
+                crypto_fee_pct = st.number_input("Standaard crypto fee (%)", min_value=0.0, step=0.01, value=float(rb_settings.get("crypto_fee_pct", 0.29)), help="Procentuele fee voor crypto (bijv. 0.29 betekent 0.29%)")
+            # Persist settings when changed
+            if stock_fee_eur != rb_settings.get("stock_fee_eur") or crypto_fee_pct != rb_settings.get("crypto_fee_pct"):
+                rb_settings["stock_fee_eur"] = stock_fee_eur
+                rb_settings["crypto_fee_pct"] = crypto_fee_pct
+                save_rebalance_settings(rb_settings)
             if st.button("Voeg toe"):
                 if new_asset_name:
                     saved_targets[new_asset_name] = new_asset_target
                     save_targets_config(saved_targets)
+
+                    # If user used a ticker as name, ask the PriceManager to watch it so
+                    # live prices will be available for the next refresh.
+                    try:
+                        pm = get_price_manager()
+                        pm.update_watchlist([new_asset_name])
+                    except:
+                        pass
+
                     st.toast(f"{new_asset_name} toegevoegd aan de lijst!", icon="✅")
                     st.rerun()
                 else:
@@ -1171,7 +1224,21 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
             if prevent_sell and extra_budget > 0 and total_buys_needed > extra_budget:
                 budget_scaling_factor = extra_budget / total_buys_needed
 
+            # Ensure price manager watches any new products (watchlist entries without current positions)
+            try:
+                pm = get_price_manager()
+                missing_products = [p for p in editor_df["Product"].tolist() if p not in alloc["Display Name"].tolist()]
+                if missing_products:
+                    pm.update_watchlist(missing_products)
+            except:
+                pass
+
             raw_actions = []
+            # Load rebalance settings (fallback if not present)
+            try:
+                rb_settings
+            except NameError:
+                rb_settings = load_rebalance_settings()
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
@@ -1186,8 +1253,23 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     isin = curr_row.get("isin", "")
                 else:
                     curr_val = 0.0
-                    last_price = 100.0 
                     isin = ""
+                    # Try to fetch live price for the product name (user may have supplied a ticker)
+                    last_price = 0.0
+                    try:
+                        price_map_new = fetch_live_prices([product_name])
+                        last_price = float(price_map_new.get(product_name) or 0.0)
+                    except:
+                        last_price = 0.0
+
+                    # Fallback to yfinance quick query if still missing
+                    if not last_price:
+                        try:
+                            hist = yf.Ticker(product_name).history(period="2d", interval="1d")
+                            if not hist.empty:
+                                last_price = float(hist["Close"].iloc[-1])
+                        except:
+                            last_price = 0.0
                 
                 target_val = new_total_value * (target_pct / 100.0)
                 diff = target_val - curr_val
@@ -1208,14 +1290,14 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
                     qty_to_trade = round(qty_calculated)
                     executed_diff = qty_to_trade * last_price
                 
-                # Preliminary Fee
+                # Preliminary Fee (use persisted settings)
                 fee = 0.0
                 if abs(qty_to_trade) > 0:
                     if is_crypto:
-                        fee = abs(executed_diff) * 0.0029
+                        fee_pct = float(rb_settings.get("crypto_fee_pct", 0.29))
+                        fee = abs(executed_diff) * (fee_pct / 100.0)
                     else:
-                        is_core = "Vanguard" in str(product_name) or isin == "IE00BK5BQT80"
-                        fee = 1.0 if is_core else 3.0
+                        fee = float(rb_settings.get("stock_fee_eur", 1.0))
 
                 # Validate Action
                 action = "Kopen" if qty_to_trade > 0 else "Verkopen"
