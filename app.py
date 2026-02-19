@@ -699,9 +699,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 display = cat_df.copy()
                 
                 # include previous close if available (for reference)
-                display["prev_close"] = display["ticker"].map(fetch_prev_close(
-                    display["ticker"].dropna().unique().tolist()
-                ))
+                display["prev_close"] = display["ticker"].apply(price_manager.get_prev_close)
                 
                 # --- CALCULATION LOGIC: MATCH DEGIRO (Include Fees) ---
                 # 'invested' is buy_cash (positive sum).
