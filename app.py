@@ -1279,10 +1279,8 @@ def render_overview(df: pd.DataFrame, drive=None) -> None:
 
             raw_actions = []
             # Load rebalance settings (fallback if not present)
-            try:
-                rb_settings
-            except NameError:
-                rb_settings = load_rebalance_settings()
+            rb_settings = load_rebalance_settings()
+
             for idx, row in edited_df.iterrows():
                 product_name = row["Product"]
                 target_pct = row["Doel %"]
