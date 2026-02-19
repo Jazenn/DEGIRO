@@ -123,7 +123,7 @@ class PriceManager:
         if resolved: return resolved
         
         # 3. Fallback for legacy hardcoded items (migrate these to JSON ideally)
-        if product_str:
+        if product_str and isinstance(product_str, str):
             upper = product_str.upper()
             if "VANGUARD FTSE ALL-WORLD" in upper: return "VWCE.DE"
             if upper.startswith("BITCOIN"): return "BTC-EUR"
@@ -133,7 +133,7 @@ class PriceManager:
 
     def _resolve_input_string(self, s: str) -> str | None:
         """Handle 'TICKER | ISIN' and validation."""
-        if not s: return None
+        if not s or not isinstance(s, str): return None
         s = s.strip()
         
         # Split "TICKER | ISIN"
