@@ -673,8 +673,8 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         latest_row = df.sort_values("value_date", ascending=False).iloc[0]
         current_balance = latest_row.get("balance", 0.0)
 
-    # 4 Columns for top metrics
-    col1, col2, col3, col4 = st.columns(4)
+    # 3 Columns for top metrics
+    col1, col2, col3 = st.columns(3)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -686,12 +686,10 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
     
+    # second row: Balance | Dividend
+    col4, col5 = st.columns(2)
     col4.metric("Vrije Ruimte (Saldo)", format_eur(current_balance), help="Het laatst bekende saldo uit de transactiehistorie.")
-
-    # second row of other metrics (dividend only now)
-    col5, col6 = st.columns(2)
     col5.metric("Ontvangen dividend", format_eur(total_dividends))
-    col6.write("")  # placeholder column
 
 
 @fragment(run_every=30)
@@ -790,8 +788,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 metrics_to_show = [
                     "Product", 
                     "Aantal", 
-                    "Huidige waarde", 
                     "Totaal geinvesteerd", 
+                    "Huidige waarde", 
                     "Resultaat",
                     # "Transacties" # Optional, user didn't explicitly ask for it but it was there before? logic check: yes it was.
                 ]
@@ -957,13 +955,13 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             # Gebruik st.form
             with st.form("rebalance_form"):
-                st.write("Pas hieronder de gewenste verdeling aan:")
+                st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
                 edited_df = st.data_editor(
                     editor_df,
                     column_config={
                         "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
                         "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
-                        "Productnaam": st.column_config.TextColumn(disabled=True),
+                        "Productnaam": st.column_config.TextColumn(disabled=False, required=True, max_chars=50), # Editable!
                     },
                     use_container_width=True,
                     hide_index=True, # Hides the Ticker/ISIN index!
@@ -989,13 +987,26 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             if submitted:
                 # Save changes when submitted
                 # Index is Ticker/ISIN (preserved even if hidden)
-                new_targets = dict(zip(edited_df.index, edited_df["Doel %"]))
+                # We need to save BOTH Target % AND Product Name if changed.
                 
-                current_t = config_manager.get_targets()
-                # Remove deleted ones? No, this is just updating percentages of existing editor items.
-                for p, t in new_targets.items():
-                    config_manager.set_target(p, t)
-                st.toast("Verdeling opgeslagen!", icon="💾")
+                # Check for changes
+                # Iterate rows
+                for idx, row in edited_df.iterrows():
+                    key = idx # Ticker/ISIN
+                    new_target = float(row["Doel %"])
+                    new_name = str(row["Productnaam"]).strip()
+                    
+                    # Get existing values
+                    existing_name = config_manager.get_product_name(key)
+                    
+                    # Update Target (always set, handles create/update)
+                    config_manager.set_target(key, new_target)
+                    
+                    # Update Name if different
+                    if new_name and new_name != existing_name:
+                         config_manager.set_product_name(key, new_name)
+                
+                st.toast("Verdeling en namen opgeslagen!", icon="💾")
 
             # --- REMOVE OPTION ---
             # Extract watchlist items (those with 0% current) for removal
