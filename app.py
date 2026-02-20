@@ -798,25 +798,30 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 config_manager.update_settings(stock_fee=stock_fee_eur, crypto_fee=crypto_fee_pct)
 
             if st.button("Voeg toe"):
-                if new_asset_key:
+                # Clean inputs
+                clean_key = new_asset_key.strip() if new_asset_key else ""
+                clean_name = new_asset_name.strip() if new_asset_name else ""
+                
+                if clean_key:
                     # Save Target (Key -> %)
-                    config_manager.set_target(new_asset_key, new_asset_target)
+                    config_manager.set_target(clean_key, new_asset_target)
                     
                     # Save Name (Key -> Name)
-                    if new_asset_name:
-                         config_manager.set_product_name(new_asset_key, new_asset_name)
-
+                    if clean_name:
+                         config_manager.set_product_name(clean_key, clean_name)
+                    
+                    # Force save/reload of cached targets
                     saved_targets = config_manager.get_targets()
 
                     # Resolve/Warmup
                     try:
-                        resolved = price_manager.resolve_ticker(new_asset_key)
+                        resolved = price_manager.resolve_ticker(clean_key)
                         if resolved:
                             price_manager.get_live_price(resolved) # trigger cache
                     except:
                         pass
 
-                    st.toast(f"{new_asset_key} ({new_asset_name}) toegevoegd!", icon="✅")
+                    st.toast(f"{clean_key} ({clean_name or 'Geen naam'}) toegevoegd!", icon="✅")
                     st.rerun()
                 else:
                     st.error("Voer een Ticker/ISIN in.")
@@ -956,8 +961,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     last_price = curr_row.get("last_price", 0.0) 
                     if pd.isna(last_price): last_price = 0.0
                     isin = curr_row.get("isin", "")
-                    # If we have a real product name from the feed, use it if config doesn't have a better one
-                    if display_name == product_key: 
+                    
+                    # If config returned the key (fallback), AND we have a better name from the feed, use feed.
+                    # BUT if config returned a real name (different from key), KEEP IT.
+                    config_has_name = (display_name != product_key)
+                    if not config_has_name: 
                         display_name = curr_row.get("product", product_key)
 
                 else:
