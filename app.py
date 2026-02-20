@@ -1655,6 +1655,39 @@ def main() -> None:
     if "product" in df_raw.columns:
         df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
 
+    # --- ROBUST DATA CLEANING (Post-Merge) ---
+    # Ensure amount/balance/fx are clean Floats, handling both:
+    # 1. Clean data ("1234.56" or 1234.56)
+    # 2. Dirty/Legacy EU strings ("1.234,56") preserved in Drive
+    def smart_numeric_clean(series):
+        # 0. If already numeric, we are good (but ensure fillna)
+        if pd.api.types.is_numeric_dtype(series):
+             return series.fillna(0.0)
+             
+        # 1. Try standard conversion
+        # This handles strings "123.45" correctly
+        nums = pd.to_numeric(series, errors='coerce')
+        
+        # 2. Identify items that failed to parse (and weren't null originally)
+        # These are likely "1.234,56" strings
+        mask_fail = nums.isna() & series.notna()
+        
+        if mask_fail.any():
+            # Apply EU cleaning ONLY to the failed items
+            def clean_eu(x):
+                s = str(x).replace("EUR", "").replace("USD", "").strip()
+                s = s.replace(".", "").replace(",", ".") # 1.234,56 -> 1234.56
+                return s
+            
+            cleaned = series[mask_fail].apply(clean_eu)
+            nums.update(pd.to_numeric(cleaned, errors='coerce'))
+            
+        return nums.fillna(0.0)
+
+    for col in ["amount", "balance", "fx"]:
+        if col in df_raw.columns:
+            df_raw[col] = smart_numeric_clean(df_raw[col])
+
     df = enrich_transactions(df_raw)
     
     # Needs price_manager for ticker resolution
