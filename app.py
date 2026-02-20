@@ -898,11 +898,12 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 })
             
             editor_df = pd.DataFrame(rows)
-            # Ensure columns order
+            # Ensure columns order and Set Index to Ticker/ISIN (to hide it visually but keep it)
             if not editor_df.empty:
-                editor_df = editor_df[["Productnaam", "Ticker/ISIN", "Huidig %", "Doel %"]]
+                editor_df.set_index("Ticker/ISIN", inplace=True)
+                editor_df = editor_df[["Productnaam", "Huidig %", "Doel %"]]
             else:
-                editor_df = pd.DataFrame(columns=["Productnaam", "Ticker/ISIN", "Huidig %", "Doel %"])
+                editor_df = pd.DataFrame(columns=["Productnaam", "Huidig %", "Doel %"])
 
             # Gebruik st.form
             with st.form("rebalance_form"):
@@ -913,33 +914,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
                         "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
                         "Productnaam": st.column_config.TextColumn(disabled=True),
-                        # HIDE Ticker/ISIN visually, but keep for logic identification
-                        "Ticker/ISIN": st.column_config.TextColumn(disabled=True, width=None, required=False, validate=None) 
-                        # Streamlit doesn't support 'hidden' columns well in data_editor return. 
-                        # We can just NOT show it in the config but provide it? 
-                        # No, if we don't config it, it shows up.
-                        # User asked to "Remove Ticker/ISIN column ... PURELY for visual".
-                        # If we omit it from dataframe passed to editor, we lose the key connection.
-                        # Workaround: Disable it and maybe make it small or last?
-                        # Or rely on 'Productnaam' being unique? No guarantee.
-                        # Ideally we use key column config?
                     },
                     use_container_width=True,
-                    hide_index=True,
-                    key="rebalance_editor",
-                    # HIDDEN COLUMNS Hack:
-                    # If we exclude "Ticker/ISIN" from the view, we can't extract it back easily unless row order is preserved.
-                    # Row order IS preserved in data_editor.
-                    # So we can pass a DF *without* Ticker/ISIN to data_editor?
-                    # But if we sort/filter...
-                    # Let's try to just disable it for now. User said "remove". 
-                    # If strictly remove -> We need to join back by index.
+                    hide_index=True, # Hides the Ticker/ISIN index!
+                    key="rebalance_editor"
                 )
-                
-                # To purely hide, we might need a separate display DF, but data_editor needs to return changes.
-                # If we hide Ticker/ISIN, user sees Names. If names are duplicate, it's ambiguous.
-                # Assuming Names are distinct enough or User accepts that.
-                
                 
                 st.markdown("---")
                 st.subheader("💡 Slimme Rebalancing met Budget")
@@ -959,9 +938,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             if submitted:
                 # Save changes when submitted
-                # We need to map back to Key. 
-                # edited_df has Ticker/ISIN (if we kept it).
-                new_targets = dict(zip(edited_df["Ticker/ISIN"], edited_df["Doel %"]))
+                # Index is Ticker/ISIN (preserved even if hidden)
+                new_targets = dict(zip(edited_df.index, edited_df["Doel %"]))
                 
                 current_t = config_manager.get_targets()
                 # Remove deleted ones? No, this is just updating percentages of existing editor items.
@@ -971,11 +949,15 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             # --- REMOVE OPTION ---
             # Extract watchlist items (those with 0% current) for removal
-            watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Ticker/ISIN"].tolist()
+            # Filter based on index (Ticker/ISIN) and column (Huidig %)
+            if not editor_df.empty and "Huidig %" in editor_df.columns:
+                 watchlist_items = editor_df[editor_df["Huidig %"] == 0.0].index.tolist()
+            else:
+                 watchlist_items = []
+
             if watchlist_items:
-                # Show Names in removal list, but map back to Ticker
-                # map key->name
-                key_to_name = dict(zip(editor_df["Ticker/ISIN"], editor_df["Productnaam"]))
+                # Map key->name using display column (Productnaam)
+                key_to_name = editor_df["Productnaam"].to_dict() # index is key
                 # options: "Name (Ticker)"
                 options = [f"{key_to_name[k]} ({k})" for k in watchlist_items]
                 
@@ -983,8 +965,6 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 if st.button("Verwijder geselecteerde"):
                     for item in to_remove_display:
                         # extract key (last part in parens?) 
-                        # cleaner: map display->key? No, conflicts.
-                        # Just parse.
                         k = item.split("(")[-1].strip(")")
                         config_manager.remove_target(k)
                     st.toast("Aandelen verwijderd!", icon="🗑️")
