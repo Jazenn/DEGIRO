@@ -742,6 +742,34 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 
                 display["Totaal geinvesteerd"] = (buy_val + fee_val - sell_val - div_val)
                 
+                # Winst/verlies berekening (EUR)
+                # Net profit = Current Value + Net Cashflow (which sums buys(-), sells(+), fees(-), divs(+))
+                display["Winst/verlies (EUR)"] = (display["current_value"] + display["net_cashflow"])
+                
+                # Format for display
+                display["Totaal geinvesteerd"] = display["Totaal geinvesteerd"].map(format_eur)
+                display["Huidige waarde"] = display["current_value"].map(format_eur)
+                display["Winst/verlies (EUR)"] = display["Winst/verlies (EUR)"].map(format_eur)
+
+                def _pl_pct(row: pd.Series) -> float | None:
+                    cur = row.get("current_value")
+                    net_cf = row.get("net_cashflow")
+                    
+                    inv = row.get("invested", 0)
+                    fees = abs(row.get("total_fees", 0))
+                    sells = row.get("total_sells", 0)
+                    divs = row.get("total_dividends", 0)
+                    
+                    cost_basis = inv + fees - sells - divs
+                    
+                    if pd.notna(cur) and pd.notna(net_cf):
+                        pl_amount = cur + net_cf
+                        if cost_basis != 0:
+                            return (pl_amount / cost_basis) * 100.0
+                    return pd.NA
+
+                display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
+
                 # End of calculation logic 
 
                 # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
