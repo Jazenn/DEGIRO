@@ -366,13 +366,13 @@ def build_portfolio_history(df: pd.DataFrame, price_manager) -> pd.DataFrame:
     unique_tickers = list(set(product_map.values()))
     try:
         # Download DAGELIJKSE data (was wekelijks)
-        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False)
+        yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False, threads=False)
         
         # Download HOURLY/INTRADAY data voor de laatste 8 dagen
         # period="5d" is te kort voor een volledige week view (7 dagen).
         # We gebruiken start=... om expliciet 8 dagen terug te gaan.
         start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
-        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False)
+        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False, threads=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
