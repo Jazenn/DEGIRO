@@ -728,82 +728,46 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 
                 display["Totaal geinvesteerd"] = (buy_val + fee_val - sell_val - div_val)
                 
-                # Create a "Help/Info" column with breakdown
-                def _make_info(row):
-                    b = format_eur(row["invested"])
-                    f = format_eur(abs(row["total_fees"]))
-                    s = format_eur(row["total_sells"])
-                    d = format_eur(row["total_dividends"])
-                    # Use a compact format
-                    return f"Buy: {b} | Fee: {f} | Sell: {s} | Div: {d}"
+                # End of calculation logic 
 
-                display["ℹ️"] = display.apply(_make_info, axis=1)
-
-                # Winst/verlies berekening (EUR)
-                # Net profit = Current Value + Net Cashflow (which sums buys(-), sells(+), fees(-), divs(+))
-                display["Winst/verlies (EUR)"] = (display["current_value"] + display["net_cashflow"])
+                # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
+                # First rename columns to friendly names
+                display = display.rename(
+                    columns={
+                        "Display Name": "Product",
+                        "quantity": "Aantal",
+                        "trades": "Transacties"
+                    }
+                )
                 
-                # Format for display
-                display["Totaal geinvesteerd"] = display["Totaal geinvesteerd"].map(format_eur)
-                display["Huidige waarde"] = display["current_value"].map(format_eur)
-                display["Winst/verlies (EUR)"] = display["Winst/verlies (EUR)"].map(format_eur)
-
-                def _pl_pct(row: pd.Series) -> float | None:
-                    cur = row.get("current_value")
-                    net_cf = row.get("net_cashflow")
-                    # Use the Net Invested as basis calculation?
-                    # If I sold half, my invested went down. My P/L is relative to remaining invested?
-                    # Or relative to "Netto Inleg"?
-                    # DeGiro typically uses: Result / Netto Inleg.
-                    # Net Invested calculated above IS Netto Inleg.
-                    
-                    # Re-calculate net invested float for division (since column is now string formatted)
-                    # better to use the raw series before formatting, but here we are row-wise.
-                    # Let's trust the previous step or just recompute.
-                    inv = row.get("invested", 0)
-                    fees = abs(row.get("total_fees", 0))
-                    sells = row.get("total_sells", 0)
-                    divs = row.get("total_dividends", 0)
-                    
-                    cost_basis = inv + fees - sells - divs
-                    
-                    if pd.notna(cur) and pd.notna(net_cf):
-                        pl_amount = cur + net_cf
-                        if cost_basis != 0:
-                            return (pl_amount / cost_basis) * 100.0
-                    return pd.NA
-
-                display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
-
-                # Columns to show
-                cols = [
-                    "Display Name", "quantity", "Huidige waarde", 
-                    "Totaal geinvesteerd", "Winst/verlies (EUR)", "Winst/verlies (%)",
-                    "ℹ️" # Breakdown column
+                # We combine W/V EUR and % into one string for the "Resultaat" row
+                display["Resultaat"] = display["Winst/verlies (EUR)"] + " (" + display["Winst/verlies (%)"] + ")"
+                
+                # Select specific columns to transpose
+                # Note: We omit the "ℹ️" breakdown as requested since cell-hover is not supported.
+                metrics_to_show = [
+                    "Product", 
+                    "Aantal", 
+                    "Huidige waarde", 
+                    "Totaal geinvesteerd", 
+                    "Resultaat",
+                    # "Transacties" # Optional, user didn't explicitly ask for it but it was there before? logic check: yes it was.
                 ]
                 
-                # Configure columns
-                st.dataframe(
-                    display[cols],
-                    use_container_width=True,
-                    column_config={
-                        "Display Name": st.column_config.TextColumn("Product", width="medium"),
-                        "quantity": st.column_config.NumberColumn("Aantal", format="%.4f"),
-                        "Huidige waarde": st.column_config.TextColumn("Waarde", help="Huidige marktwaarde (Aantal * Laatste Prijs)"),
-                        "Totaal geinvesteerd": st.column_config.TextColumn(
-                            "Netto Inleg", 
-                            help="Totale netto investering: (Aankopen + Fees) - (Verkopen + Dividend). Zie 'ℹ️' voor details."
-                        ),
-                        "Winst/verlies (EUR)": st.column_config.TextColumn("W/V (€)"),
-                        "Winst/verlies (%)": st.column_config.TextColumn("W/V (%)"),
-                        "ℹ️": st.column_config.TextColumn(
-                            "Info", 
-                            help="Breakdown: Buy | Fee | Sell | Div",
-                            width="large"
-                        ),
-                    },
-                    hide_index=True
-                )
+                # Filter DFs
+                display_final = display[metrics_to_show].set_index("Product").T
+                
+                # apply coloring only on the result row
+                def _color_row(row):
+                    if row.name == "Resultaat":
+                        # color each cell based on presence of '-' anywhere (simple heuristic for negative string)
+                        return ["color: red" if isinstance(v, str) and "-" in v and not v.strip().startswith("(0") else "color: green" for v in row]
+                    else:
+                        return ["" for _ in row]
+
+                styled = display_final.style.apply(_color_row, axis=1)
+
+                st.dataframe(styled, use_container_width=True, key=f"table_{cat}")
                 
                 # End of category rendering
 
