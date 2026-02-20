@@ -837,16 +837,6 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         if show_table:
             total_value = max(total_value, 1.0) # avoid div0
 
-            # --- Budget Input ---
-            col_bud_1, col_bud_2 = st.columns(2)
-            with col_bud_1:
-                 extra_budget = st.number_input("Beschikbaar budget om bij te leggen (€)", min_value=0.0, step=50.0, value=0.0)
-            with col_bud_2:
-                 prevent_sell = st.checkbox("Voorkom verkopen (Buy-Only met budget)", value=True, help="Schaalt aankopen zodat ze binnen budget passen en er niets verkocht wordt.")
-
-            new_total_value = total_value + extra_budget
-            budget_scaling_factor = 1.0
-
             if not alloc.empty:
                 alloc["current_pct"] = (alloc["alloc_value"] / total_value) * 100.0
                 alloc["Display Name"] = alloc["product"].apply(_shorten_name)
