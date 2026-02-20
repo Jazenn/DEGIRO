@@ -239,11 +239,14 @@ class PriceManager:
                 return resolved_legacy
 
         # 4. Auto-discover using Yahoo Finance Search API
-        discovered_ticker = self._search_yf_ticker(isin) if isin else None
-        if not discovered_ticker and product_str:
-             # Try searching by product name if ISIN failed or is absent
-             discovered_ticker = self._search_yf_ticker(product_str)
+        quotes = []
+        if isin:
+            quotes.extend(self._get_yf_search_quotes(isin))
+        if product_str:
+            quotes.extend(self._get_yf_search_quotes(product_str))
              
+        discovered_ticker = self._select_best_quote(quotes) if quotes else None
+        
         if discovered_ticker:
             # Auto-save discovered ticker
             mapping_key = isin if isin else product_str
@@ -253,33 +256,46 @@ class PriceManager:
             
         return None
 
-    def _search_yf_ticker(self, query: str) -> str | None:
-        """Search Yahoo Finance for a valid ticker matching the query (usually ISIN or name)."""
+    def _get_yf_search_quotes(self, query: str) -> list:
+        """Helper to get raw search quotes from YF."""
         import requests
         import urllib.parse
         if not query or not isinstance(query, str):
-             return None
-             
+             return []
         try:
             url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query)}"
             headers = {'User-agent': 'Mozilla/5.0'}
             r = requests.get(url, headers=headers, timeout=5)
             r.raise_for_status()
-            data = r.json()
-            quotes = data.get('quotes', [])
-            
-            valid_types = ['EQUITY', 'ETF', 'MUTUALFUND']
-            
-            for q in quotes:
-                ticker = q.get('symbol')
-                q_type = q.get('quoteType')
-                
-                if ticker and q_type in valid_types:
-                     if self._validate_ticker(ticker):
-                          return ticker
+            return r.json().get('quotes', [])
         except Exception:
-             pass
-             
+            return []
+
+    def _select_best_quote(self, quotes: list) -> str | None:
+        """Select the best ticker, prioritizing TradeGate/Stuttgart and EUR exchanges."""
+        valid_types = ['EQUITY', 'ETF', 'MUTUALFUND']
+        # User specified they use TradeGate for almost everything: STU is the Stuttgart exchange (proxies TradeGate on YF)
+        preferred_exchanges = ['STU', 'GER', 'AMS', 'PAR', 'MIL', 'BRU', 'DUB']
+        
+        valid_quotes = []
+        for q in quotes:
+            ticker = q.get('symbol')
+            q_type = q.get('quoteType')
+            exchange = q.get('exchange', '')
+            if ticker and q_type in valid_types:
+                valid_quotes.append((ticker, exchange))
+                
+        # First pass: try to find a valid ticker on a preferred exchange
+        for ticker, exchange in valid_quotes:
+            if exchange in preferred_exchanges:
+                if self._validate_ticker(ticker):
+                    return ticker
+                    
+        # Second pass: fallback to any valid ticker
+        for ticker, _ in valid_quotes:
+            if self._validate_ticker(ticker):
+                 return ticker
+                 
         return None
 
     def _resolve_input_string(self, s: str, strict: bool = False) -> str | None:

@@ -1,0 +1,5 @@
+﻿Testing EUNK resolution:
+Product: iShares Core MSCI Europe UCITS ETF EUR (Acc)
+ISIN: IE00B4K48X80
+Resolved Ticker: EUNK.DE
+Mapping saved: EUNK.DE
