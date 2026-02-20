@@ -14,6 +14,7 @@ class ConfigManager:
     CONFIG_FILE = "target_config.json"
     SETTINGS_FILE = "target_config_settings.json" 
     MAPPING_FILE = "target_config_mapping.json"
+    NAMES_FILE = "target_config_names.json"
     
     def __init__(self, drive=None):
         self.drive = drive
@@ -23,6 +24,7 @@ class ConfigManager:
             "crypto_fee_pct": 0.29
         }
         self._mappings = {}
+        self._names = {}
         self.load_all()
 
     def load_all(self):
@@ -30,6 +32,7 @@ class ConfigManager:
         loaded_settings = self._load_json(self.SETTINGS_FILE) or {}
         self._settings.update(loaded_settings)
         self._mappings = self._load_json(self.MAPPING_FILE) or {}
+        self._names = self._load_json(self.NAMES_FILE) or {}
 
     def _load_json(self, filename):
         if self.drive:
@@ -100,6 +103,15 @@ class ConfigManager:
     def set_mapping(self, key, value):
         self._mappings[key] = value
         self._save_json(self.MAPPING_FILE, self._mappings)
+
+    # --- Names (Metadata) ---
+    def get_product_name(self, key):
+        return self._names.get(key, key) # fallback to key if no name
+        
+    def set_product_name(self, key, name):
+        if name:
+            self._names[key] = name
+            self._save_json(self.NAMES_FILE, self._names)
 
 # --- PRICE MANAGER ---
 class PriceManager:

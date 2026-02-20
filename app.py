@@ -778,8 +778,14 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         
         # --- UI FOR ADDING NEW ASSETS ---
         with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
-            new_asset_name = st.text_input("Productnaam (bijv. Apple, NVIDIA)", key="new_asset_name")
+            col_add_1, col_add_2 = st.columns(2)
+            with col_add_1:
+                new_asset_key = st.text_input("Ticker / ISIN (Key)", key="new_asset_key", help="Unieke identifier, bijv. 'VWCE.DE' of 'IE00...'")
+            with col_add_2:
+                new_asset_name = st.text_input("Productnaam (voor weergave)", key="new_asset_name", help="Leesbare naam, bijv. 'Vanguard World'")
+            
             new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
+            
             # Load persisted settings (stock fee in EUR, crypto fee in %)
             rb_settings = config_manager.get_settings()
             col_fee_1, col_fee_2 = st.columns(2)
@@ -792,22 +798,28 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 config_manager.update_settings(stock_fee=stock_fee_eur, crypto_fee=crypto_fee_pct)
 
             if st.button("Voeg toe"):
-                if new_asset_name:
-                    config_manager.set_target(new_asset_name, new_asset_target)
+                if new_asset_key:
+                    # Save Target (Key -> %)
+                    config_manager.set_target(new_asset_key, new_asset_target)
+                    
+                    # Save Name (Key -> Name)
+                    if new_asset_name:
+                         config_manager.set_product_name(new_asset_key, new_asset_name)
+
                     saved_targets = config_manager.get_targets()
 
                     # Resolve/Warmup
                     try:
-                        resolved = price_manager.resolve_ticker(new_asset_name)
+                        resolved = price_manager.resolve_ticker(new_asset_key)
                         if resolved:
                             price_manager.get_live_price(resolved) # trigger cache
                     except:
                         pass
 
-                    st.toast(f"{new_asset_name} toegevoegd aan de lijst!", icon="✅")
+                    st.toast(f"{new_asset_key} ({new_asset_name}) toegevoegd!", icon="✅")
                     st.rerun()
                 else:
-                    st.error("Voer een naam in.")
+                    st.error("Voer een Ticker/ISIN in.")
 
 
         alloc = positions.copy()
@@ -821,27 +833,29 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             
             # Prepare dataframe for editor
             editor_df = alloc[["Display Name", "current_pct"]].copy()
-            editor_df = editor_df.rename(columns={"Display Name": "Product", "current_pct": "Huidig %"})
+            # RENAME COLUMN per user request
+            editor_df = editor_df.rename(columns={"Display Name": "Ticker/ISIN", "current_pct": "Huidig %"})
             editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
             
-            # MERGE WATCHLIST: Add products from saved_targets that are NOT in current positions
-            curr_prods = set(editor_df["Product"].unique())
+            # MERGE WATCHLIST
+            # 'saved_targets' keys are now Ticker/ISIN (or legacy names)
+            curr_prods = set(editor_df["Ticker/ISIN"].unique())
             for prod, target in saved_targets.items():
                 if prod not in curr_prods:
-                    # Append as new row with 0% current
-                    new_row = pd.DataFrame([{"Product": prod, "Huidig %": 0.0, "Doel %": target}])
+                    # Append as new row
+                    new_row = pd.DataFrame([{"Ticker/ISIN": prod, "Huidig %": 0.0, "Doel %": target}])
                     editor_df = pd.concat([editor_df, new_row], ignore_index=True)
             
-            # Initialize Doel % with Saved Values OR Default to Current
+            # Initialize Doel %
             def get_target(row):
-                prod = row["Product"]
+                prod = row["Ticker/ISIN"]
                 if prod in saved_targets:
                     return float(saved_targets[prod])
-                return row.get("Doel %", row["Huidig %"]) # Use Doel % if we just added it from watchlist
+                return row.get("Doel %", row["Huidig %"])
 
             editor_df["Doel %"] = editor_df.apply(get_target, axis=1)
 
-            # Gebruik st.form om meerdere wijzigingen te batchen (voorkomt refreshes bij elke klik)
+            # Gebruik st.form
             with st.form("rebalance_form"):
                 st.write("Pas hieronder de gewenste verdeling aan:")
                 edited_df = st.data_editor(
@@ -849,7 +863,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     column_config={
                         "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
                         "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
-                        "Product": st.column_config.TextColumn(disabled=True),
+                        "Ticker/ISIN": st.column_config.TextColumn(disabled=True),
                     },
                     use_container_width=True,
                     hide_index=True,
@@ -874,12 +888,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             if submitted:
                 # Save changes when submitted
-                new_targets = dict(zip(edited_df["Product"], edited_df["Doel %"]))
-                # Update all targets via manager
-                # Since ConfigManager set_target handles one by one, we usage loop or just overwrite underlying dict if we added a bulk method.
-                # Since we don't have bulk set, we iterate.
-                # Actually, simpler to just clear and re-add or better: implement set_targets in manager?
-                # For now: Just iterate update.
+                new_targets = dict(zip(edited_df["Ticker/ISIN"], edited_df["Doel %"]))
+                
                 current_t = config_manager.get_targets()
                 # Remove deleted ones? No, this is just updating percentages of existing editor items.
                 for p, t in new_targets.items():
@@ -888,7 +898,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             # --- REMOVE OPTION ---
             # Extract watchlist items (those with 0% current) for removal
-            watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Product"].tolist()
+            watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Ticker/ISIN"].tolist()
             if watchlist_items:
                 to_remove = st.multiselect("Verwijder nieuwe aandelen:", watchlist_items)
                 if st.button("Verwijder geselecteerde"):
@@ -909,7 +919,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             # PRE-CALCULATE SCALING FOR BUY-ONLY MODE
             buy_gaps = []
             for idx, row in edited_df.iterrows():
-                match_rows = alloc[alloc["Display Name"] == row["Product"]]
+                match_rows = alloc[alloc["Display Name"] == row["Ticker/ISIN"]]
                 curr_val = match_rows.iloc[0]["alloc_value"] if not match_rows.empty else 0.0
                 target_val = new_total_value * (row["Doel %"] / 100.0)
                 gap = target_val - curr_val
@@ -930,22 +940,31 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             rb_settings = config_manager.get_settings()
 
             for idx, row in edited_df.iterrows():
-                product_name = row["Product"]
+                product_key = row["Ticker/ISIN"] # This is the KEY (Ticker or old name)
                 target_pct = row["Doel %"]
                 current_pct_rounded = row["Huidig %"]
                 
-                match_rows = alloc[alloc["Display Name"] == product_name]
+                # Fetch Display Name from Config (if available)
+                # If key was just added as Ticker/ISIN, we might have a name for it.
+                # If it's a legacy key (e.g. "NVIDIA"), the name is the key.
+                display_name = config_manager.get_product_name(product_key)
+                
+                match_rows = alloc[alloc["Display Name"] == product_key]
                 if not match_rows.empty:
                     curr_row = match_rows.iloc[0]
                     curr_val = curr_row["alloc_value"]
                     last_price = curr_row.get("last_price", 0.0) 
                     if pd.isna(last_price): last_price = 0.0
                     isin = curr_row.get("isin", "")
+                    # If we have a real product name from the feed, use it if config doesn't have a better one
+                    if display_name == product_key: 
+                        display_name = curr_row.get("product", product_key)
+
                 else:
                     curr_val = 0.0
                     isin = ""
                     # Resolve ticker and fetch price via PriceManager
-                    resolved = price_manager.resolve_ticker(product_name)
+                    resolved = price_manager.resolve_ticker(product_key)
                     last_price = price_manager.get_live_price(resolved) if resolved else 0.0
                 
                 target_val = new_total_value * (target_pct / 100.0)
@@ -958,7 +977,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 else:
                     qty_calculated = 0.0
                 
-                is_crypto = any(x in str(product_name).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
+                # Use key for crypto detection if name fails
+                check_str = str(product_key).upper() + " " + str(display_name).upper()
+                is_crypto = any(x in check_str for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
                 
                 if is_crypto:
                     qty_to_trade = qty_calculated
@@ -991,7 +1012,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     action = "-"
 
                 raw_actions.append({
-                    "Product": product_name,
+                    "Ticker/ISIN": product_key,
+                    "Productnaam": display_name, # NEW COLUMN
                     "Actie": action,
                     "Verschil (EUR)": executed_diff,
                     "Aantal": qty_to_trade,
@@ -1029,7 +1051,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                             action_item["Actie"] = "-"
                         else:
                             # Re-calc fee (usually remains same for ETFs, but good practice)
-                            is_core = "Vanguard" in str(action_item["Product"]) or action_item["isin"] == "IE00BK5BQT80"
+                            # Use Productnaam or Ticker/ISIN for check
+                            check_str = str(action_item["Productnaam"]) + str(action_item["Ticker/ISIN"])
+                            is_core = "Vanguard" in check_str or action_item["isin"] == "IE00BK5BQT80"
                             action_item["Kosten (Fee)"] = 1.0 if is_core else 3.0
                         
                         current_net = calc_net(raw_actions)
@@ -1047,7 +1071,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 new_pct_projected = (new_val_projected / actual_new_total) * 100.0 if actual_new_total > 0 else 0.0
                 
                 results.append({
-                    "Product": act["Product"],
+                    "Ticker/ISIN": act["Ticker/ISIN"],
+                    "Productnaam": act["Productnaam"], # DISPLAY NAME
                     "Actie": act["Actie"],
                     "Verschil (EUR)": act["Verschil (EUR)"],
                     "Aantal": act["Aantal"],
@@ -1063,8 +1088,17 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             # Show Action Table
             st.markdown("#### Actie Advies")
             st.markdown("Dit overzicht houdt rekening met het feit dat aandelen in hele stuks gekocht worden en bevat de transactiekosten.")
+            
+            # Use Productnaam logic as requested: 
+            # "Vervolgens in de actie advies tabel hoef je enkel een kolom toe te voegen met naam, waarin de productnaam te staan komt."
+            # We show "Productnaam" as the first column, or maybe "Ticker" then "Name"?
+            # User said: "hoef je enkel een kolom toe te voegen met naam". 
+            # Implies keeping the identifier? Or replacing? 
+            # "Zo verandert er helemaal niks aan de huidige functionaliteit".
+            # I will show: Productnaam, Ticker/ISIN, Actie...
+            
             st.dataframe(
-                res_df[["Product", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
+                res_df[["Productnaam", "Ticker/ISIN", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
                     "Verschil (EUR)": "€ {:.2f}",
                     "Aantal": "{:.4f}",
                     "Kosten (Fee)": "€ {:.2f}",
@@ -1107,7 +1141,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             # Outer Ring = Doel Verdeling (Target)
             fig.add_trace(go.Pie(
-                labels=res_df["Product"],
+                labels=res_df["Productnaam"],
                 values=res_df["Doel Waarde"],
                 name="Doel",
                 hole=0.6, # Grote ring
@@ -1119,7 +1153,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             # Inner Circle = Huidige Verdeling (Current)
             fig.add_trace(go.Pie(
-                labels=res_df["Product"],
+                labels=res_df["Productnaam"],
                 values=res_df["Huidige Waarde"], 
                 name="Huidig",
                 hole=0, 
