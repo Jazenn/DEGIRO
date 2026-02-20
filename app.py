@@ -273,7 +273,8 @@ def build_positions(df: pd.DataFrame) -> pd.DataFrame:
         product_rows.groupby(["product", "isin"], dropna=False)
         .agg(
             quantity=("quantity", "sum"),
-            invested=("buy_cash", lambda s: -s.sum()),  # Bruto aankoopwaarde
+            invested=("buy_cash", lambda s: -s.sum()),  # Bruto aankoopwaarde (Positive)
+            total_sells=("sell_cash", "sum"),           # Bruto verkoopwaarde (Positive)
             total_fees=("amount", lambda s: s[product_rows.loc[s.index, "is_fee"]].sum()),
             total_dividends=("amount", lambda s: s[product_rows.loc[s.index, "is_dividend"]].sum()),
             total_div_tax=("amount", lambda s: s[product_rows.loc[s.index, "is_tax"]].sum()),
@@ -717,15 +718,29 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 # include previous close if available (for reference)
                 display["prev_close"] = display["ticker"].apply(price_manager.get_prev_close)
                 
-                # --- CALCULATION LOGIC: MATCH DEGIRO (Include Fees) ---
-                # 'invested' is buy_cash (positive sum).
-                # 'total_fees' is typically negative in the CSV.
-                # We add ABS(fees) to invested to show the true 'Cost Basis' (GAK).
-                display["Totaal geinvesteerd"] = (display["invested"] + display["total_fees"].abs())
+                # --- CALCULATION LOGIC: MATCH DEGIRO (Include Fees, Sells, Divs) ---
+                # Net Invested = (Buys + Fees) - (Sells + Dividends)
+                # This represents the actual "Netto Inleg" remaining in the position.
+                buy_val = display["invested"]
+                sell_val = display["total_sells"].fillna(0.0)
+                fee_val = display["total_fees"].abs().fillna(0.0)
+                div_val = display["total_dividends"].fillna(0.0)
                 
+                display["Totaal geinvesteerd"] = (buy_val + fee_val - sell_val - div_val)
+                
+                # Create a "Help/Info" column with breakdown
+                def _make_info(row):
+                    b = format_eur(row["invested"])
+                    f = format_eur(abs(row["total_fees"]))
+                    s = format_eur(row["total_sells"])
+                    d = format_eur(row["total_dividends"])
+                    # Use a compact format
+                    return f"Buy: {b} | Fee: {f} | Sell: {s} | Div: {d}"
+
+                display["ℹ️"] = display.apply(_make_info, axis=1)
+
                 # Winst/verlies berekening (EUR)
                 # Net profit = Current Value + Net Cashflow (which sums buys(-), sells(+), fees(-), divs(+))
-                # This already correctly factors in fees! 
                 display["Winst/verlies (EUR)"] = (display["current_value"] + display["net_cashflow"])
                 
                 # Format for display
@@ -736,52 +751,61 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 def _pl_pct(row: pd.Series) -> float | None:
                     cur = row.get("current_value")
                     net_cf = row.get("net_cashflow")
-                    inv = row.get("invested")
-                    fees = row.get("total_fees")
-                    if pd.notna(cur) and pd.notna(net_cf) and pd.notna(inv) and pd.notna(fees) and inv != 0:
+                    # Use the Net Invested as basis calculation?
+                    # If I sold half, my invested went down. My P/L is relative to remaining invested?
+                    # Or relative to "Netto Inleg"?
+                    # DeGiro typically uses: Result / Netto Inleg.
+                    # Net Invested calculated above IS Netto Inleg.
+                    
+                    # Re-calculate net invested float for division (since column is now string formatted)
+                    # better to use the raw series before formatting, but here we are row-wise.
+                    # Let's trust the previous step or just recompute.
+                    inv = row.get("invested", 0)
+                    fees = abs(row.get("total_fees", 0))
+                    sells = row.get("total_sells", 0)
+                    divs = row.get("total_dividends", 0)
+                    
+                    cost_basis = inv + fees - sells - divs
+                    
+                    if pd.notna(cur) and pd.notna(net_cf):
                         pl_amount = cur + net_cf
-                        # Divide by cost basis INCLUDING fees (same as "Totaal geinvesteerd")
-                        cost_basis = inv + abs(fees)
                         if cost_basis != 0:
                             return (pl_amount / cost_basis) * 100.0
                     return pd.NA
 
                 display["Winst/verlies (%)"] = display.apply(_pl_pct, axis=1).map(format_pct)
 
-                # combine euro+% columns into single strings
-                # combine euro and pct inside parentheses
-                display["Resultaat"] = display["Winst/verlies (EUR)"] + " (" + display["Winst/verlies (%)"] + ")"
-
-                display = display.rename(
-                    columns={
-                        "Display Name": "Product",
-                        "isin": "ISIN",
-                        "quantity": "Aantal",
-                        "trades": "Transacties",
-                        "ticker": "Ticker",
-                    }
+                # Columns to show
+                cols = [
+                    "Display Name", "quantity", "Huidige waarde", 
+                    "Totaal geinvesteerd", "Winst/verlies (EUR)", "Winst/verlies (%)",
+                    "ℹ️" # Breakdown column
+                ]
+                
+                # Configure columns
+                st.dataframe(
+                    display[cols],
+                    use_container_width=True,
+                    column_config={
+                        "Display Name": st.column_config.TextColumn("Product", width="medium"),
+                        "quantity": st.column_config.NumberColumn("Aantal", format="%.4f"),
+                        "Huidige waarde": st.column_config.TextColumn("Waarde", help="Huidige marktwaarde (Aantal * Laatste Prijs)"),
+                        "Totaal geinvesteerd": st.column_config.TextColumn(
+                            "Netto Inleg", 
+                            help="Totale netto investering: (Aankopen + Fees) - (Verkopen + Dividend). Zie 'ℹ️' voor details."
+                        ),
+                        "Winst/verlies (EUR)": st.column_config.TextColumn("W/V (€)"),
+                        "Winst/verlies (%)": st.column_config.TextColumn("W/V (%)"),
+                        "ℹ️": st.column_config.TextColumn(
+                            "Info", 
+                            help="Breakdown: Buy | Fee | Sell | Div",
+                            width="large"
+                        ),
+                    },
+                    hide_index=True
                 )
-                display = display[[
-                    "Product", "Ticker", "Totaal geinvesteerd", "Huidige waarde",
-                    "Resultaat", "Aantal",
-                    "Transacties",
-                ]]
                 
-                # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
-                display = display.set_index("Product").T
-                
-                # apply coloring only on the result row
-                def _color_row(row):
-                    # row.name is the metric label after transpose
-                    if row.name == "Resultaat":
-                        # color each cell based on presence of '-' anywhere
-                        return ["color: red" if isinstance(v, str) and "-" in v and not v.strip().startswith("(0") else "color: green" for v in row]
-                    else:
-                        return ["" for _ in row]
-
-                styled = display.style.apply(_color_row, axis=1)
-
-                st.dataframe(styled, use_container_width=True, key=f"table_{cat}")
+                # End of category rendering
 
         # Portefeuilleverdeling & Rebalancing
         st.subheader("Portefeuilleverdeling & Rebalancing")
