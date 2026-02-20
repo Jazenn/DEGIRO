@@ -939,8 +939,15 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     target = float(saved_assets[key].get("target_pct", 0.0))
                 
                 # Determine Category for Sorting (0=Stock/ETF, 1=Crypto)
-                # Matches logic in render_overview
-                is_crypto = str(key).startswith("XFC")
+                # Key issue: 'key' might be Product Name (from alloc) or ISIN (from saved).
+                # We need to find the ISIN to check for XFC.
+                check_val = key
+                if not match.empty:
+                    # If we have a match in alloc, use the real ISIN from the data
+                    if "isin" in match.columns:
+                        check_val = match.iloc[0]["isin"]
+                
+                is_crypto = str(check_val).startswith("XFC")
                 sort_cat = 1 if is_crypto else 0
                 
                 rows.append({
