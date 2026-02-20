@@ -777,61 +777,48 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
                 # End of calculation logic 
 
-                # Transponeren voor mobiel: Producten worden kolommen, Metrics worden rijen
-                # First rename columns to friendly names
-                display = display.rename(
-                    columns={
-                        "Display Name": "Product",
-                        "quantity": "Aantal",
-                        "trades": "Transacties"
-                    }
-                )
-                
-                # We combine W/V EUR and % into one string for the "Resultaat" row
-                display["Resultaat"] = display["Winst/verlies (EUR)"] + " (" + display["Winst/verlies (%)"] + ")"
-                
-                # Select specific columns to transpose
-                # Note: We omit the "ℹ️" breakdown as requested since cell-hover is not supported.
-                metrics_to_show = [
-                    "Product", 
-                    "Aantal", 
-                    "Totaal geinvesteerd", 
-                    "Huidige waarde", 
-                    "Resultaat",
-                    # "Transacties" # Optional, user didn't explicitly ask for it but it was there before? logic check: yes it was.
-                ]
-                
-                # Filter DFs
-                display_final = display[metrics_to_show].set_index("Product").T
-                
-                # apply coloring only on the result row
-                def _color_row(row):
-                    if row.name == "Resultaat":
-                        styles = []
-                        for v in row:
-                            val_str = str(v)
-                            # Check for negative indication
-                            # Pattern: "- € 100" or "€ -100" or "-5.0%"
-                            # Safe check: if it contains "-" and NOT "(0" (which would be near-zero)
-                            # Also ensure it's not just a dash filler "-"
-                            if "-" in val_str and not val_str.strip() == "-":
-                                # It's likely negative. 
-                                # Exception: "€ 0.00 (-0.0%)" -> strictly speaking negative but maybe neutral?
-                                # Let's stick to simple: contains "-" is red.
-                                styles.append("color: #d84545") # Red
-                            elif val_str.strip() == "-" or "0.00" in val_str: # Neutral/Zero
-                                styles.append("")
-                            else:
-                                styles.append("color: #2e7d32") # Green
-                        return styles
+                # Transponeren voor mobiel is vervangen door een Expander/Accordion UI
+                for _, row in display.iterrows():
+                    product_name = row["Product"] if "Product" in row else row.get("Display Name", "Onbekend")
+                    
+                    # Haal de string waarden op
+                    result_raw = row.get("Winst/verlies (EUR)", "€ 0,00")
+                    result_pct = row.get("Winst/verlies (%)", "0,00%")
+                    current_val = row.get("Huidige waarde", "€ 0,00")
+                    
+                    # Bepaal visuele indicator (Groen/Rood/Neutraal)
+                    # We checken simpelweg of er een minteken in de (geformatteerde) string staat
+                    if "-" in result_raw and "0,00" not in result_raw:
+                        indicator = "🔴"
+                    elif "0,00" in result_raw or result_raw.strip() == "-":
+                        indicator = "⚪"
                     else:
-                        return ["" for _ in row]
+                        indicator = "🟢"
+                        
+                    # Opmaak voor de expander titel (de 'voorkant' van de kaart)
+                    label = f"{indicator} **{product_name}** | {current_val} | {result_raw} ({result_pct})"
+                    
+                    with st.expander(label):
+                        # Zodra uitgeklapt tonen we de details in 2 kolommen
+                        c1, c2 = st.columns(2)
+                        
+                        # 1e kolom
+                        # quantity format: .4g haalt trailing zeros weg maar behoudt decimalen als nodig
+                        c1.metric("Aantal stuks", f"{row.get('quantity', row.get('Aantal', 0)):.4g}")
+                        c1.metric("Huidige Waarde", current_val)
+                        
+                        # Als we de prijs per stuk hebben
+                        if 'last_price' in row:
+                             c1.write(f"**Prijs p/s:** {format_eur(row['last_price'])}")
+                        elif 'last_price' in cat_df.columns:
+                             # row might be from 'display' which had columns renamed, so we check original df
+                             idx = row.name
+                             if idx in cat_df.index:
+                                  c1.write(f"**Prijs p/s:** {format_eur(cat_df.loc[idx, 'last_price'])}")
 
-                styled = display_final.style.apply(_color_row, axis=1)
-
-                st.dataframe(styled, use_container_width=True, key=f"table_{cat}")
-                
-                # End of category rendering
+                        # 2e kolom
+                        c2.metric("Totaal Geïnvesteerd", row.get("Totaal geinvesteerd", "€ 0,00"))
+                        c2.metric("Totaal Resultaat", f"{result_raw} ({result_pct})")
 
         # Portefeuilleverdeling & Rebalancing
         st.subheader("Portefeuilleverdeling & Rebalancing")
