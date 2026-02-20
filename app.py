@@ -29,7 +29,9 @@ else:
 def _shorten_name(name):
     """Verkort de namen van ETFs voor betere leesbaarheid op mobiel."""
     n = str(name).upper()
-    if "VANGUARD" in n: return "VANGUARD"
+    if "VANGUARD" in n: return "All-World"
+    if "XTRACKERS" in n: return "Ex-USA"
+    if "ISHARES" in n: return "Europe"
     if "FUTURE OF DEFENCE" in n or "HANETF" in n: return "FOD"
     return name
 
