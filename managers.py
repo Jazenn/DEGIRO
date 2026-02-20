@@ -211,22 +211,78 @@ class PriceManager:
         mapped = self.config.get_ticker_for_product(product_str, isin)
         # st.write(f"DEBUG: Resolving '{product_str}' / '{isin}' -> Mapped: {mapped}")
         if mapped:
-            return self._resolve_input_string(mapped)
+            resolved_mapped = self._resolve_input_string(mapped, strict=False)
+            if resolved_mapped:
+                return resolved_mapped
             
         # 2. Check if product_str itself is a valid ticker input
-        resolved = self._resolve_input_string(product_str)
-        if resolved: return resolved
+        resolved = self._resolve_input_string(product_str, strict=True)
+        if resolved: 
+            # Auto-save direct ticker string if valid
+            mapping_key = isin if isin else product_str
+            if mapping_key:
+                self.config.set_mapping(mapping_key, resolved)
+            return resolved
         
         # 3. Fallback for legacy hardcoded items (migrate these to JSON ideally)
         if product_str and isinstance(product_str, str):
             upper = product_str.upper()
-            if "VANGUARD FTSE ALL-WORLD" in upper: return "VWCE.DE"
-            if upper.startswith("BITCOIN"): return "BTC-EUR"
-            if upper.startswith("ETHEREUM"): return "ETH-EUR"
+            resolved_legacy = None
+            if "VANGUARD FTSE ALL-WORLD" in upper: resolved_legacy = "VWCE.DE"
+            elif upper.startswith("BITCOIN"): resolved_legacy = "BTC-EUR"
+            elif upper.startswith("ETHEREUM"): resolved_legacy = "ETH-EUR"
+            
+            if resolved_legacy:
+                mapping_key = isin if isin else product_str
+                if mapping_key:
+                    self.config.set_mapping(mapping_key, resolved_legacy)
+                return resolved_legacy
+
+        # 4. Auto-discover using Yahoo Finance Search API
+        discovered_ticker = self._search_yf_ticker(isin) if isin else None
+        if not discovered_ticker and product_str:
+             # Try searching by product name if ISIN failed or is absent
+             discovered_ticker = self._search_yf_ticker(product_str)
+             
+        if discovered_ticker:
+            # Auto-save discovered ticker
+            mapping_key = isin if isin else product_str
+            if mapping_key:
+                self.config.set_mapping(mapping_key, discovered_ticker)
+            return discovered_ticker
             
         return None
 
-    def _resolve_input_string(self, s: str) -> str | None:
+    def _search_yf_ticker(self, query: str) -> str | None:
+        """Search Yahoo Finance for a valid ticker matching the query (usually ISIN or name)."""
+        import requests
+        import urllib.parse
+        if not query or not isinstance(query, str):
+             return None
+             
+        try:
+            url = f"https://query2.finance.yahoo.com/v1/finance/search?q={urllib.parse.quote(query)}"
+            headers = {'User-agent': 'Mozilla/5.0'}
+            r = requests.get(url, headers=headers, timeout=5)
+            r.raise_for_status()
+            data = r.json()
+            quotes = data.get('quotes', [])
+            
+            valid_types = ['EQUITY', 'ETF', 'MUTUALFUND']
+            
+            for q in quotes:
+                ticker = q.get('symbol')
+                q_type = q.get('quoteType')
+                
+                if ticker and q_type in valid_types:
+                     if self._validate_ticker(ticker):
+                          return ticker
+        except Exception:
+             pass
+             
+        return None
+
+    def _resolve_input_string(self, s: str, strict: bool = False) -> str | None:
         """Handle 'TICKER | ISIN' and validation."""
         if not s or not isinstance(s, str): return None
         s = s.strip()
@@ -248,6 +304,9 @@ class PriceManager:
                 if self._validate_ticker(ticker):
                     return ticker
         
+        if strict:
+            return None
+            
         # Fallback: Just return the first candidate if it looks reasonable
         return candidates[0] if candidates else None
 

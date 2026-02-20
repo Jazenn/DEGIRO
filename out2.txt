@@ -1,0 +1,7 @@
+﻿Mapping for IE00BK5BQT80 initially: VWCE.DE
+Resolved IE00BK5BQT80 -> VWCE.DE
+Mapping after resolve: VWCE.DE
+
+Testing an unknown stock 'NVDA'
+Resolved US67066G1040 (NVDA) -> NVIDIA
+Mapping after NVDA: NVIDIA
