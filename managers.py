@@ -363,7 +363,7 @@ class PriceManager:
             price = t.fast_info.last_price
             if price: return price
             # Fallback to history
-            hist = t.history(period="1d")
+            hist = t.history(period="1d", prepost=True)
             if not hist.empty: return hist["Close"].iloc[-1]
         except: pass
         return 0.0
@@ -374,7 +374,7 @@ class PriceManager:
     @st.cache_data(ttl=3600)
     def _fetch_history_cached(_self, ticker, period):
         try:
-            return yf.Ticker(ticker).history(period=period)
+            return yf.Ticker(ticker).history(period=period, prepost=True)
         except: return pd.DataFrame()
 
     def get_prev_close(self, ticker):
@@ -385,7 +385,7 @@ class PriceManager:
     @st.cache_data(ttl=21600) # Cache for 6 hours
     def _fetch_prev_close_cached(_self, ticker):
         try:
-            hist = yf.Ticker(ticker).history(period="5d", interval="1d") # 5d to be safe regarding weekends
+            hist = yf.Ticker(ticker).history(period="5d", interval="1d", prepost=True) # 5d to be safe regarding weekends
             if len(hist) >= 2:
                 return float(hist["Close"].iloc[-2])
             elif len(hist) == 1:
@@ -402,7 +402,7 @@ class PriceManager:
     def _fetch_midnight_price_cached(_self, ticker):
         try:
             # Fetch 1d of hourly data
-            hist = yf.Ticker(ticker).history(period="1d", interval="1h")
+            hist = yf.Ticker(ticker).history(period="1d", interval="1h", prepost=True)
             if hist.empty: return 0.0
             
             # Find first datapoint of "today"

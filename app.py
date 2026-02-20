@@ -56,14 +56,17 @@ def format_pct(value: float) -> str:
 
 
 def is_tradegate_open() -> bool:
-    """Check if TradeGate is open (09:00-22:00 CET, Mon-Fri)."""
+    """Check if TradeGate is open (07:30-22:00 CET, Mon-Fri)."""
     now = pd.Timestamp.now(tz='Europe/Amsterdam')
     # Only weekdays (Mon=0, Fri=4)
     if now.weekday() > 4:
         return False
-    # Trading hours: 09:00 to 22:00
-    hour = now.hour
-    return 9 <= hour < 22
+    # Trading hours: 07:30 to 22:00
+    current_time = now.time()
+    import datetime
+    start_time = datetime.time(7, 30)
+    end_time = datetime.time(22, 0)
+    return start_time <= current_time <= end_time
 
 
 @st.cache_data
@@ -400,7 +403,7 @@ def build_portfolio_history(df: pd.DataFrame, price_manager) -> pd.DataFrame:
         # period="5d" is te kort voor een volledige week view (7 dagen).
         # We gebruiken start=... om expliciet 8 dagen terug te gaan.
         start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
-        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", progress=False, threads=False)
+        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", prepost=True, progress=False, threads=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
