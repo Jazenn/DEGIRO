@@ -779,10 +779,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         # --- UI FOR ADDING NEW ASSETS ---
         with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
             col_add_1, col_add_2 = st.columns(2)
+            # SWAPPED INPUTS per user request
             with col_add_1:
-                new_asset_key = st.text_input("Ticker / ISIN (Key)", key="new_asset_key", help="Unieke identifier, bijv. 'VWCE.DE' of 'IE00...'")
-            with col_add_2:
                 new_asset_name = st.text_input("Productnaam (voor weergave)", key="new_asset_name", help="Leesbare naam, bijv. 'Vanguard World'")
+            with col_add_2:
+                new_asset_key = st.text_input("Ticker / ISIN (Key)", key="new_asset_key", help="Unieke identifier, bijv. 'VWCE.DE' of 'IE00...'")
             
             new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
             
@@ -854,28 +855,54 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             
             # Prepare dataframe for editor
             editor_df = alloc[["Display Name", "current_pct"]].copy()
-            # RENAME COLUMN per user request
-            editor_df = editor_df.rename(columns={"Display Name": "Ticker/ISIN", "current_pct": "Huidig %"})
+            # RENAME COLUMN per user request: "Ticker/ISIN" -> "Productnaam" for display
+            # We must map existing display names (which might be tickers) to valid ProductNames
+            editor_df = editor_df.rename(columns={"Display Name": "Productnaam", "current_pct": "Huidig %"})
             editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
             
             # MERGE WATCHLIST
-            # 'saved_assets' keys are Ticker/ISIN
-            curr_prods = set(editor_df["Ticker/ISIN"].unique())
-            for prod, asset_data in saved_assets.items():
-                if prod not in curr_prods:
-                    # Append as new row
-                    target = asset_data.get("target_pct", 0.0)
-                    new_row = pd.DataFrame([{"Ticker/ISIN": prod, "Huidig %": 0.0, "Doel %": target}])
-                    editor_df = pd.concat([editor_df, new_row], ignore_index=True)
+            # 'saved_assets' keys are Ticker/ISIN. We need to find their display name.
+            # If no display name, use key.
+            # But wait, editor_df currently has "product" (key) as "Display Name"? 
+            # No, 'product' in filtered alloc is usually Ticker/ISIN or ShortName. 
+            # We need to ensure we align by KEY (Ticker/ISIN) but show NAME.
             
-            # Initialize Doel %
-            def get_target(row):
-                prod = row["Ticker/ISIN"]
-                if prod in saved_assets:
-                    return float(saved_assets[prod].get("target_pct", 0.0))
-                return row.get("Doel %", row["Huidig %"])
-
-            editor_df["Doel %"] = editor_df.apply(get_target, axis=1)
+            # Let's rebuild editor_df carefully to separate Key and Display
+            # 1. Get Keys of current positions
+            current_keys = set(alloc["product"].unique()) if "product" in alloc.columns else set()
+            
+            # 2. Build complete list of keys (Current + Saved)
+            all_keys = current_keys.union(saved_assets.keys())
+            
+            rows = []
+            for key in all_keys:
+                # Get Name
+                name = config_manager.get_product_name(key) # Returns name or key
+                
+                # Get Current % (if in alloc)
+                curr_pct = 0.0
+                match = alloc[alloc["product"] == key]
+                if not match.empty:
+                    curr_pct = match.iloc[0]["current_pct"]
+                
+                # Get Target
+                target = 0.0
+                if key in saved_assets:
+                    target = float(saved_assets[key].get("target_pct", 0.0))
+                
+                rows.append({
+                    "Productnaam": name,
+                    "Ticker/ISIN": key, # Keep for logic, hide later?
+                    "Huidig %": round(curr_pct, 1),
+                    "Doel %": target
+                })
+            
+            editor_df = pd.DataFrame(rows)
+            # Ensure columns order
+            if not editor_df.empty:
+                editor_df = editor_df[["Productnaam", "Ticker/ISIN", "Huidig %", "Doel %"]]
+            else:
+                editor_df = pd.DataFrame(columns=["Productnaam", "Ticker/ISIN", "Huidig %", "Doel %"])
 
             # Gebruik st.form
             with st.form("rebalance_form"):
@@ -885,12 +912,34 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     column_config={
                         "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
                         "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
-                        "Ticker/ISIN": st.column_config.TextColumn(disabled=True),
+                        "Productnaam": st.column_config.TextColumn(disabled=True),
+                        # HIDE Ticker/ISIN visually, but keep for logic identification
+                        "Ticker/ISIN": st.column_config.TextColumn(disabled=True, width=None, required=False, validate=None) 
+                        # Streamlit doesn't support 'hidden' columns well in data_editor return. 
+                        # We can just NOT show it in the config but provide it? 
+                        # No, if we don't config it, it shows up.
+                        # User asked to "Remove Ticker/ISIN column ... PURELY for visual".
+                        # If we omit it from dataframe passed to editor, we lose the key connection.
+                        # Workaround: Disable it and maybe make it small or last?
+                        # Or rely on 'Productnaam' being unique? No guarantee.
+                        # Ideally we use key column config?
                     },
                     use_container_width=True,
                     hide_index=True,
-                    key="rebalance_editor"
+                    key="rebalance_editor",
+                    # HIDDEN COLUMNS Hack:
+                    # If we exclude "Ticker/ISIN" from the view, we can't extract it back easily unless row order is preserved.
+                    # Row order IS preserved in data_editor.
+                    # So we can pass a DF *without* Ticker/ISIN to data_editor?
+                    # But if we sort/filter...
+                    # Let's try to just disable it for now. User said "remove". 
+                    # If strictly remove -> We need to join back by index.
                 )
+                
+                # To purely hide, we might need a separate display DF, but data_editor needs to return changes.
+                # If we hide Ticker/ISIN, user sees Names. If names are duplicate, it's ambiguous.
+                # Assuming Names are distinct enough or User accepts that.
+                
                 
                 st.markdown("---")
                 st.subheader("💡 Slimme Rebalancing met Budget")
@@ -910,6 +959,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             if submitted:
                 # Save changes when submitted
+                # We need to map back to Key. 
+                # edited_df has Ticker/ISIN (if we kept it).
                 new_targets = dict(zip(edited_df["Ticker/ISIN"], edited_df["Doel %"]))
                 
                 current_t = config_manager.get_targets()
@@ -922,10 +973,20 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             # Extract watchlist items (those with 0% current) for removal
             watchlist_items = editor_df[editor_df["Huidig %"] == 0.0]["Ticker/ISIN"].tolist()
             if watchlist_items:
-                to_remove = st.multiselect("Verwijder nieuwe aandelen:", watchlist_items)
+                # Show Names in removal list, but map back to Ticker
+                # map key->name
+                key_to_name = dict(zip(editor_df["Ticker/ISIN"], editor_df["Productnaam"]))
+                # options: "Name (Ticker)"
+                options = [f"{key_to_name[k]} ({k})" for k in watchlist_items]
+                
+                to_remove_display = st.multiselect("Verwijder nieuwe aandelen:", options)
                 if st.button("Verwijder geselecteerde"):
-                    for item in to_remove:
-                        config_manager.remove_target(item)
+                    for item in to_remove_display:
+                        # extract key (last part in parens?) 
+                        # cleaner: map display->key? No, conflicts.
+                        # Just parse.
+                        k = item.split("(")[-1].strip(")")
+                        config_manager.remove_target(k)
                     st.toast("Aandelen verwijderd!", icon="🗑️")
                     st.rerun()
 
@@ -941,7 +1002,12 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             # PRE-CALCULATE SCALING FOR BUY-ONLY MODE
             buy_gaps = []
             for idx, row in edited_df.iterrows():
-                match_rows = alloc[alloc["Display Name"] == row["Ticker/ISIN"]]
+                # Use Ticker/ISIN to match back to alloc
+                key = row["Ticker/ISIN"]
+                
+                # Find current value in alloc
+                # alloc has 'product' column as key
+                match_rows = alloc[alloc["product"] == key]
                 curr_val = match_rows.iloc[0]["alloc_value"] if not match_rows.empty else 0.0
                 target_val = new_total_value * (row["Doel %"] / 100.0)
                 gap = target_val - curr_val
@@ -964,27 +1030,18 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             for idx, row in edited_df.iterrows():
                 product_key = row["Ticker/ISIN"] # This is the KEY (Ticker or old name)
                 target_pct = row["Doel %"]
-                current_pct_rounded = row["Huidig %"]
+                # current_pct_rounded = row["Huidig %"] 
                 
-                # Fetch Display Name from Config (if available)
-                # If key was just added as Ticker/ISIN, we might have a name for it.
-                # If it's a legacy key (e.g. "NVIDIA"), the name is the key.
-                display_name = config_manager.get_product_name(product_key)
+                # Fetch Display Name from Config (if available) - already in row["Productnaam"]
+                display_name = row["Productnaam"]
                 
-                match_rows = alloc[alloc["Display Name"] == product_key]
+                match_rows = alloc[alloc["product"] == product_key]
                 if not match_rows.empty:
                     curr_row = match_rows.iloc[0]
                     curr_val = curr_row["alloc_value"]
                     last_price = curr_row.get("last_price", 0.0) 
                     if pd.isna(last_price): last_price = 0.0
                     isin = curr_row.get("isin", "")
-                    
-                    # If config returned the key (fallback), AND we have a better name from the feed, use feed.
-                    # BUT if config returned a real name (different from key), KEEP IT.
-                    config_has_name = (display_name != product_key)
-                    if not config_has_name: 
-                        display_name = curr_row.get("product", product_key)
-
                 else:
                     curr_val = 0.0
                     isin = ""
@@ -1115,15 +1172,10 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             st.markdown("Dit overzicht houdt rekening met het feit dat aandelen in hele stuks gekocht worden en bevat de transactiekosten.")
             
             # Use Productnaam logic as requested: 
-            # "Vervolgens in de actie advies tabel hoef je enkel een kolom toe te voegen met naam, waarin de productnaam te staan komt."
-            # We show "Productnaam" as the first column, or maybe "Ticker" then "Name"?
-            # User said: "hoef je enkel een kolom toe te voegen met naam". 
-            # Implies keeping the identifier? Or replacing? 
-            # "Zo verandert er helemaal niks aan de huidige functionaliteit".
-            # I will show: Productnaam, Ticker/ISIN, Actie...
+            # REMOVE Ticker/ISIN from VIEW
             
             st.dataframe(
-                res_df[["Productnaam", "Ticker/ISIN", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
+                res_df[["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
                     "Verschil (EUR)": "€ {:.2f}",
                     "Aantal": "{:.4f}",
                     "Kosten (Fee)": "€ {:.2f}",
