@@ -680,6 +680,9 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         latest_row = sorted_df.iloc[0]
         current_balance = latest_row.get("balance", 0.0)
 
+    st.markdown("---")
+    st.subheader("Dashboard Overzicht")
+
     # 3 Columns for top metrics
     col1, col2, col3 = st.columns(3)
     help_txt = (
@@ -688,15 +691,22 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         f"Verkopen: -{format_eur(abs(total_sells))}  |  "
         f"Dividend: -{format_eur(total_dividends)}"
     )
-    col1.metric("Totale Kosten (Netto Inleg)", format_eur(total_costs), help=help_txt)
-    col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
-    col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-               help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
+    with col1.container(border=True):
+        st.metric("Totale Kosten (Netto Inleg)", format_eur(total_costs), help=help_txt)
+    with col2.container(border=True):
+        st.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+    with col3.container(border=True):
+        st.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
+                   help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
     
     # second row: Balance | Dividend
     col4, col5 = st.columns(2)
-    col4.metric("Vrije Ruimte (Saldo)", format_eur(current_balance), help="Het laatst bekende saldo uit de transactiehistorie.")
-    col5.metric("Ontvangen dividend", format_eur(total_dividends))
+    with col4.container(border=True):
+        st.metric("Vrije Ruimte (Saldo)", format_eur(current_balance), help="Het laatst bekende saldo uit de transactiehistorie.")
+    with col5.container(border=True):
+        st.metric("Ontvangen dividend", format_eur(total_dividends))
+        
+    st.divider()
 
 
 @fragment(run_every=30)
@@ -820,6 +830,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         c2.metric("Totaal Geïnvesteerd", row.get("Totaal geinvesteerd", "€ 0,00"))
                         c2.metric("Totaal Resultaat", f"{result_raw} ({result_pct})")
 
+        st.divider()
         # Portefeuilleverdeling & Rebalancing
         st.subheader("Portefeuilleverdeling & Rebalancing")
         
@@ -829,51 +840,52 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         saved_assets = config_manager.get_assets() # NEW Rich Objects
         
         # --- UI FOR ADDING NEW ASSETS ---
-        with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
-            col_add_1, col_add_2 = st.columns(2)
-            # SWAPPED INPUTS per user request
-            with col_add_1:
-                new_asset_name = st.text_input("Productnaam (voor weergave)", key="new_asset_name", help="Leesbare naam, bijv. 'Vanguard World'")
-            with col_add_2:
-                new_asset_key = st.text_input("Ticker / ISIN (Key)", key="new_asset_key", help="Unieke identifier, bijv. 'VWCE.DE' of 'IE00...'")
-            
-            new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
-            
-            # Load persisted settings (stock fee in EUR, crypto fee in %)
-            rb_settings = config_manager.get_settings()
-            col_fee_1, col_fee_2 = st.columns(2)
-            with col_fee_1:
-                stock_fee_eur = st.number_input("Standaard fee aandelen (€)", min_value=0.0, step=0.1, value=float(rb_settings.get("stock_fee_eur", 1.0)), help="Standaard transactiekosten per order voor aandelen (EUR)")
-            with col_fee_2:
-                crypto_fee_pct = st.number_input("Standaard crypto fee (%)", min_value=0.0, step=0.01, value=float(rb_settings.get("crypto_fee_pct", 0.29)), help="Procentuele fee voor crypto (bijv. 0.29 betekent 0.29%)")
-            # Persist settings when changed
-            if stock_fee_eur != rb_settings.get("stock_fee_eur") or crypto_fee_pct != rb_settings.get("crypto_fee_pct"):
-                config_manager.update_settings(stock_fee=stock_fee_eur, crypto_fee=crypto_fee_pct)
-
-            if st.button("Voeg toe"):
-                # Clean inputs
-                clean_key = new_asset_key.strip() if new_asset_key else ""
-                clean_name = new_asset_name.strip() if new_asset_name else ""
+        with st.container(border=True):
+            with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
+                col_add_1, col_add_2 = st.columns(2)
+                # SWAPPED INPUTS per user request
+                with col_add_1:
+                    new_asset_name = st.text_input("Productnaam (voor weergave)", key="new_asset_name", help="Leesbare naam, bijv. 'Vanguard World'")
+                with col_add_2:
+                    new_asset_key = st.text_input("Ticker / ISIN (Key)", key="new_asset_key", help="Unieke identifier, bijv. 'VWCE.DE' of 'IE00...'")
                 
-                if clean_key:
-                    # Save Asset (Key -> {target, name}) in one go
-                    config_manager.set_asset(clean_key, target_pct=new_asset_target, display_name=clean_name)
+                new_asset_target = st.number_input("Gewenst percentage (%)", min_value=0.0, max_value=100.0, step=0.5, value=0.0, key="new_asset_target")
+                
+                # Load persisted settings (stock fee in EUR, crypto fee in %)
+                rb_settings = config_manager.get_settings()
+                col_fee_1, col_fee_2 = st.columns(2)
+                with col_fee_1:
+                    stock_fee_eur = st.number_input("Standaard fee aandelen (€)", min_value=0.0, step=0.1, value=float(rb_settings.get("stock_fee_eur", 1.0)), help="Standaard transactiekosten per order voor aandelen (EUR)")
+                with col_fee_2:
+                    crypto_fee_pct = st.number_input("Standaard crypto fee (%)", min_value=0.0, step=0.01, value=float(rb_settings.get("crypto_fee_pct", 0.29)), help="Procentuele fee voor crypto (bijv. 0.29 betekent 0.29%)")
+                # Persist settings when changed
+                if stock_fee_eur != rb_settings.get("stock_fee_eur") or crypto_fee_pct != rb_settings.get("crypto_fee_pct"):
+                    config_manager.update_settings(stock_fee=stock_fee_eur, crypto_fee=crypto_fee_pct)
+
+                if st.button("Voeg toe"):
+                    # Clean inputs
+                    clean_key = new_asset_key.strip() if new_asset_key else ""
+                    clean_name = new_asset_name.strip() if new_asset_name else ""
                     
-                    # Force save/reload - actually variable just needs refresh
-                    saved_assets = config_manager.get_assets()
+                    if clean_key:
+                        # Save Asset (Key -> {target, name}) in one go
+                        config_manager.set_asset(clean_key, target_pct=new_asset_target, display_name=clean_name)
+                        
+                        # Force save/reload - actually variable just needs refresh
+                        saved_assets = config_manager.get_assets()
 
-                    # Resolve/Warmup
-                    try:
-                        resolved = price_manager.resolve_ticker(clean_key)
-                        if resolved:
-                            price_manager.get_live_price(resolved) # trigger cache
-                    except:
-                        pass
+                        # Resolve/Warmup
+                        try:
+                            resolved = price_manager.resolve_ticker(clean_key)
+                            if resolved:
+                                price_manager.get_live_price(resolved) # trigger cache
+                        except:
+                            pass
 
-                    st.toast(f"{clean_key} ({clean_name or 'Geen naam'}) toegevoegd!", icon="✅")
-                    st.rerun()
-                else:
-                    st.error("Voer een Ticker/ISIN in.")
+                        st.toast(f"{clean_key} ({clean_name or 'Geen naam'}) toegevoegd!", icon="✅")
+                        st.rerun()
+                    else:
+                        st.error("Voer een Ticker/ISIN in.")
 
 
         alloc = positions.copy()
@@ -985,8 +997,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 )
                 
                 st.markdown("---")
-                st.subheader("💡 Slimme Rebalancing met Budget")
-                col_b1, col_b2 = st.columns([2, 1])
+                with st.container(border=True):
+                    st.subheader("💡 Slimme Rebalancing met Budget")
+                    col_b1, col_b2 = st.columns([2, 1])
                 with col_b1:
                     extra_budget = st.number_input(
                         "Nieuwe investering (€)", 
@@ -998,7 +1011,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     st.write("") # Padding
                     prevent_sell = st.checkbox("Voorkom verkoop", value=False, help="Schakel dit in om alleen bijkopen te suggereren.")
                 
-                submitted = st.form_submit_button("📊 Update Berekening & Grafiek", type="primary")
+                    submitted = st.form_submit_button("📊 Update Berekening & Grafiek", type="primary")
 
             if submitted:
                 # Save changes when submitted
@@ -1302,7 +1315,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             fig.update_layout(
                 title="Buitenring = Doel  |  Binnen = Huidig",
                 legend=dict(orientation="h", yanchor="bottom", y=-0.1, xanchor="center", x=0.5),
-                margin=dict(t=30, b=0, l=0, r=0)
+                margin=dict(t=30, b=0, l=0, r=0),
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
             )
             
             st.plotly_chart(fig, use_container_width=True)
@@ -1333,7 +1348,11 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 color_discrete_map={"Buy": "#EF553B", "Sell": "#00CC96"},
                 labels={"month_str": "Maand", "amount_abs": "Bedrag (EUR)", "type": "Actie"},
             )
-            fig_cf.update_layout(dragmode=False)
+            fig_cf.update_layout(
+                dragmode=False,
+                paper_bgcolor="rgba(0,0,0,0)",
+                plot_bgcolor="rgba(0,0,0,0)"
+            )
             st.plotly_chart(fig_cf, use_container_width=True, config={'scrollZoom': False})
         else:
             st.caption("Geen aan- of verkopen gevonden.")
@@ -1465,7 +1484,9 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         nticks=10 if xaxis_type == "category" else None # Voorkom clutter bij category
                     ),
                     dragmode=False,
-                    yaxis=dict(autorange=True, fixedrange=False, rangemode="normal")
+                    yaxis=dict(autorange=True, fixedrange=False, rangemode="normal"),
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)"
                 )
                 # Bereken 15% padding voor de assen voor een mooiere look -- REMOVED for autoscaling
                 # val_min, val_max = subset["value"].min(), subset["value"].max()
@@ -1560,7 +1581,9 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         type="date",
                         rangeslider=dict(visible=False)
                     ),
-                    dragmode=False
+                    dragmode=False,
+                    paper_bgcolor="rgba(0,0,0,0)",
+                    plot_bgcolor="rgba(0,0,0,0)"
                 )
                 st.plotly_chart(fig_compare, use_container_width=True, config={'scrollZoom': False})
             else:
