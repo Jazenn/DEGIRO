@@ -117,6 +117,21 @@ def load_degiro_csv(file) -> pd.DataFrame:
     _shift_if_currency("amount")
     _shift_if_currency("balance")
 
+    # Clean and convert numeric columns (EU format: 1.234,56 -> 1234.56)
+    for col in ["amount", "balance", "fx"]:
+        if col in df.columns:
+            # Handle string conversion robustly
+            def clean_num(x):
+                if isinstance(x, str):
+                    # Remove thousands separator (.), replace decimal (,)
+                    # Handle common cases like 'EUR 1.250,50' or '1.000,00'
+                    x = x.replace("EUR", "").replace("USD", "").strip()
+                    x = x.replace(".", "").replace(",", ".")
+                return x
+
+            df[col] = df[col].apply(clean_num)
+            df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
     # Parse dates flexibly (European %d-%m-%Y OR ISO %Y-%m-%d)
     # This prevents date loss when loading back from CSV
     for col in ["date", "value_date"]:
