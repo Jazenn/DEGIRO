@@ -115,6 +115,7 @@ class PriceManager:
         """Resolve a product to a yfinance ticker using Config and logic."""
         # 1. Check Config Mappings
         mapped = self.config.get_ticker_for_product(product_str, isin)
+        # st.write(f"DEBUG: Resolving '{product_str}' / '{isin}' -> Mapped: {mapped}")
         if mapped:
             return self._resolve_input_string(mapped)
             

@@ -330,7 +330,8 @@ def build_portfolio_history(df: pd.DataFrame, price_manager) -> pd.DataFrame:
         if not p: continue
         # Zoek isin erbij
         isin_series = df.loc[df["product"] == p, "isin"]
-        isin = isin_series.iloc[0] if not isin_series.empty else None
+        isin_val = isin_series.iloc[0] if not isin_series.empty else None
+        isin = str(isin_val).strip() if isin_val and pd.notna(isin_val) else None
         
         ticker = price_manager.resolve_ticker(p, isin)
         if ticker:
