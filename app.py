@@ -662,7 +662,19 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
         st.markdown(f"**Periode data:** {period_str}")
     
-    col1, col2, col3 = st.columns(3)
+    # Calculate current balance (Vrije Ruimte)
+    # Get the row with the latest date/time
+    current_balance = 0.0
+    if not df.empty and "balance" in df.columns:
+        # Sort by value_date (or date+time) desc
+        # Assuming value_date is most accurate for balance state
+        # But 'time' might be needed for intraday. 
+        # df is likely already enriched with 'value_date' including time.
+        latest_row = df.sort_values("value_date", ascending=False).iloc[0]
+        current_balance = latest_row.get("balance", 0.0)
+
+    # 4 Columns for top metrics
+    col1, col2, col3, col4 = st.columns(4)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -673,6 +685,8 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     col2.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
     col3.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
                help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
+    
+    col4.metric("Vrije Ruimte (Saldo)", format_eur(current_balance), help="Het laatst bekende saldo uit de transactiehistorie.")
 
     # second row of other metrics (dividend only now)
     col5, col6 = st.columns(2)
@@ -760,8 +774,23 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 # apply coloring only on the result row
                 def _color_row(row):
                     if row.name == "Resultaat":
-                        # color each cell based on presence of '-' anywhere (simple heuristic for negative string)
-                        return ["color: red" if isinstance(v, str) and "-" in v and not v.strip().startswith("(0") else "color: green" for v in row]
+                        styles = []
+                        for v in row:
+                            val_str = str(v)
+                            # Check for negative indication
+                            # Pattern: "- € 100" or "€ -100" or "-5.0%"
+                            # Safe check: if it contains "-" and NOT "(0" (which would be near-zero)
+                            # Also ensure it's not just a dash filler "-"
+                            if "-" in val_str and not val_str.strip() == "-":
+                                # It's likely negative. 
+                                # Exception: "€ 0.00 (-0.0%)" -> strictly speaking negative but maybe neutral?
+                                # Let's stick to simple: contains "-" is red.
+                                styles.append("color: #d84545") # Red
+                            elif val_str.strip() == "-" or "0.00" in val_str: # Neutral/Zero
+                                styles.append("")
+                            else:
+                                styles.append("color: #2e7d32") # Green
+                        return styles
                     else:
                         return ["" for _ in row]
 
