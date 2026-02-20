@@ -138,6 +138,11 @@ def load_degiro_csv(file) -> pd.DataFrame:
         if col in df.columns:
             # First try dayfirst for DeGiro native exports
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
+            
+    # Preserve the original row order to break ties for identical timestamps
+    if "csv_row_id" not in df.columns:
+        df["csv_row_id"] = df.index
+        
     return df
 
 
@@ -666,11 +671,13 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     # Get the row with the latest date/time
     current_balance = 0.0
     if not df.empty and "balance" in df.columns:
-        # Sort by value_date (or date+time) desc
-        # Assuming value_date is most accurate for balance state
-        # But 'time' might be needed for intraday. 
-        # df is likely already enriched with 'value_date' including time.
-        latest_row = df.sort_values("value_date", ascending=False).iloc[0]
+        # Sort by value_date desc, and use csv_row_id asc (lower row id = newer in Degiro CSV) as tiebreaker
+        if "csv_row_id" in df.columns:
+            sorted_df = df.sort_values(["value_date", "csv_row_id"], ascending=[False, True])
+        else:
+            sorted_df = df.sort_values("value_date", ascending=False)
+            
+        latest_row = sorted_df.iloc[0]
         current_balance = latest_row.get("balance", 0.0)
 
     # 3 Columns for top metrics
