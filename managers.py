@@ -9,30 +9,68 @@ import threading
 
 # --- CONFIGURATION MANAGER ---
 class ConfigManager:
-    """Centralized management for application configuration and persistence."""
+    """Centralized management for application configuration and persistence (Unified)."""
     
     CONFIG_FILE = "target_config.json"
-    SETTINGS_FILE = "target_config_settings.json" 
-    MAPPING_FILE = "target_config_mapping.json"
-    NAMES_FILE = "target_config_names.json"
+    # Legacy files for migration
+    LEGACY_SETTINGS_FILE = "target_config_settings.json" 
+    LEGACY_MAPPING_FILE = "target_config_mapping.json"
+    LEGACY_NAMES_FILE = "target_config_names.json"
     
     def __init__(self, drive=None):
         self.drive = drive
-        self._targets = {}
-        self._settings = {
-            "stock_fee_eur": 1.0,
-            "crypto_fee_pct": 0.29
+        self._config = {
+            "assets": {},
+            "settings": {
+                "stock_fee_eur": 1.0,
+                "crypto_fee_pct": 0.29
+            },
+            "mappings": {}
         }
-        self._mappings = {}
-        self._names = {}
         self.load_all()
 
     def load_all(self):
-        self._targets = self._load_json(self.CONFIG_FILE) or {}
-        loaded_settings = self._load_json(self.SETTINGS_FILE) or {}
-        self._settings.update(loaded_settings)
-        self._mappings = self._load_json(self.MAPPING_FILE) or {}
-        self._names = self._load_json(self.NAMES_FILE) or {}
+        data = self._load_json(self.CONFIG_FILE)
+        
+        if data and "assets" in data:
+            # New Unified Format Detected
+            self._config = data
+            # Ensure keys exist if partial file
+            if "settings" not in self._config: self._config["settings"] = {}
+            if "mappings" not in self._config: self._config["mappings"] = {}
+        else:
+            # Old Format or Missing -> Migrate
+            self._migrate_legacy_config(data)
+
+    def _migrate_legacy_config(self, old_targets_data):
+        # 1. Targets (legacy was {"KEY": pct})
+        if old_targets_data and isinstance(old_targets_data, dict):
+             for k, v in old_targets_data.items():
+                 if k not in self._config["assets"]:
+                     self._config["assets"][k] = {}
+                 self._config["assets"][k]["target_pct"] = float(v)
+                 
+        # 2. Settings
+        old_settings = self._load_json(self.LEGACY_SETTINGS_FILE)
+        if old_settings:
+            self._config["settings"].update(old_settings)
+            
+        # 3. Mappings
+        old_mappings = self._load_json(self.LEGACY_MAPPING_FILE)
+        if old_mappings:
+            self._config["mappings"].update(old_mappings)
+            
+        # 4. Names
+        old_names = self._load_json(self.LEGACY_NAMES_FILE)
+        if old_names:
+            for k, name in old_names.items():
+                if k not in self._config["assets"]:
+                     self._config["assets"][k] = {"target_pct": 0.0}
+                self._config["assets"][k]["display_name"] = name
+                
+        # Save immediately to complete migration (if we have any data)
+        # Only save if we actually loaded something or if it's a fresh init
+        self._save_config()
 
     def _load_json(self, filename):
         if self.drive:
@@ -48,7 +86,10 @@ class ConfigManager:
             except: pass
         return None
 
-    def _save_json(self, filename, data):
+    def _save_config(self):
+        filename = self.CONFIG_FILE
+        data = self._config
+        
         if self.drive:
             try:
                 self.drive.save_json(filename, data)
@@ -60,59 +101,73 @@ class ConfigManager:
             except Exception as e:
                 st.error(f"Failed to save {filename}: {e}")
 
+    def _save_json(self, filename, data):
+        # Helper mainly for legacy or direct calls if needed, 
+        # but _save_config handles the main file.
+        pass
+
     # --- Targets ---
-    def get_targets(self): return self._targets
+    def get_targets(self): 
+        return {k: v.get("target_pct", 0.0) for k, v in self._config.get("assets", {}).items()}
     
     def set_target(self, product, percentage):
-        self._targets[product] = percentage
-        self._save_json(self.CONFIG_FILE, self._targets)
+        if product not in self._config["assets"]: 
+            self._config["assets"][product] = {}
+        self._config["assets"][product]["target_pct"] = percentage
+        self._save_config()
         
     def remove_target(self, product):
-        if product in self._targets:
-            del self._targets[product]
-            self._save_json(self.CONFIG_FILE, self._targets)
+        if product in self._config["assets"]:
+            del self._config["assets"][product]
+            self._save_config()
             
     # --- Settings ---
-    def get_settings(self): return self._settings
+    def get_settings(self): return self._config.get("settings", {})
     
     def update_settings(self, stock_fee=None, crypto_fee=None):
         changed = False
-        if stock_fee is not None and stock_fee != self._settings.get("stock_fee_eur"):
-            self._settings["stock_fee_eur"] = stock_fee
+        settings = self._config.get("settings", {})
+        
+        if stock_fee is not None and stock_fee != settings.get("stock_fee_eur"):
+            settings["stock_fee_eur"] = stock_fee
             changed = True
-        if crypto_fee is not None and crypto_fee != self._settings.get("crypto_fee_pct"):
-            self._settings["crypto_fee_pct"] = crypto_fee
+        if crypto_fee is not None and crypto_fee != settings.get("crypto_fee_pct"):
+            settings["crypto_fee_pct"] = crypto_fee
             changed = True
         
         if changed:
-            self._save_json(self.SETTINGS_FILE, self._settings)
+            self._config["settings"] = settings
+            self._save_config()
 
     # --- Mappings ---
-    def get_mappings(self): return self._mappings
+    def get_mappings(self): return self._config.get("mappings", {})
     
     def get_ticker_for_product(self, product, isin=None):
+        mappings = self.get_mappings()
         # 1. Check direct product mapping
-        if product in self._mappings:
-            return self._mappings[product]
-            
+        if product in mappings:
+            return mappings[product]
         # 2. Check ISIN mapping
-        if isin and isin in self._mappings:
-            return self._mappings[isin]
-            
+        if isin and isin in mappings:
+            return mappings[isin]
         return None
         
     def set_mapping(self, key, value):
-        self._mappings[key] = value
-        self._save_json(self.MAPPING_FILE, self._mappings)
+        if "mappings" not in self._config: self._config["mappings"] = {}
+        self._config["mappings"][key] = value
+        self._save_config()
 
     # --- Names (Metadata) ---
     def get_product_name(self, key):
-        return self._names.get(key, key) # fallback to key if no name
+        asset = self._config.get("assets", {}).get(key, {})
+        return asset.get("display_name", key) # fallback to key
         
     def set_product_name(self, key, name):
         if name:
-            self._names[key] = name
-            self._save_json(self.NAMES_FILE, self._names)
+            if key not in self._config["assets"]: 
+                self._config["assets"][key] = {}
+            self._config["assets"][key]["display_name"] = name
+            self._save_config()
 
 # --- PRICE MANAGER ---
 class PriceManager:
