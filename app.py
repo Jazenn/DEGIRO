@@ -773,8 +773,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         
         # --- CONFIG PERSISTENCE ---
         # Managed by ConfigManager
-        saved_targets = config_manager.get_targets()
-
+        # saved_targets = config_manager.get_targets() # Legacy
+        saved_assets = config_manager.get_assets() # NEW Rich Objects
         
         # --- UI FOR ADDING NEW ASSETS ---
         with st.expander("➕ Nieuw aandeel toevoegen aan verdeling"):
@@ -803,15 +803,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 clean_name = new_asset_name.strip() if new_asset_name else ""
                 
                 if clean_key:
-                    # Save Target (Key -> %)
-                    config_manager.set_target(clean_key, new_asset_target)
+                    # Save Asset (Key -> {target, name}) in one go
+                    config_manager.set_asset(clean_key, target_pct=new_asset_target, display_name=clean_name)
                     
-                    # Save Name (Key -> Name)
-                    if clean_name:
-                         config_manager.set_product_name(clean_key, clean_name)
-                    
-                    # Force save/reload of cached targets
-                    saved_targets = config_manager.get_targets()
+                    # Force save/reload - actually variable just needs refresh
+                    saved_assets = config_manager.get_assets()
 
                     # Resolve/Warmup
                     try:
@@ -831,10 +827,30 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         alloc["alloc_value"] = alloc["current_value"].fillna(alloc["invested"])
         alloc = alloc[alloc["alloc_value"].notna() & (alloc["alloc_value"] > 0)]
         
-        if not alloc.empty:
-            total_value = alloc["alloc_value"].sum()
-            alloc["current_pct"] = (alloc["alloc_value"] / total_value) * 100.0
-            alloc["Display Name"] = alloc["product"].apply(_shorten_name)
+        # Calculate Total Invested Value
+        total_value = alloc["alloc_value"].sum() if not alloc.empty else 0.0
+        
+        # Determine if we should show table even if empty (targets exist?)
+        show_table = (total_value > 0) or bool(saved_assets)
+
+        if show_table:
+            total_value = max(total_value, 1.0) # avoid div0
+
+            # --- Budget Input ---
+            col_bud_1, col_bud_2 = st.columns(2)
+            with col_bud_1:
+                 extra_budget = st.number_input("Beschikbaar budget om bij te leggen (€)", min_value=0.0, step=50.0, value=0.0)
+            with col_bud_2:
+                 prevent_sell = st.checkbox("Voorkom verkopen (Buy-Only met budget)", value=True, help="Schaalt aankopen zodat ze binnen budget passen en er niets verkocht wordt.")
+
+            new_total_value = total_value + extra_budget
+            budget_scaling_factor = 1.0
+
+            if not alloc.empty:
+                alloc["current_pct"] = (alloc["alloc_value"] / total_value) * 100.0
+                alloc["Display Name"] = alloc["product"].apply(_shorten_name)
+            else:
+                alloc = pd.DataFrame(columns=["Display Name", "current_pct", "alloc_value"])
             
             # Prepare dataframe for editor
             editor_df = alloc[["Display Name", "current_pct"]].copy()
@@ -843,19 +859,20 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             editor_df["Huidig %"] = editor_df["Huidig %"].round(1)
             
             # MERGE WATCHLIST
-            # 'saved_targets' keys are now Ticker/ISIN (or legacy names)
+            # 'saved_assets' keys are Ticker/ISIN
             curr_prods = set(editor_df["Ticker/ISIN"].unique())
-            for prod, target in saved_targets.items():
+            for prod, asset_data in saved_assets.items():
                 if prod not in curr_prods:
                     # Append as new row
+                    target = asset_data.get("target_pct", 0.0)
                     new_row = pd.DataFrame([{"Ticker/ISIN": prod, "Huidig %": 0.0, "Doel %": target}])
                     editor_df = pd.concat([editor_df, new_row], ignore_index=True)
             
             # Initialize Doel %
             def get_target(row):
                 prod = row["Ticker/ISIN"]
-                if prod in saved_targets:
-                    return float(saved_targets[prod])
+                if prod in saved_assets:
+                    return float(saved_assets[prod].get("target_pct", 0.0))
                 return row.get("Doel %", row["Huidig %"])
 
             editor_df["Doel %"] = editor_df.apply(get_target, axis=1)

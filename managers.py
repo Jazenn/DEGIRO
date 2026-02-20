@@ -157,17 +157,43 @@ class ConfigManager:
         self._config["mappings"][key] = value
         self._save_config()
 
+    # --- Unified Asset Management (Rich Objects) ---
+    def get_assets(self):
+        """Return the full dictionary of asset objects."""
+        return self._config.get("assets", {})
+        
+    def set_asset(self, key, target_pct=None, display_name=None):
+        """Update an asset's properties. Creates it if missing."""
+        if key not in self._config["assets"]:
+            self._config["assets"][key] = {}
+            
+        if target_pct is not None:
+             self._config["assets"][key]["target_pct"] = float(target_pct)
+        
+        if display_name is not None:
+             self._config["assets"][key]["display_name"] = str(display_name).strip()
+             
+        self._save_config()
+
+    # --- Legacy/Helper Wrappers (Maintained for compatibility but redirect to assets) ---
+    def get_targets(self): 
+        return {k: v.get("target_pct", 0.0) for k, v in self._config.get("assets", {}).items()}
+    
+    def set_target(self, product, percentage):
+        self.set_asset(product, target_pct=percentage)
+        
+    def remove_target(self, product):
+        if product in self._config["assets"]:
+            del self._config["assets"][product]
+            self._save_config()
+
     # --- Names (Metadata) ---
     def get_product_name(self, key):
         asset = self._config.get("assets", {}).get(key, {})
         return asset.get("display_name", key) # fallback to key
         
     def set_product_name(self, key, name):
-        if name:
-            if key not in self._config["assets"]: 
-                self._config["assets"][key] = {}
-            self._config["assets"][key]["display_name"] = name
-            self._save_config()
+        self.set_asset(key, display_name=name)
 
 # --- PRICE MANAGER ---
 class PriceManager:
