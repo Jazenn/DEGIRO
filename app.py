@@ -972,8 +972,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             # PRE-CALCULATE SCALING FOR BUY-ONLY MODE
             buy_gaps = []
             for idx, row in edited_df.iterrows():
-                # Use Ticker/ISIN to match back to alloc
-                key = row["Ticker/ISIN"]
+                # Use Ticker/ISIN (Index) to match back to alloc
+                key = idx 
                 
                 # Find current value in alloc
                 # alloc has 'product' column as key
@@ -998,7 +998,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             rb_settings = config_manager.get_settings()
 
             for idx, row in edited_df.iterrows():
-                product_key = row["Ticker/ISIN"] # This is the KEY (Ticker or old name)
+                product_key = idx # Ticker/ISIN is the Index now
                 target_pct = row["Doel %"]
                 # current_pct_rounded = row["Huidig %"] 
                 
