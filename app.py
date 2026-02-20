@@ -963,9 +963,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             if not editor_df.empty:
                 # SORTING LOGIC:
                 # 1. Category (Stock/ETF first, then Crypto)
-                # 2. Portfolio Scale % (Descending)
+                # 2. Portfolio Scale % (Target % Descending)
                 editor_df = editor_df.sort_values(
-                    by=["sort_cat", "Huidig %"], 
+                    by=["sort_cat", "Doel %"], 
                     ascending=[True, False]
                 )
                 
