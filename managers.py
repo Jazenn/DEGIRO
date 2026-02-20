@@ -57,7 +57,8 @@ class ConfigManager:
             try:
                 with open(filename, "w") as f:
                     json.dump(data, f, indent=4)
-            except: pass
+            except Exception as e:
+                st.error(f"Failed to save {filename}: {e}")
 
     # --- Targets ---
     def get_targets(self): return self._targets
