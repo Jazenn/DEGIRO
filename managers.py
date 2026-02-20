@@ -190,7 +190,13 @@ class ConfigManager:
     # --- Names (Metadata) ---
     def get_product_name(self, key):
         asset = self._config.get("assets", {}).get(key, {})
-        return asset.get("display_name", key) # fallback to key
+        name = asset.get("display_name", key) # fallback to key
+        n = str(name).upper()
+        if "VANGUARD" in n: return "All-World"
+        if "XTRACKERS" in n: return "Ex-USA"
+        if "ISHARES" in n: return "Europe"
+        if "FUTURE OF DEFENCE" in n or "HANETF" in n: return "FOD"
+        return name
         
     def set_product_name(self, key, name):
         self.set_asset(key, display_name=name)

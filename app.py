@@ -89,6 +89,10 @@ def load_degiro_csv(file) -> pd.DataFrame:
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
+    # Apply global renaming rules directly to product column so history & tables match perfectly
+    if "product" in df.columns:
+        df["product"] = df["product"].apply(lambda x: _shorten_name(x) if pd.notna(x) and isinstance(x, str) else x)
+
     # In de DeGiro-export staat in de kolom 'Mutatie' / 'Saldo' meestal de valuta (EUR)
     # en staat het echte bedrag in de naastliggende 'Unnamed: x' kolom.
     # Herken dat patroon en verschuif de waarden naar 'amount' / 'balance'.
