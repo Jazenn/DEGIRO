@@ -938,16 +938,31 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 if key in saved_assets:
                     target = float(saved_assets[key].get("target_pct", 0.0))
                 
+                # Determine Category for Sorting (0=Stock/ETF, 1=Crypto)
+                # Matches logic in render_overview
+                is_crypto = str(key).startswith("XFC")
+                sort_cat = 1 if is_crypto else 0
+                
                 rows.append({
                     "Productnaam": name,
                     "Ticker/ISIN": key, # Keep for logic, hide later?
                     "Huidig %": round(curr_pct, 1),
-                    "Doel %": target
+                    "Doel %": target,
+                    "sort_cat": sort_cat
                 })
             
             editor_df = pd.DataFrame(rows)
-            # Ensure columns order and Set Index to Ticker/ISIN (to hide it visually but keep it)
+            
             if not editor_df.empty:
+                # SORTING LOGIC:
+                # 1. Category (Stock/ETF first, then Crypto)
+                # 2. Portfolio Scale % (Descending)
+                editor_df = editor_df.sort_values(
+                    by=["sort_cat", "Huidig %"], 
+                    ascending=[True, False]
+                )
+                
+                # Set Index to Ticker/ISIN (to hide it visually but keep it)
                 editor_df.set_index("Ticker/ISIN", inplace=True)
                 editor_df = editor_df[["Productnaam", "Huidig %", "Doel %"]]
             else:
