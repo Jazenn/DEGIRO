@@ -402,6 +402,43 @@ class PriceManager:
         except: pass
         return 0.0
 
+    def get_live_prices_batch(self, tickers: list[str]) -> dict:
+        """Fetch live prices for multiple tickers in one optimized batch."""
+        valid_tickers = [t for t in tickers if t]
+        if not valid_tickers: return {}
+        return self._fetch_live_prices_batch_cached(tuple(set(valid_tickers)))
+
+    @st.cache_data(ttl=60)
+    def _fetch_live_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+        results = {t: 0.0 for t in tickers_tuple}
+        try:
+            tickers_str = " ".join(tickers_tuple)
+            # Fetch all at once
+            data = yf.download(tickers_str, period="1d", group_by="ticker", progress=False, threads=True)
+            
+            for t in tickers_tuple:
+                try:
+                    if len(tickers_tuple) == 1:
+                        if not data.empty and "Close" in data:
+                            results[t] = float(data["Close"].dropna().iloc[-1])
+                    else:
+                        if t in data and "Close" in data[t]:
+                            results[t] = float(data[t]["Close"].dropna().iloc[-1])
+                except:
+                    pass
+        except:
+            pass
+            
+        # Fallback to fast_info for tickers that failed in batch download
+        for t in tickers_tuple:
+            if not results.get(t):
+                try:
+                    price = yf.Ticker(t).fast_info.last_price
+                    if price: results[t] = float(price)
+                except: pass
+                
+        return results
+
     def get_history(self, ticker, period="1y"):
         return self._fetch_history_cached(ticker, period)
 
@@ -410,6 +447,32 @@ class PriceManager:
         try:
             return yf.Ticker(ticker).history(period=period, prepost=True)
         except: return pd.DataFrame()
+
+    def get_prev_closes_batch(self, tickers: list[str]) -> dict:
+        valid = [t for t in tickers if t]
+        if not valid: return {}
+        return self._fetch_prev_closes_batch_cached(tuple(set(valid)))
+
+    @st.cache_data(ttl=21600)
+    def _fetch_prev_closes_batch_cached(_self, tickers_tuple: tuple) -> dict:
+        results = {t: 0.0 for t in tickers_tuple}
+        try:
+            tickers_str = " ".join(tickers_tuple)
+            data = yf.download(tickers_str, period="5d", interval="1d", group_by="ticker", progress=False, threads=True)
+            for t in tickers_tuple:
+                try:
+                    if len(tickers_tuple) == 1:
+                        df_t = data.dropna(subset=["Close"])
+                    else:
+                        df_t = data[t].dropna(subset=["Close"]) if t in data else pd.DataFrame()
+                        
+                    if len(df_t) >= 2:
+                        results[t] = float(df_t["Close"].iloc[-2])
+                    elif len(df_t) == 1:
+                        results[t] = float(df_t["Close"].iloc[0])
+                except: pass
+        except: pass
+        return results
 
     def get_prev_close(self, ticker):
         """Return previous trading day close."""
@@ -426,6 +489,37 @@ class PriceManager:
                 return float(hist["Close"].iloc[0])
         except: pass
         return 0.0
+
+    def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
+        valid = [t for t in tickers if t]
+        if not valid: return {}
+        return self._fetch_midnight_prices_batch_cached(tuple(set(valid)))
+
+    @st.cache_data(ttl=3600)
+    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+        results = {t: 0.0 for t in tickers_tuple}
+        try:
+            tickers_str = " ".join(tickers_tuple)
+            data = yf.download(tickers_str, period="1d", interval="1h", group_by="ticker", prepost=True, progress=False, threads=True)
+            today = pd.Timestamp.now().normalize()
+            
+            for t in tickers_tuple:
+                try:
+                    if len(tickers_tuple) == 1:
+                        df_t = data.dropna(subset=["Close"])
+                    else:
+                        df_t = data[t].dropna(subset=["Close"]) if t in data else pd.DataFrame()
+                        
+                    if not df_t.empty:
+                        hist = df_t.reset_index()
+                        if hist.iloc[:, 0].dt.tz is not None:
+                             hist.iloc[:, 0] = hist.iloc[:, 0].dt.tz_localize(None)
+                        mask = hist.iloc[:, 0].dt.normalize() == today
+                        if mask.any():
+                             results[t] = float(hist.loc[mask, "Close"].iloc[0])
+                except: pass
+        except: pass
+        return results
 
     def get_midnight_price(self, ticker):
         """Return price at start of today (midnight) for daily P/L."""

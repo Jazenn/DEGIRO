@@ -16,9 +16,14 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1
         )
         
-        positions["last_price"] = positions["ticker"].apply(price_manager.get_live_price)
-        positions["prev_close"] = positions["ticker"].apply(price_manager.get_prev_close)
-        positions["midnight_price"] = positions["ticker"].apply(price_manager.get_midnight_price)
+        unique_tickers = positions["ticker"].dropna().unique().tolist()
+        batch_live = price_manager.get_live_prices_batch(unique_tickers)
+        batch_prev = price_manager.get_prev_closes_batch(unique_tickers)
+        batch_mid = price_manager.get_midnight_prices_batch(unique_tickers)
+        
+        positions["last_price"] = positions["ticker"].map(lambda t: batch_live.get(t, 0.0))
+        positions["prev_close"] = positions["ticker"].map(lambda t: batch_prev.get(t, 0.0))
+        positions["midnight_price"] = positions["ticker"].map(lambda t: batch_mid.get(t, 0.0))
         
         positions["current_value"] = positions.apply(
             lambda r: (
@@ -144,7 +149,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1
         )
         
-        positions["last_price"] = positions["ticker"].apply(price_manager.get_live_price)
+        unique_tickers = positions["ticker"].dropna().unique().tolist()
+        batch_live = price_manager.get_live_prices_batch(unique_tickers)
+        positions["last_price"] = positions["ticker"].map(lambda t: batch_live.get(t, 0.0))
 
         positions["current_value"] = positions.apply(
             lambda r: (
@@ -166,7 +173,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 st.markdown(f"#### {cat}")
                 display = cat_df.copy()
                 
-                display["prev_close"] = display["ticker"].apply(price_manager.get_prev_close)
+                batch_prev = price_manager.get_prev_closes_batch(display["ticker"].dropna().unique().tolist())
+                display["prev_close"] = display["ticker"].map(lambda t: batch_prev.get(t, 0.0))
                 
                 buy_val = display["invested"]
                 sell_val = display["total_sells"].fillna(0.0)

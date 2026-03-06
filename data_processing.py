@@ -145,6 +145,7 @@ def parse_quantity(description: str) -> float:
         qty = -qty
     return qty
 
+@st.cache_data
 def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
     """Voeg extra kolommen toe: type, quantity, categorieën."""
     df = df.copy()
@@ -251,7 +252,8 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     
     return monthly
 
-def build_portfolio_history(df: pd.DataFrame, price_manager) -> pd.DataFrame:
+@st.cache_data(ttl=3600)
+def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
     Combineert transacties (hoeveelheid) met historische koersen (yfinance).
@@ -262,16 +264,9 @@ def build_portfolio_history(df: pd.DataFrame, price_manager) -> pd.DataFrame:
     products = df["product"].unique()
     valid_products = []
     
-    product_map = {}
     for p in products:
         if not p: continue
-        isin_series = df.loc[df["product"] == p, "isin"]
-        isin_val = isin_series.iloc[0] if not isin_series.empty else None
-        isin = str(isin_val).strip() if isin_val and pd.notna(isin_val) else None
-        
-        ticker = price_manager.resolve_ticker(p, isin)
-        if ticker:
-            product_map[p] = ticker
+        if p in product_map and product_map[p]:
             valid_products.append(p)
 
     if not valid_products:

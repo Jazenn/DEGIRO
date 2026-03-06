@@ -165,7 +165,20 @@ def main() -> None:
 
     df = enrich_transactions(df_raw)
     
-    history_df = build_portfolio_history(df, price_manager=price_manager)
+    # Generate product_map once to pass into cached history function
+    product_map = {}
+    if not df.empty and "product" in df.columns:
+        for p in df["product"].unique():
+            if not p: continue
+            isin_series = df.loc[df["product"] == p, "isin"]
+            isin_val = isin_series.iloc[0] if not isin_series.empty else None
+            isin = str(isin_val).strip() if isin_val and pd.notna(isin_val) else None
+            
+            ticker = price_manager.resolve_ticker(p, isin)
+            if ticker:
+                product_map[p] = ticker
+
+    history_df = build_portfolio_history(df, product_map=product_map)
     trading_volume = build_trading_volume_by_month(df)
     
     render_metrics(df, price_manager=price_manager, config_manager=config_manager)
