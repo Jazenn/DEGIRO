@@ -115,9 +115,8 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     else:
         total_result = total_market_value - total_costs
 
-    total_spent = abs(total_buys) + total_fees
-    if pd.notna(total_spent) and total_spent != 0:
-        pct_total = (total_result / total_spent * 100.0)
+    if pd.notna(total_costs) and total_costs != 0:
+        pct_total = (total_result / abs(total_costs) * 100.0)
     else:
         pct_total = 0.0
 
