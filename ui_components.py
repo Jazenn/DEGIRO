@@ -347,6 +347,21 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
             with st.form("rebalance_form"):
                 st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
+                
+                # CSS injectie proberen om mobile browser swipe-handling te dwingen 
+                # over het data rooster, ipv column drag-and-drop.
+                st.markdown("""
+                <style>
+                    [data-testid="stDataFrame"] {
+                        touch-action: pan-y pan-x !important;
+                    }
+                    /* Optional: Make the header less 'draggable' to the visual engine */
+                    [data-testid="stDataFrame"] th {
+                        user-select: none !important;
+                    }
+                </style>
+                """, unsafe_allow_html=True)
+                
                 edited_df = st.data_editor(
                     editor_df,
                     column_order=["Productnaam", "Huidig %", "Doel %"],
