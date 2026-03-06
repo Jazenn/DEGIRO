@@ -25,8 +25,10 @@ def format_eur(value: float) -> str:
     if pd.isna(value):
         return "€ 0,00"
     # First format with US/UK style, then swap separators
-    s = f"{value:,.2f}"
+    s = f"{abs(value):,.2f}"
     s = s.replace(",", "X").replace(".", ",").replace("X", ".")
+    if value < 0:
+        return f"-€ {s}"
     return f"€ {s}"
 
 def format_pct(value: float) -> str:

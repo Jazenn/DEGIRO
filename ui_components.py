@@ -36,10 +36,9 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             axis=1,
         )
 
-        def calc_daily(r):
-            lp = r.get("last_price")
+        def calc_daily_base(r):
             qty = r.get("quantity")
-            if pd.isna(lp) or pd.isna(qty): return pd.NA
+            if pd.isna(qty): return pd.NA
             
             is_crypto = str(r.get("isin", "")).startswith("XFC") or any(x in str(r.get("product", "")).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
             
@@ -52,11 +51,25 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
                 base = r.get("prev_close")
             
             if pd.notna(base) and base > 0:
-                return qty * (lp - base)
+                return qty * base
+            return pd.NA
+
+        positions["daily_base_val"] = positions.apply(calc_daily_base, axis=1)
+        total_daily_base = positions["daily_base_val"].dropna().sum() if not positions.empty else 0.0
+
+        def calc_daily(r):
+            lp = r.get("last_price")
+            qty = r.get("quantity")
+            if pd.isna(lp) or pd.isna(qty): return pd.NA
+            
+            base_val = r.get("daily_base_val")
+            if pd.notna(base_val) and base_val > 0:
+                return (lp * qty) - base_val
             return pd.NA
 
         positions["daily_pl_eur"] = positions.apply(calc_daily, axis=1)
         total_daily_pl = positions["daily_pl_eur"].dropna().sum() if not positions.empty else 0.0
+        daily_pct_total = (total_daily_pl / total_daily_base * 100.0) if total_daily_base > 0 else 0.0
 
         positions["avg_price"] = positions.apply(
             lambda r: (
@@ -143,7 +156,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
                    help="Berekening: Marktwaarde - Totale kosten")
     with col_daily.container(border=True):
         daily_color = "normal" if pd.notna(total_daily_pl) else "off"
-        st.metric("Dag W/V", format_eur(total_daily_pl) if pd.notna(total_daily_pl) else "€ 0,00", delta=format_eur(total_daily_pl) if pd.notna(total_daily_pl) else None, delta_color=daily_color, help="Dagelijks resultaat gebaseerd op de marktopening (of middernacht voor crypto).")
+        st.metric("Dag W/V", format_eur(total_daily_pl) if pd.notna(total_daily_pl) else "€ 0,00", delta=format_pct(daily_pct_total) if pd.notna(total_daily_pl) else None, delta_color=daily_color, help="Dagelijks resultaat gebaseerd op de marktopening (of middernacht voor crypto).")
     
     col4, col5 = st.columns(2)
     with col4.container(border=True):
@@ -197,7 +210,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 def calc_daily_display(row):
                     lp = row.get("last_price")
                     qty = row.get("quantity")
-                    if pd.isna(lp) or pd.isna(qty): return pd.NA
+                    if pd.isna(lp) or pd.isna(qty): return pd.NA, pd.NA
                     
                     if cat == "Crypto":
                         base = row.get("midnight_price")
@@ -208,10 +221,13 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         base = row.get("prev_close")
                         
                     if pd.notna(base) and base > 0:
-                        return qty * (lp - base)
-                    return pd.NA
+                        pl_eur = qty * (lp - base)
+                        base_val = qty * base
+                        pl_pct = (pl_eur / base_val * 100.0) if base_val > 0 else 0.0
+                        return pl_eur, pl_pct
+                    return pd.NA, pd.NA
                     
-                display["Dag W/V (EUR)"] = display.apply(calc_daily_display, axis=1)
+                display[["Dag W/V (EUR)", "Dag W/V (%)"]] = display.apply(calc_daily_display, axis=1, result_type="expand")
 
                 buy_val = display["invested"]
                 sell_val = display["total_sells"].fillna(0.0)
@@ -229,7 +245,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 def fmt_daily(val):
                     if pd.isna(val): return "€ 0,00"
                     return format_eur(val)
+                def fmt_daily_pct(val):
+                    if pd.isna(val): return "0,00%"
+                    return format_pct(val)
                 display["Dag W/V (EUR)_fmt"] = display["Dag W/V (EUR)"].apply(fmt_daily)
+                display["Dag W/V (%)_fmt"] = display["Dag W/V (%)"].apply(fmt_daily_pct)
 
                 def _pl_pct(row: pd.Series) -> float | None:
                     cur = row.get("current_value")
@@ -257,6 +277,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     result_pct = row.get("Winst/verlies (%)", "0,00%")
                     current_val = row.get("Huidige waarde", "€ 0,00")
                     dag_raw = row.get("Dag W/V (EUR)_fmt", "€ 0,00")
+                    dag_pct = row.get("Dag W/V (%)_fmt", "0,00%")
                     
                     if "-" in result_raw and "0,00" not in result_raw:
                         indicator = "🔴"
@@ -267,7 +288,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         
                     dag_indicator = "🔴" if "-" in dag_raw and "0,00" not in dag_raw else ("⚪" if "0,00" in dag_raw else "🟢")
                         
-                    label = f"{indicator} **{product_name}** | {current_val} | Tot: {result_raw} ({result_pct}) | Dag: {dag_indicator} {dag_raw}"
+                    label = f"{indicator} **{product_name}** | {current_val} | Tot: {result_raw} | Dag: {dag_indicator} {dag_raw} ({dag_pct})"
                     
                     with st.expander(label):
                         c1, c2 = st.columns(2)
@@ -284,7 +305,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
                         c2.metric("Totaal Geïnvesteerd", row.get("Totaal geinvesteerd", "€ 0,00"))
                         c2.metric("Totaal Resultaat", f"{result_raw} ({result_pct})")
-                        c2.metric("Dag Resultaat", f"{dag_indicator} {dag_raw}")
+                        c2.metric("Dag Resultaat", f"{dag_indicator} {dag_raw} ({dag_pct})")
 
         st.divider()
         st.subheader("Portefeuilleverdeling & Rebalancing")
