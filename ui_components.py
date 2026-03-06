@@ -349,26 +349,24 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
                 
                 # Gebruik st.columns in plaats van st.data_editor om de verspringingsbug op mobiel compleet op te heffen.
-                col_h1, col_h2, col_h3 = st.columns([5, 2, 3])
-                col_h1.write("**Productnaam**")
-                col_h2.write("**Huidig %**")
-                col_h3.write("**Doel %**")
+                st.markdown("Pas de percentages aan met de + en - knoppen. Je kunt ook de weergavenaam aanpassen.")
                 
                 edited_rows = []
                 for idx, row in editor_df.iterrows():
-                    c1, c2, c3 = st.columns([5, 2, 3])
-                    with c1:
-                        new_name = st.text_input("Naam", value=row["Productnaam"], key=f"name_{idx}", label_visibility="collapsed")
-                    with c2:
-                        st.markdown(f"<div style='padding-top: 8px;'>{row['Huidig %']:.1f} %</div>", unsafe_allow_html=True)
-                    with c3:
-                        new_target = st.number_input("Doel", min_value=0.0, max_value=100.0, step=0.1, value=float(row["Doel %"]), key=f"target_{idx}", label_visibility="collapsed")
+                    with st.container(border=True):
+                        new_name = st.text_input("Productnaam / Weergavenaam", value=row["Productnaam"], key=f"name_{idx}")
+                        
+                        c1, c2 = st.columns(2)
+                        with c1:
+                            st.number_input("Huidig %", value=float(row["Huidig %"]), disabled=True, key=f"curr_{idx}", format="%.1f")
+                        with c2:
+                            new_target = st.number_input("Doel %", min_value=0.0, max_value=100.0, step=0.1, value=float(row["Doel %"]), key=f"target_{idx}")
                     
-                    edited_rows.append({
-                        "Ticker/ISIN": idx,
-                        "Productnaam": new_name,
-                        "Doel %": new_target
-                    })
+                        edited_rows.append({
+                            "Ticker/ISIN": idx,
+                            "Productnaam": new_name,
+                            "Doel %": new_target
+                        })
                 
                 edited_df = pd.DataFrame(edited_rows).set_index("Ticker/ISIN")
                 
