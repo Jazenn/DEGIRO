@@ -395,6 +395,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     submitted = st.form_submit_button("📊 Update Berekening & Grafiek", type="primary")
 
             if submitted:
+                updates = []
                 for idx, row in edited_df.iterrows():
                     key = idx
                     new_target = float(row["Doel %"])
@@ -402,10 +403,13 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     
                     existing_name = config_manager.get_product_name(key)
                     
-                    config_manager.set_target(key, new_target)
+                    updates.append({
+                        "key": key,
+                        "target_pct": new_target,
+                        "display_name": new_name if (new_name and new_name != existing_name) else None
+                    })
                     
-                    if new_name and new_name != existing_name:
-                         config_manager.set_product_name(key, new_name)
+                config_manager.batch_update_assets(updates)
                 
                 st.toast("Verdeling en namen opgeslagen!", icon="💾")
 
@@ -420,9 +424,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 
                 to_remove_display = st.multiselect("Verwijder nieuwe aandelen:", options)
                 if st.button("Verwijder geselecteerde"):
+                    keys_to_remove = []
                     for item in to_remove_display:
                         k = item.split("(")[-1].strip(")")
-                        config_manager.remove_target(k)
+                        keys_to_remove.append(k)
+                    config_manager.batch_remove_assets(keys_to_remove)
                     st.toast("Aandelen verwijderd!", icon="🗑️")
                     st.rerun()
 

@@ -84,11 +84,11 @@ class DriveStorage:
             }
             self.service.files().create(body=file_metadata, media_body=media, fields="id").execute()
 
-    def load_json(self, filename: str) -> dict:
+    def load_json(self, filename: str) -> dict | None:
         """Download a JSON file and return as dict."""
         file_id = self._find_file(filename)
         if not file_id:
-            return {}
+            return None
 
         request = self.service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -101,7 +101,7 @@ class DriveStorage:
         try:
             return json.load(fh)
         except Exception:
-            return {}
+            return None
 
     def save_json(self, filename: str, data: dict):
         """Upload or update a JSON file from a dict."""

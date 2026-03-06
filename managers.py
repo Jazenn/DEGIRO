@@ -69,14 +69,23 @@ class ConfigManager:
                 self._config["assets"][k]["display_name"] = name
                 
         # Save immediately to complete migration (if we have any data)
-        # Only save if we actually loaded something or if it's a fresh init
-        self._save_config()
+        # Only save if we actually imported old data
+        migrated_something = False
+        if old_targets_data and isinstance(old_targets_data, dict):
+             migrated_something = True
+
+        if old_settings: migrated_something = True
+        if old_mappings: migrated_something = True
+        if old_names:    migrated_something = True
+
+        if migrated_something:
+            self._save_config()
 
     def _load_json(self, filename):
         if self.drive:
             try:
                 data = self.drive.load_json(filename)
-                if data: return data
+                if data is not None: return data
             except: pass
         
         if Path(filename).exists():
@@ -175,6 +184,22 @@ class ConfigManager:
              
         self._save_config()
 
+    def batch_update_assets(self, updates: list):
+        """Update multiple assets and save once to prevent Drive API rate limits."""
+        for u in updates:
+            key = u.get("key")
+            target_pct = u.get("target_pct")
+            display_name = u.get("display_name")
+            
+            if key not in self._config["assets"]:
+                self._config["assets"][key] = {}
+            if target_pct is not None:
+                self._config["assets"][key]["target_pct"] = float(target_pct)
+            if display_name is not None:
+                self._config["assets"][key]["display_name"] = str(display_name).strip()
+                
+        self._save_config()
+
     # --- Legacy/Helper Wrappers (Maintained for compatibility but redirect to assets) ---
     def get_targets(self): 
         return {k: v.get("target_pct", 0.0) for k, v in self._config.get("assets", {}).items()}
@@ -185,6 +210,15 @@ class ConfigManager:
     def remove_target(self, product):
         if product in self._config["assets"]:
             del self._config["assets"][product]
+            self._save_config()
+
+    def batch_remove_assets(self, products: list):
+        changed = False
+        for product in products:
+            if product in self._config["assets"]:
+                del self._config["assets"][product]
+                changed = True
+        if changed:
             self._save_config()
 
     # --- Names (Metadata) ---
