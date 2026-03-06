@@ -355,9 +355,10 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     [data-testid="stDataFrame"] {
                         touch-action: pan-y pan-x !important;
                     }
-                    /* Optional: Make the header less 'draggable' to the visual engine */
+                    /* Disable header interactions to prevent column dragging and sorting */
                     [data-testid="stDataFrame"] th {
                         user-select: none !important;
+                        pointer-events: none !important; 
                     }
                 </style>
                 """, unsafe_allow_html=True)
