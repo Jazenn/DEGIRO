@@ -353,8 +353,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 
                 edited_rows = []
                 for idx, row in editor_df.iterrows():
-                    
-                    product_label = f"📝 {row['Productnaam']}  |  Huidig: {row['Huidig %']:.1f}%  |  Doel: {row['Doel %']:.1f}%"
+                    product_label = f"📝 {row['Productnaam']}  |  H: {row['Huidig %']:.1f}%  |  D: {row['Doel %']:.1f}%"
                     
                     with st.expander(product_label):
                         c1, c2 = st.columns(2)
@@ -581,12 +580,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             
             st.markdown("#### Actie Advies")
             st.markdown("Dit overzicht houdt rekening met het feit dat aandelen in hele stuks gekocht worden en bevat de transactiekosten.")
-            
             styled_res = res_df[["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
-                "Verschil (EUR)": "€ {:.2f}",
+                "Verschil (EUR)": "€\xa0{:.2f}",
                 "Aantal": "{:.4f}",
-                "Kosten (Fee)": "€ {:.2f}",
-                "Nieuw %": "{:.2f} %"
+                "Kosten (Fee)": "€\xa0{:.2f}",
+                "Nieuw %": "{:.2f}\xa0%"
             })
             if hasattr(styled_res, 'hide'):
                 styled_res = styled_res.hide(axis="index")
