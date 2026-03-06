@@ -490,6 +490,47 @@ class PriceManager:
         except: pass
         return 0.0
 
+    def get_market_open_prices_batch(self, tickers: list[str]) -> dict:
+        valid = [t for t in tickers if t]
+        if not valid: return {}
+        return self._fetch_market_open_prices_batch_cached(tuple(set(valid)))
+
+    @st.cache_data(ttl=3600)
+    def _fetch_market_open_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+        results = {t: 0.0 for t in tickers_tuple}
+        try:
+            tickers_str = " ".join(tickers_tuple)
+            data = yf.download(tickers_str, period="1d", group_by="ticker", progress=False, threads=True)
+            for t in tickers_tuple:
+                try:
+                    if len(tickers_tuple) == 1:
+                        if not data.empty and "Open" in data:
+                            open_vals = data["Open"].dropna()
+                            if not open_vals.empty:
+                                results[t] = float(open_vals.iloc[-1])
+                    else:
+                        if t in data and "Open" in data[t]:
+                            open_vals = data[t]["Open"].dropna()
+                            if not open_vals.empty:
+                                results[t] = float(open_vals.iloc[-1])
+                except: pass
+        except: pass
+        return results
+
+    def get_market_open_price(self, ticker):
+        """Return opening price of the most recent trading day."""
+        if not ticker: return 0.0
+        return self._fetch_market_open_price_cached(ticker)
+
+    @st.cache_data(ttl=3600)
+    def _fetch_market_open_price_cached(_self, ticker):
+        try:
+            hist = yf.Ticker(ticker).history(period="1d")
+            if not hist.empty and "Open" in hist.columns:
+                return float(hist["Open"].iloc[-1])
+        except: pass
+        return 0.0
+
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}

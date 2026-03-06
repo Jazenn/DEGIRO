@@ -20,10 +20,12 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         batch_live = price_manager.get_live_prices_batch(unique_tickers)
         batch_prev = price_manager.get_prev_closes_batch(unique_tickers)
         batch_mid = price_manager.get_midnight_prices_batch(unique_tickers)
+        batch_open = price_manager.get_market_open_prices_batch(unique_tickers)
         
         positions["last_price"] = positions["ticker"].map(lambda t: batch_live.get(t, 0.0))
         positions["prev_close"] = positions["ticker"].map(lambda t: batch_prev.get(t, 0.0))
         positions["midnight_price"] = positions["ticker"].map(lambda t: batch_mid.get(t, 0.0))
+        positions["market_open"] = positions["ticker"].map(lambda t: batch_open.get(t, 0.0))
         
         positions["current_value"] = positions.apply(
             lambda r: (
@@ -39,13 +41,22 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             qty = r.get("quantity")
             if pd.isna(lp) or pd.isna(qty): return pd.NA
             
-            base = r.get("midnight_price")
+            is_crypto = str(r.get("isin", "")).startswith("XFC") or any(x in str(r.get("product", "")).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
+            
+            if is_crypto:
+                base = r.get("midnight_price")
+            else:
+                base = r.get("market_open")
+                
             if pd.isna(base) or base == 0:
                 base = r.get("prev_close")
             
             if pd.notna(base) and base > 0:
                 return qty * (lp - base)
             return pd.NA
+
+        positions["daily_pl_eur"] = positions.apply(calc_daily, axis=1)
+        total_daily_pl = positions["daily_pl_eur"].dropna().sum() if not positions.empty else 0.0
 
         positions["avg_price"] = positions.apply(
             lambda r: (
@@ -116,7 +127,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     st.markdown("---")
     st.subheader("Dashboard Overzicht")
 
-    col1, col2, col3 = st.columns(3)
+    col1, col2, col3, col_daily = st.columns(4)
     help_txt = (
         f"Aankopen: {format_eur(abs(total_buys))}  |  "
         f"Fees: {format_eur(total_fees)}  |  "
@@ -124,12 +135,15 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         f"Dividend: -{format_eur(total_dividends)}"
     )
     with col1.container(border=True):
-        st.metric("Totale Kosten (Netto Inleg)", format_eur(total_costs), help=help_txt)
+        st.metric("Netto Inleg", format_eur(total_costs), help=help_txt)
     with col2.container(border=True):
-        st.metric("Huidige marktwaarde (live)", format_eur(total_market_value))
+        st.metric("Marktwaarde", format_eur(total_market_value))
     with col3.container(border=True):
         st.metric("Total P/L", format_eur(total_result), delta=format_pct(pct_total), delta_color="normal",
-                   help="Berekening: Marktwaarde - Totale kosten (inclusief gerealiseerd resultaat)")
+                   help="Berekening: Marktwaarde - Totale kosten")
+    with col_daily.container(border=True):
+        daily_color = "normal" if pd.notna(total_daily_pl) else "off"
+        st.metric("Dag W/V", format_eur(total_daily_pl) if pd.notna(total_daily_pl) else "€ 0,00", delta=format_eur(total_daily_pl) if pd.notna(total_daily_pl) else None, delta_color=daily_color, help="Dagelijks resultaat gebaseerd op de marktopening (of middernacht voor crypto).")
     
     col4, col5 = st.columns(2)
     with col4.container(border=True):
@@ -151,7 +165,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
         
         unique_tickers = positions["ticker"].dropna().unique().tolist()
         batch_live = price_manager.get_live_prices_batch(unique_tickers)
+        batch_mid = price_manager.get_midnight_prices_batch(unique_tickers)
+        batch_open = price_manager.get_market_open_prices_batch(unique_tickers)
         positions["last_price"] = positions["ticker"].map(lambda t: batch_live.get(t, 0.0))
+        positions["midnight_price"] = positions["ticker"].map(lambda t: batch_mid.get(t, 0.0))
+        positions["market_open"] = positions["ticker"].map(lambda t: batch_open.get(t, 0.0))
 
         positions["current_value"] = positions.apply(
             lambda r: (
@@ -176,6 +194,25 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 batch_prev = price_manager.get_prev_closes_batch(display["ticker"].dropna().unique().tolist())
                 display["prev_close"] = display["ticker"].map(lambda t: batch_prev.get(t, 0.0))
                 
+                def calc_daily_display(row):
+                    lp = row.get("last_price")
+                    qty = row.get("quantity")
+                    if pd.isna(lp) or pd.isna(qty): return pd.NA
+                    
+                    if cat == "Crypto":
+                        base = row.get("midnight_price")
+                    else:
+                        base = row.get("market_open")
+                        
+                    if pd.isna(base) or base == 0:
+                        base = row.get("prev_close")
+                        
+                    if pd.notna(base) and base > 0:
+                        return qty * (lp - base)
+                    return pd.NA
+                    
+                display["Dag W/V (EUR)"] = display.apply(calc_daily_display, axis=1)
+
                 buy_val = display["invested"]
                 sell_val = display["total_sells"].fillna(0.0)
                 fee_val = display["total_fees"].abs().fillna(0.0)
@@ -188,6 +225,11 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 display["Totaal geinvesteerd"] = display["Totaal geinvesteerd"].map(format_eur)
                 display["Huidige waarde"] = display["current_value"].map(format_eur)
                 display["Winst/verlies (EUR)"] = display["Winst/verlies (EUR)"].map(format_eur)
+                
+                def fmt_daily(val):
+                    if pd.isna(val): return "€ 0,00"
+                    return format_eur(val)
+                display["Dag W/V (EUR)_fmt"] = display["Dag W/V (EUR)"].apply(fmt_daily)
 
                 def _pl_pct(row: pd.Series) -> float | None:
                     cur = row.get("current_value")
@@ -214,6 +256,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     result_raw = row.get("Winst/verlies (EUR)", "€ 0,00")
                     result_pct = row.get("Winst/verlies (%)", "0,00%")
                     current_val = row.get("Huidige waarde", "€ 0,00")
+                    dag_raw = row.get("Dag W/V (EUR)_fmt", "€ 0,00")
                     
                     if "-" in result_raw and "0,00" not in result_raw:
                         indicator = "🔴"
@@ -222,7 +265,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     else:
                         indicator = "🟢"
                         
-                    label = f"{indicator} **{product_name}** | {current_val} | {result_raw} ({result_pct})"
+                    dag_indicator = "🔴" if "-" in dag_raw and "0,00" not in dag_raw else ("⚪" if "0,00" in dag_raw else "🟢")
+                        
+                    label = f"{indicator} **{product_name}** | {current_val} | Tot: {result_raw} ({result_pct}) | Dag: {dag_indicator} {dag_raw}"
                     
                     with st.expander(label):
                         c1, c2 = st.columns(2)
@@ -239,6 +284,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
                         c2.metric("Totaal Geïnvesteerd", row.get("Totaal geinvesteerd", "€ 0,00"))
                         c2.metric("Totaal Resultaat", f"{result_raw} ({result_pct})")
+                        c2.metric("Dag Resultaat", f"{dag_indicator} {dag_raw}")
 
         st.divider()
         st.subheader("Portefeuilleverdeling & Rebalancing")
