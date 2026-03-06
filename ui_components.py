@@ -348,33 +348,29 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             with st.form("rebalance_form"):
                 st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
                 
-                # CSS injectie proberen om mobile browser swipe-handling te dwingen 
-                # over het data rooster, ipv column drag-and-drop.
-                st.markdown("""
-                <style>
-                    [data-testid="stDataFrame"] {
-                        touch-action: pan-y pan-x !important;
-                    }
-                    /* Disable header interactions to prevent column dragging and sorting */
-                    [data-testid="stDataFrame"] th {
-                        user-select: none !important;
-                        pointer-events: none !important; 
-                    }
-                </style>
-                """, unsafe_allow_html=True)
+                # Gebruik st.columns in plaats van st.data_editor om de verspringingsbug op mobiel compleet op te heffen.
+                col_h1, col_h2, col_h3 = st.columns([5, 2, 3])
+                col_h1.write("**Productnaam**")
+                col_h2.write("**Huidig %**")
+                col_h3.write("**Doel %**")
                 
-                edited_df = st.data_editor(
-                    editor_df,
-                    column_order=["Productnaam", "Huidig %", "Doel %"],
-                    column_config={
-                        "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
-                        "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
-                        "Productnaam": st.column_config.TextColumn(disabled=False, required=True, max_chars=50),
-                    },
-                    use_container_width=True,
-                    hide_index=True,
-                    key="rebalance_editor"
-                )
+                edited_rows = []
+                for idx, row in editor_df.iterrows():
+                    c1, c2, c3 = st.columns([5, 2, 3])
+                    with c1:
+                        new_name = st.text_input("Naam", value=row["Productnaam"], key=f"name_{idx}", label_visibility="collapsed")
+                    with c2:
+                        st.markdown(f"<div style='padding-top: 8px;'>{row['Huidig %']:.1f} %</div>", unsafe_allow_html=True)
+                    with c3:
+                        new_target = st.number_input("Doel", min_value=0.0, max_value=100.0, step=0.1, value=float(row["Doel %"]), key=f"target_{idx}", label_visibility="collapsed")
+                    
+                    edited_rows.append({
+                        "Ticker/ISIN": idx,
+                        "Productnaam": new_name,
+                        "Doel %": new_target
+                    })
+                
+                edited_df = pd.DataFrame(edited_rows).set_index("Ticker/ISIN")
                 
                 st.markdown("---")
                 with st.container(border=True):
@@ -580,17 +576,15 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             st.markdown("#### Actie Advies")
             st.markdown("Dit overzicht houdt rekening met het feit dat aandelen in hele stuks gekocht worden en bevat de transactiekosten.")
             
-            st.dataframe(
-                res_df[["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
-                    "Verschil (EUR)": "€ {:.2f}",
-                    "Aantal": "{:.4f}",
-                    "Kosten (Fee)": "€ {:.2f}",
-                    "Nieuw %": "{:.2f} %"
-                }),
-                column_order=["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"],
-                use_container_width=True,
-                hide_index=True
-            )
+            styled_res = res_df[["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"]].style.format({
+                "Verschil (EUR)": "€ {:.2f}",
+                "Aantal": "{:.4f}",
+                "Kosten (Fee)": "€ {:.2f}",
+                "Nieuw %": "{:.2f} %"
+            })
+            if hasattr(styled_res, 'hide'):
+                styled_res = styled_res.hide(axis="index")
+            st.table(styled_res)
 
             summary_fees_buys = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Kopen")
             summary_fees_sells = sum(r["Kosten (Fee)"] for r in results if r["Actie"] == "Verkopen")
