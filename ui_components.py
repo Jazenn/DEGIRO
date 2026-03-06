@@ -349,6 +349,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
                 edited_df = st.data_editor(
                     editor_df,
+                    column_order=["Productnaam", "Huidig %", "Doel %"],
                     column_config={
                         "Huidig %": st.column_config.NumberColumn(format="%.1f %%", disabled=True),
                         "Doel %": st.column_config.NumberColumn(format="%.1f %%", min_value=0, max_value=100, step=0.1, required=True),
@@ -570,6 +571,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     "Kosten (Fee)": "€ {:.2f}",
                     "Nieuw %": "{:.2f} %"
                 }),
+                column_order=["Productnaam", "Actie", "Verschil (EUR)", "Aantal", "Kosten (Fee)", "Nieuw %"],
                 use_container_width=True,
                 hide_index=True
             )
