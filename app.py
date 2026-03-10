@@ -22,6 +22,10 @@ def main() -> None:
     sidebar = st.sidebar
     sidebar.header("Instellingen")
 
+    if sidebar.button("🔄 Ververs Koersen Nu", use_container_width=True, help="Forceer een vernieuwing van alle live koersen."):
+        st.cache_data.clear()
+        st.rerun()
+
     if "uploader_key" not in st.session_state:
         st.session_state["uploader_key"] = 0
 
