@@ -303,9 +303,22 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if tx_p.empty:
             continue
             
-        tx_p = tx_p.groupby("value_date")["quantity"].sum().sort_index()
+        # Calculate net invested per transaction row: (buy_cash + fees) - (sell_cash) - dividends
+        tx_p["net_invested"] = (
+            tx_p["buy_cash"] 
+            + tx_p.apply(lambda r: r["amount"] if r["is_fee"] else 0.0, axis=1)
+            - tx_p["sell_cash"]
+            - tx_p.apply(lambda r: r["amount"] if r["is_dividend"] else 0.0, axis=1)
+        )
         
-        qty_on_tx = tx_p.cumsum()
+        # Group by date to get daily changes
+        tx_daily = tx_p.groupby("value_date").agg(
+            quantity=("quantity", "sum"),
+            invested_change=("net_invested", lambda s: -s.sum()) # Invert because costs are negative in the raw data
+        ).sort_index()
+
+        qty_on_tx = tx_daily["quantity"].cumsum()
+        invested_on_tx = tx_daily["invested_change"].cumsum()
         
         now = pd.Timestamp.now()
         full_daily_index = pd.date_range(start=start_date, end=now, freq="D")
@@ -313,6 +326,7 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         combined_index = qty_on_tx.index.union(full_daily_index).sort_values()
         
         daily_qty = qty_on_tx.reindex(combined_index, method='ffill').fillna(0)
+        daily_invested = invested_on_tx.reindex(combined_index, method='ffill').fillna(0)
         
         def get_price_series(data_obj, t):
             try:
@@ -355,11 +369,14 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if hist_df.index.tz is not None:
             hist_df.index = hist_df.index.tz_localize(None)
 
-        aligned_qty = daily_qty.reindex(hist_df.index, method='ffill').fillna(0)
-        
         combined_df = pd.DataFrame(index=hist_df.index)
         combined_df["price"] = hist_df["price"]
+        
+        aligned_qty = daily_qty.reindex(hist_df.index, method='ffill').fillna(0)
+        aligned_invested = daily_invested.reindex(hist_df.index, method='ffill').fillna(0)
+        
         combined_df["quantity"] = aligned_qty
+        combined_df["invested"] = aligned_invested
         
         combined_df["product"] = p
         combined_df["ticker"] = ticker

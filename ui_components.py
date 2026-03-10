@@ -738,8 +738,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
 def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None) -> None:
     st.markdown("---")
-    tab_overview, tab_balance, tab_history, tab_transactions = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📋 Transacties"]
+    tab_overview, tab_balance, tab_history, tab_pnl, tab_transactions = st.tabs(
+        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L", "📋 Transacties"]
     )
 
     with tab_overview:
@@ -947,6 +947,143 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         else:
             st.info("Geen historische data beschikbaar.")
             
-    with tab_transactions:
+    with tab_pnl:
+        st.subheader("Winst & Verlies Analyse")
+        
+        if history_df.empty or "invested" not in history_df.columns:
+            st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
+        else:
+            # Aggregate history across all products by date
+            ttl_history = history_df.groupby("date").agg({
+                "value": "sum",
+                "invested": "sum"
+            }).sort_index()
+
+            try:
+                if ttl_history.index.tz is None:
+                    ttl_history.index = ttl_history.index.tz_localize("UTC")
+                ttl_history.index = ttl_history.index.tz_convert("Europe/Amsterdam")
+            except: pass
+
+            st.markdown("Kies een periode om je gerealiseerde en ongerealiseerde groei-ontwikkeling te analyseren.")
+            pnl_modes = {"Dagelijks": "D", "Wekelijks": "W-MON", "Maandelijks": "ME"}
+            selected_pnl_mode = st.radio("Tijdsbestek:", list(pnl_modes.keys()), horizontal=True, label_visibility="collapsed")
+            res_freq = pnl_modes[selected_pnl_mode]
+
+            # Resample taking the *last* known value of the period
+            period_df = ttl_history.resample(res_freq).last().dropna()
+            
+            # Drop the very first period as it serves only as a baseline, unless we only have 1
+            if len(period_df) > 1:
+                # Calculate period over period metrics
+                # Cumulative P/L mapping
+                period_df["cum_pl_eur"] = period_df["value"] - period_df["invested"]
+                period_df["cum_pl_pct"] = (period_df["cum_pl_eur"] / period_df["invested"]) * 100.0
+                period_df["cum_pl_pct"] = period_df["cum_pl_pct"].fillna(0)
+
+                # Period-specific P/L
+                # The profit GENERATED specifically within this period is:
+                # Change in Value minus Change in Invested
+                period_df["prev_value"] = period_df["value"].shift(1)
+                period_df["prev_invested"] = period_df["invested"].shift(1)
+                
+                period_df["period_pl_eur"] = (period_df["value"] - period_df["prev_value"]) - (period_df["invested"] - period_df["prev_invested"])
+                period_df = period_df.dropna(subset=["period_pl_eur"])
+
+                # Formatting dates for display
+                if selected_pnl_mode == "Maandelijks":
+                    period_df["period_str"] = period_df.index.strftime("%b %Y")
+                else:
+                    period_df["period_str"] = period_df.index.strftime("%d-%m-%Y")
+
+                filter_col1, filter_col2 = st.columns([1, 2])
+                with filter_col1:
+                    lookback_options = {"Afgelopen 30 Dagen": 30, "Afgelopen 90 Dagen": 90, "Afgelopen Jaar": 365, "Alles": 9999}
+                    if selected_pnl_mode != "Dagelijks":
+                        lookback_options = {"Afgelopen 6 Maanden": 180, "Afgelopen Jaar": 365, "Alles": 9999}
+                    
+                    lookback_label = st.selectbox("Periode filter:", list(lookback_options.keys()))
+                    days_back = lookback_options[lookback_label]
+                    
+                    cutoff_date = pd.Timestamp.now(tz="Europe/Amsterdam") - pd.Timedelta(days=days_back)
+                    display_df = period_df[period_df.index >= cutoff_date].copy()
+
+                if display_df.empty:
+                    st.warning("Geen data voor deze specifieke periode.")
+                else:
+                    st.markdown("#### Periodieke P/L")
+                    # Bar Chart
+                    display_df["color"] = display_df["period_pl_eur"].apply(lambda x: "#00CC96" if x >= 0 else "#EF553B")
+                    
+                    fig_bar = go.Figure()
+                    fig_bar.add_trace(go.Bar(
+                        x=display_df["period_str"],
+                        y=display_df["period_pl_eur"],
+                        marker_color=display_df["color"],
+                        name="Winst/Verlies (€)",
+                        hovertemplate="%{x}<br>P/L: €%{y:.2f}<extra></extra>"
+                    ))
+                    fig_bar.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        showlegend=False,
+                        dragmode=False
+                    )
+                    st.plotly_chart(fig_bar, use_container_width=True, config={'scrollZoom': False})
+
+                    st.markdown("#### Cumulatieve P/L")
+                    # Line Chart layout
+                    fig_cum = make_subplots(specs=[[{"secondary_y": True}]])
+                    
+                    fig_cum.add_trace(go.Scatter(
+                        x=display_df["period_str"], 
+                        y=display_df["cum_pl_eur"],
+                        name="Cumulatieve P/L (€)",
+                        mode='lines',
+                        line=dict(color="#636EFA", width=3)
+                    ), secondary_y=False)
+                    
+                    fig_cum.add_trace(go.Scatter(
+                        x=display_df["period_str"], 
+                        y=display_df["cum_pl_pct"],
+                        name="Rendement (%)",
+                        mode='lines',
+                        line=dict(color="#FFA15A", width=3)
+                    ), secondary_y=True)
+
+                    fig_cum.update_yaxes(title_text="P/L (€)", secondary_y=False, showgrid=True)
+                    fig_cum.update_yaxes(title_text="Rendement (%)", secondary_y=True, showgrid=False)
+                    fig_cum.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+                        hovermode="x unified",
+                        dragmode=False
+                    )
+                    st.plotly_chart(fig_cum, use_container_width=True, config={'scrollZoom': False})
+
+                    # Data Table
+                    st.markdown("#### Resultatenoverzicht")
+                    table_df = display_df[["period_str", "period_pl_eur", "cum_pl_eur", "cum_pl_pct"]].copy()
+                    table_df = table_df.sort_index(ascending=False)
+                    table_df = table_df.rename(columns={
+                        "period_str": "Datum",
+                        "period_pl_eur": "P/L in Periode",
+                        "cum_pl_eur": "Totale P/L",
+                        "cum_pl_pct": "Rendement"
+                    })
+                    
+                    styled_table = table_df.style.format({
+                        "P/L in Periode": "€ {:.2f}",
+                        "Totale P/L": "€ {:.2f}",
+                        "Rendement": "{:.2f} %"
+                    }).applymap(lambda x: 'color: #00CC96' if isinstance(x, (int, float)) and x > 0 else ('color: #EF553B' if isinstance(x, (int, float)) and x < 0 else ''), subset=["P/L in Periode", "Totale P/L", "Rendement"])
+                    
+                    st.dataframe(styled_table, use_container_width=True, hide_index=True)
+
+            else:
+                 st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         st.subheader("Ruwe transactiedata")
         st.dataframe(df, use_container_width=True, height=500)
