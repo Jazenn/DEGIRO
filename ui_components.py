@@ -288,7 +288,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         
                     dag_indicator = "🔴" if "-" in dag_raw and "0,00" not in dag_raw else ("⚪" if "0,00" in dag_raw else "🟢")
                         
-                    label = f"**{product_name}** — {current_val}  \n{indicator} Tot: {result_raw} ({result_pct}) | {dag_indicator} Dag: {dag_raw} ({dag_pct})"
+                    label = f"**{product_name}** — {current_val}  \n{indicator} T: {result_raw} ({result_pct}) | {dag_indicator} D: {dag_raw} ({dag_pct})"
                     
                     with st.expander(label):
                         c1, c2 = st.columns(2)
