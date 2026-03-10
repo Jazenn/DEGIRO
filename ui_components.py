@@ -738,8 +738,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
 def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None) -> None:
     st.markdown("---")
-    tab_overview, tab_balance, tab_history, tab_pnl, tab_transactions = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L", "📋 Transacties"]
+    tab_overview, tab_balance, tab_history, tab_pnl = st.tabs(
+        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L"]
     )
 
     with tab_overview:
@@ -1085,5 +1085,3 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
 
             else:
                  st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
-        st.subheader("Ruwe transactiedata")
-        st.dataframe(df, use_container_width=True, height=500)
