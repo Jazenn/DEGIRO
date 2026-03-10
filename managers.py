@@ -390,15 +390,35 @@ class PriceManager:
 
     @st.cache_data(ttl=60)
     def _fetch_live_price_cached(_self, ticker):
+        import requests
+        # 1. Try TradeGate API first for any valid ISINs
+        isin = None
+        for k, v in _self.config.get_mappings().items():
+            if v == ticker and len(k) == 12 and not k.startswith("XFC"):
+                isin = k
+                break
+                
+        if isin:
+            try:
+                url = f"https://www.tradegate.de/refresh.php?isin={isin}"
+                headers = {'User-agent': 'Mozilla/5.0'}
+                r = requests.get(url, headers=headers, timeout=3)
+                if r.status_code == 200:
+                    data = r.json()
+                    if "last" in data and data["last"]:
+                        return float(data["last"])
+            except:
+                pass
+
         try:
-            # Special case for Tradegate scraping if needed, but YF is preferred standard
+            # Fallback to YF
             t = yf.Ticker(ticker)
             # Try fast_info first
             price = t.fast_info.last_price
-            if price: return price
+            if price: return float(price)
             # Fallback to history
             hist = t.history(period="1d", prepost=True)
-            if not hist.empty: return hist["Close"].iloc[-1]
+            if not hist.empty: return float(hist["Close"].iloc[-1])
         except: pass
         return 0.0
 
@@ -411,14 +431,45 @@ class PriceManager:
     @st.cache_data(ttl=60)
     def _fetch_live_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
+        yf_tickers = []
+        
+        import requests
+        
+        # 1. Try TradeGate API first for any valid ISINs
+        # Map tickers to ISINs using config mappings (reverse lookup)
+        ticker_to_isin = {}
+        for k, v in _self.config.get_mappings().items():
+            if v in tickers_tuple and (len(k) == 12 and not k.startswith("XFC")): # simple ISIN check
+                ticker_to_isin[v] = k
+                
+        for t in tickers_tuple:
+            isin = ticker_to_isin.get(t)
+            if isin:
+                try:
+                    url = f"https://www.tradegate.de/refresh.php?isin={isin}"
+                    headers = {'User-agent': 'Mozilla/5.0'}
+                    r = requests.get(url, headers=headers, timeout=3)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if "last" in data and data["last"]:
+                            results[t] = float(data["last"])
+                            continue
+                except:
+                    pass
+            # If no ISIN, TradeGate fail, or no 'last' price, fallback to YF
+            yf_tickers.append(t)
+            
+        if not yf_tickers:
+            return results
+
         try:
-            tickers_str = " ".join(tickers_tuple)
+            tickers_str = " ".join(yf_tickers)
             # Fetch all at once
             data = yf.download(tickers_str, period="1d", group_by="ticker", progress=False, threads=True)
             
-            for t in tickers_tuple:
+            for t in yf_tickers:
                 try:
-                    if len(tickers_tuple) == 1:
+                    if len(yf_tickers) == 1:
                         if not data.empty and "Close" in data:
                             results[t] = float(data["Close"].dropna().iloc[-1])
                     else:
@@ -430,7 +481,7 @@ class PriceManager:
             pass
             
         # Fallback to fast_info for tickers that failed in batch download
-        for t in tickers_tuple:
+        for t in yf_tickers:
             if not results.get(t):
                 try:
                     price = yf.Ticker(t).fast_info.last_price
@@ -456,12 +507,40 @@ class PriceManager:
     @st.cache_data(ttl=21600)
     def _fetch_prev_closes_batch_cached(_self, tickers_tuple: tuple) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
-        try:
-            tickers_str = " ".join(tickers_tuple)
-            data = yf.download(tickers_str, period="5d", interval="1d", group_by="ticker", progress=False, threads=True)
-            for t in tickers_tuple:
+        yf_tickers = []
+        import requests
+        
+        # 1. Try TradeGate API first for any valid ISINs
+        ticker_to_isin = {}
+        for k, v in _self.config.get_mappings().items():
+             if v in tickers_tuple and (len(k) == 12 and not k.startswith("XFC")):
+                 ticker_to_isin[v] = k
+                 
+        for t in tickers_tuple:
+            isin = ticker_to_isin.get(t)
+            if isin:
                 try:
-                    if len(tickers_tuple) == 1:
+                    url = f"https://www.tradegate.de/refresh.php?isin={isin}"
+                    headers = {'User-agent': 'Mozilla/5.0'}
+                    r = requests.get(url, headers=headers, timeout=3)
+                    if r.status_code == 200:
+                        data = r.json()
+                        if "close" in data and data["close"]:
+                            results[t] = float(data["close"])
+                            continue
+                except:
+                    pass
+            yf_tickers.append(t)
+            
+        if not yf_tickers:
+             return results
+             
+        try:
+            tickers_str = " ".join(yf_tickers)
+            data = yf.download(tickers_str, period="5d", interval="1d", group_by="ticker", progress=False, threads=True)
+            for t in yf_tickers:
+                try:
+                    if len(yf_tickers) == 1:
                         df_t = data.dropna(subset=["Close"])
                     else:
                         df_t = data[t].dropna(subset=["Close"]) if t in data else pd.DataFrame()
@@ -481,6 +560,26 @@ class PriceManager:
 
     @st.cache_data(ttl=21600) # Cache for 6 hours
     def _fetch_prev_close_cached(_self, ticker):
+        import requests
+        # 1. Try TradeGate API first for any valid ISINs
+        isin = None
+        for k, v in _self.config.get_mappings().items():
+            if v == ticker and len(k) == 12 and not k.startswith("XFC"):
+                isin = k
+                break
+
+        if isin:
+            try:
+                url = f"https://www.tradegate.de/refresh.php?isin={isin}"
+                headers = {'User-agent': 'Mozilla/5.0'}
+                r = requests.get(url, headers=headers, timeout=3)
+                if r.status_code == 200:
+                    data = r.json()
+                    if "close" in data and data["close"]:
+                        return float(data["close"])
+            except:
+                pass
+
         try:
             hist = yf.Ticker(ticker).history(period="5d", interval="1d", prepost=True) # 5d to be safe regarding weekends
             if len(hist) >= 2:
