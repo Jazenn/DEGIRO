@@ -124,7 +124,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         min_date = df["value_date"].min()
         max_date = df["value_date"].max()
         period_str = f"{min_date.strftime('%B %Y')} - {max_date.strftime('%B %Y')}"
-        now_str = pd.Timestamp.now().strftime("%d-%m-%Y %H:%M:%S")
+        now_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%d-%m-%Y %H:%M:%S")
         st.markdown(f"**Periode data:** {period_str} | **Laatst bijgewerkt:** {now_str}")
     
     current_balance = 0.0
