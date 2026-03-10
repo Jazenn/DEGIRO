@@ -45,10 +45,10 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             if is_crypto:
                 base = r.get("midnight_price")
             else:
-                base = r.get("market_open")
+                base = r.get("prev_close")
                 
             if pd.isna(base) or base == 0:
-                base = r.get("prev_close")
+                base = r.get("market_open")
             
             if pd.notna(base) and base > 0:
                 return qty * base
@@ -155,7 +155,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
                    help="Berekening: Marktwaarde - Totale kosten")
     with col_daily.container(border=True):
         daily_color = "normal" if pd.notna(total_daily_pl) else "off"
-        st.metric("Dag W/V", format_eur(total_daily_pl) if pd.notna(total_daily_pl) else "€ 0,00", delta=format_pct(daily_pct_total) if pd.notna(total_daily_pl) else None, delta_color=daily_color, help="Dagelijks resultaat gebaseerd op de marktopening (of middernacht voor crypto).")
+        st.metric("Dag W/V", format_eur(total_daily_pl) if pd.notna(total_daily_pl) else "€ 0,00", delta=format_pct(daily_pct_total) if pd.notna(total_daily_pl) else None, delta_color=daily_color, help="Dagelijks resultaat gebaseerd op de vorige slotkoers (of middernacht voor crypto).")
     
     col4, col5 = st.columns(2)
     with col4.container(border=True):
@@ -214,10 +214,10 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     if cat == "Crypto":
                         base = row.get("midnight_price")
                     else:
-                        base = row.get("market_open")
+                        base = row.get("prev_close")
                         
                     if pd.isna(base) or base == 0:
-                        base = row.get("prev_close")
+                        base = row.get("market_open")
                         
                     if pd.notna(base) and base > 0:
                         pl_eur = qty * (lp - base)
