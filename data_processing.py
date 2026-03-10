@@ -303,18 +303,18 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if tx_p.empty:
             continue
             
-        # Calculate net invested per transaction row: (buy_cash + fees) - (sell_cash) - dividends
-        tx_p["net_invested"] = (
+        # Net cashflow for this transaction row: negative means money left the account (invested), positive means money returned.
+        tx_p["net_cashflow"] = (
             tx_p["buy_cash"] 
+            + tx_p["sell_cash"]
             + tx_p.apply(lambda r: r["amount"] if r["is_fee"] else 0.0, axis=1)
-            - tx_p["sell_cash"]
-            - tx_p.apply(lambda r: r["amount"] if r["is_dividend"] else 0.0, axis=1)
+            + tx_p.apply(lambda r: r["amount"] if r["is_dividend"] else 0.0, axis=1)
         )
         
         # Group by date to get daily changes
         tx_daily = tx_p.groupby("value_date").agg(
             quantity=("quantity", "sum"),
-            invested_change=("net_invested", lambda s: -s.sum()) # Invert because costs are negative in the raw data
+            invested_change=("net_cashflow", lambda s: -s.sum()) # Invert because negative cashflow = positive investment
         ).sort_index()
 
         qty_on_tx = tx_daily["quantity"].cumsum()
