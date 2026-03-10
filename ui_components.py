@@ -272,7 +272,6 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
                 for _, row in display.iterrows():
                     product_name = row["Product"] if "Product" in row else row.get("Display Name", "Onbekend")
-                    expander_key = f"exp_pos_{product_name}"
                     
                     result_raw = row.get("Winst/verlies (EUR)", "€ 0,00")
                     result_pct = row.get("Winst/verlies (%)", "0,00%")
@@ -291,18 +290,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         
                     label = f"{indicator} **{product_name}** | {current_val} | Tot: {result_raw} | Dag: {dag_indicator} {dag_raw} ({dag_pct})"
                     
-                    if expander_key not in st.session_state:
-                         st.session_state[expander_key] = False
-                    
-                    def toggle_position(k=expander_key):
-                         current_state = st.session_state[k]
-                         for key in st.session_state.keys():
-                              if key.startswith("exp_pos_"):
-                                   st.session_state[key] = False
-                         st.session_state[k] = not current_state
-
-                    with st.expander(label, expanded=st.session_state[expander_key]):
-                        st.button(f"Sluit {product_name}", key=f"btn_{expander_key}", on_click=toggle_position)
+                    with st.expander(label):
                         c1, c2 = st.columns(2)
                         
                         c1.metric("Aantal stuks", f"{row.get('quantity', row.get('Aantal', 0)):.4g}")
@@ -441,20 +429,8 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                 edited_rows = []
                 for idx, row in editor_df.iterrows():
                     product_label = f"📝 {row['Productnaam']}  |  H: {row['Huidig %']:.1f}%  |  D: {row['Doel %']:.1f}%"
-                    exp_rb_key = f"exp_rb_{idx}"
                     
-                    if exp_rb_key not in st.session_state:
-                         st.session_state[exp_rb_key] = False
-                         
-                    def toggle_rebalance(k=exp_rb_key):
-                         current_state = st.session_state[k]
-                         for key in st.session_state.keys():
-                              if key.startswith("exp_rb_"):
-                                   st.session_state[key] = False
-                         st.session_state[k] = not current_state
-                    
-                    with st.expander(product_label, expanded=st.session_state[exp_rb_key]):
-                        st.button(f"Sluit {row['Productnaam']}", key=f"btn_{exp_rb_key}", on_click=toggle_rebalance)
+                    with st.expander(product_label):
                         c1, c2 = st.columns(2)
                         
                         with c1:
