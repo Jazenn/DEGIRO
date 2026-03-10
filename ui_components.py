@@ -6,7 +6,7 @@ from plotly.subplots import make_subplots
 from utils import format_eur, format_pct, _shorten_name, fragment
 from data_processing import build_positions
 
-@fragment(run_every=30)
+@fragment(run_every=300)
 def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
     """Render metrics with auto-refresh using PriceManager."""
     positions = build_positions(df)
@@ -166,7 +166,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         
     st.divider()
 
-@fragment(run_every=30)
+@fragment(run_every=300)
 def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
     """Render de open posities tabel en allocatie chart met auto-refresh."""
     positions = build_positions(df)
