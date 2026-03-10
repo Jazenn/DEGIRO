@@ -1006,7 +1006,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     days_back = lookback_options[lookback_label]
                     
                     cutoff_date = pd.Timestamp.now(tz="Europe/Amsterdam") - pd.Timedelta(days=days_back)
-                    display_df = period_df[period_df.index >= cutoff_date].copy()
+                    display_df = period_df[(period_df.index >= cutoff_date) & (period_df["invested"] > 0)].copy()
 
                 if display_df.empty:
                     st.warning("Geen data voor deze specifieke periode.")
@@ -1051,6 +1051,15 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         mode='lines',
                         line=dict(color="#FFA15A", width=3)
                     ), secondary_y=True)
+
+                    # Voeg een duidelijke nullijn toe
+                    fig_cum.add_hline(
+                        y=0, 
+                        line_dash="dash", 
+                        line_color="rgba(255, 255, 255, 0.5)", 
+                        line_width=2,
+                        secondary_y=False
+                    )
 
                     fig_cum.update_yaxes(title_text="P/L (€)", secondary_y=False, showgrid=True)
                     fig_cum.update_yaxes(title_text="Rendement (%)", secondary_y=True, showgrid=False)
