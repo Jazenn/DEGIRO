@@ -993,6 +993,21 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 index=_daily_value.index
             ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
 
+            # ── DEBUG (tijdelijk) ─────────────────────────────────────────────────
+            with st.expander("🐛 Debug: PnL waarden (tijdelijk)"):
+                feb_mask = (_daily_value.index >= "2026-02-16") & (_daily_value.index <= "2026-02-22")
+                debug_df = pd.DataFrame({
+                    "value": _daily_value[feb_mask],
+                    "invested": _daily_invested[feb_mask] if hasattr(_daily_invested, '__getitem__') else 0,
+                })
+                debug_df["cum_pl"] = debug_df["value"] - debug_df["invested"]
+                debug_df["period_pl"] = debug_df["cum_pl"].diff()
+                st.write("Index tz:", str(_daily_value.index.tz))
+                st.write("global_inv index tz:", str(global_inv.index.dtype))
+                st.write("global_inv sample (16-22 feb):", global_inv.get(pd.Timestamp("2026-02-18"), "NIET GEVONDEN"))
+                st.dataframe(debug_df)
+            # ── END DEBUG ─────────────────────────────────────────────────────────
+
             # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
             # Both series are now daily and share the same index → no timing skew.
             # cum_pl = market_value - total_cost_basis.
