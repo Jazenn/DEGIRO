@@ -962,29 +962,39 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
             # ── Step 1: build a DAILY value series ───────────────────────────────
-            # Use a pivot so that at every timestamp all products contribute their
-            # most-recent known value (ffill per product), then sum.  This avoids the
-            # partial-sum problem where only some products have a tick at a given time.
+            # Pivot so every product is its own column, ffill per product, then sum.
+            # This ensures every timestamp has the *full* tracked-portfolio value,
+            # not a partial sum of whichever products happened to have a tick.
             _pivot = history_df.pivot_table(
                 index="date", columns="product", values="value", aggfunc="last"
             ).sort_index()
             _pivot = _pivot.ffill()
-            _raw_value = _pivot.sum(axis=1)   # sub-daily (5-min) total portfolio value
-
-            # Resample the raw value to DAILY end-of-day immediately.
-            # This collapses all sub-daily noise and gives us one clean value per
-            # calendar day — which is exactly the resolution of global_inv.
-            # By resampling first we eliminate ALL sub-daily timing mismatches between
-            # position changes (which happen at exact transaction time in history_df)
-            # and the invested curve (which is always midnight-aligned in global_inv).
+            _raw_value = _pivot.sum(axis=1)
             _daily_value = _raw_value.resample("D").last().dropna()
 
-            # ── Step 2: map invested onto the same DAILY index ────────────────────
-            global_inv = build_global_invested_history(df)  # tz-naive daily Series
+            # ── Step 2: invested — CRITICAL: filter to TRACKED products only ─────
+            # history_df only contains products that have a ticker mapping.
+            # global_inv by default uses ALL transactions (including untracked
+            # products the user bought/sold).  When the user buys an untracked ETF,
+            # invested jumps but value stays the same → fake negative P/L spike.
+            # Vice versa for selling an untracked product.
+            # Fix: build invested using only the products that are in history_df.
+            tracked_products = set(history_df["product"].dropna().unique())
+            
+            # Keep Buy/Sell rows for tracked products, plus all fees/dividends that
+            # belong to a tracked product.  Rows with no product (e.g. connectivity
+            # fees) are excluded — they don't affect the tracked-portfolio P/L.
+            tracked_mask = (
+                df["product"].isin(tracked_products) |
+                (df["product"].isna() & df["type"].isin(["Fee"]))  # keep general fees
+            )
+            # Actually general fees distort things too — keep only product-specific
+            # rows to maintain clean value/invested symmetry.
+            tracked_df = df[df["product"].isin(tracked_products)].copy()
+            
+            global_inv = build_global_invested_history(tracked_df)
 
             def _lookup_invested(d):
-                # Always strip tz before normalising so the key is tz-naive,
-                # matching global_inv's index regardless of any upstream tz state.
                 naive = d.tz_localize(None) if d.tzinfo is not None else d
                 return global_inv.get(naive.normalize(), pd.NA)
 
@@ -992,21 +1002,6 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 [_lookup_invested(d) for d in _daily_value.index],
                 index=_daily_value.index
             ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
-
-            # ── DEBUG (tijdelijk) ─────────────────────────────────────────────────
-            with st.expander("🐛 Debug: PnL waarden (tijdelijk)"):
-                feb_mask = (_daily_value.index >= "2026-02-16") & (_daily_value.index <= "2026-02-22")
-                debug_df = pd.DataFrame({
-                    "value": _daily_value[feb_mask],
-                    "invested": _daily_invested[feb_mask] if hasattr(_daily_invested, '__getitem__') else 0,
-                })
-                debug_df["cum_pl"] = debug_df["value"] - debug_df["invested"]
-                debug_df["period_pl"] = debug_df["cum_pl"].diff()
-                st.write("Index tz:", str(_daily_value.index.tz))
-                st.write("global_inv index tz:", str(global_inv.index.dtype))
-                st.write("global_inv sample (16-22 feb):", global_inv.get(pd.Timestamp("2026-02-18"), "NIET GEVONDEN"))
-                st.dataframe(debug_df)
-            # ── END DEBUG ─────────────────────────────────────────────────────────
 
             # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
             # Both series are now daily and share the same index → no timing skew.
