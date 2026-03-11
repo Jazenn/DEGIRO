@@ -962,36 +962,51 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
             # ── Step 1: build a DAILY value series ───────────────────────────────
-            # Pivot so every product is its own column, ffill per product, then sum.
-            # This ensures every timestamp has the *full* tracked-portfolio value,
-            # not a partial sum of whichever products happened to have a tick.
             _pivot = history_df.pivot_table(
                 index="date", columns="product", values="value", aggfunc="last"
             ).sort_index()
             _pivot = _pivot.ffill()
             _raw_value = _pivot.sum(axis=1)
+
+            # Normalise timestamps to UTC before resampling so yfinance UTC ticks
+            # are handled correctly, then resample per calendar day in UTC.
+            # We deliberately stay in UTC here — the 21:30 UTC shift on daily prices
+            # already ensures end-of-day quantities are captured correctly.
+            _raw_value.index = pd.to_datetime(_raw_value.index).tz_localize(None)
             _daily_value = _raw_value.resample("D").last().dropna()
 
-            # ── Step 2: invested — CRITICAL: filter to TRACKED products only ─────
-            # history_df only contains products that have a ticker mapping.
-            # global_inv by default uses ALL transactions (including untracked
-            # products the user bought/sold).  When the user buys an untracked ETF,
-            # invested jumps but value stays the same → fake negative P/L spike.
-            # Vice versa for selling an untracked product.
-            # Fix: build invested using only the products that are in history_df.
+            # ── Step 2: inject TODAY's live value from price_manager ─────────────
+            # build_portfolio_history is cached (TTL=1hr), so the last entry for
+            # today can be up to an hour stale.  The metrics panel uses real-time
+            # prices via price_manager.  We replace today's value with the live
+            # portfolio value so the P/L bar for today always matches the metrics.
+            today_naive = pd.Timestamp.now().normalize()
+            if price_manager is not None:
+                try:
+                    _pos = build_positions(df)
+                    _tracked = set(history_df["product"].dropna().unique())
+                    _pos = _pos[_pos["product"].isin(_tracked)]
+                    if not _pos.empty:
+                        _pos["ticker"] = _pos.apply(
+                            lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1
+                        )
+                        _live = price_manager.get_live_prices_batch(_pos["ticker"].dropna().unique().tolist())
+                        _pos["live_val"] = _pos.apply(
+                            lambda r: r["quantity"] * _live.get(r["ticker"], 0.0)
+                            if pd.notna(r.get("ticker")) else 0.0, axis=1
+                        )
+                        _live_total = _pos["live_val"].sum()
+                        if _live_total > 0:
+                            _daily_value[today_naive] = _live_total
+                            _daily_value = _daily_value.sort_index()
+                except Exception:
+                    pass  # fall back to cached value silently
+
+            # ── Step 3: invested — filter to TRACKED products only ───────────────
+            # global_inv uses ALL transactions by default. Untracked buys/sells
+            # would make invested jump while value stays flat → fake spikes.
             tracked_products = set(history_df["product"].dropna().unique())
-            
-            # Keep Buy/Sell rows for tracked products, plus all fees/dividends that
-            # belong to a tracked product.  Rows with no product (e.g. connectivity
-            # fees) are excluded — they don't affect the tracked-portfolio P/L.
-            tracked_mask = (
-                df["product"].isin(tracked_products) |
-                (df["product"].isna() & df["type"].isin(["Fee"]))  # keep general fees
-            )
-            # Actually general fees distort things too — keep only product-specific
-            # rows to maintain clean value/invested symmetry.
             tracked_df = df[df["product"].isin(tracked_products)].copy()
-            
             global_inv = build_global_invested_history(tracked_df)
 
             def _lookup_invested(d):
@@ -1003,21 +1018,13 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 index=_daily_value.index
             ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
 
-            # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
-            # Both series are now daily and share the same index → no timing skew.
-            # cum_pl = market_value - total_cost_basis.
-            # period_pl = diff(cum_pl) = market return only (buys/sells cancel out).
+            # ── Step 4: build ttl_history with aligned daily series ───────────────
             ttl_history = pd.DataFrame({
                 "value":    _daily_value,
                 "invested": _daily_invested,
                 "cum_pl":   _daily_value - _daily_invested,
             })
-
-            try:
-                if ttl_history.index.tz is None:
-                    ttl_history.index = ttl_history.index.tz_localize("UTC")
-                ttl_history.index = ttl_history.index.tz_convert("Europe/Amsterdam")
-            except: pass
+            # Keep index tz-naive; the display strftime does not need tz-awareness.
 
             st.markdown("Kies een periode om je gerealiseerde en ongerealiseerde groei-ontwikkeling te analyseren.")
             pnl_modes = {"Dagelijks": "D", "Wekelijks": "W-MON", "Maandelijks": "ME"}
@@ -1027,18 +1034,6 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             # ── Step 4: resample to the chosen display granularity ────────────────
             period_df = ttl_history[["value", "invested", "cum_pl"]].resample(res_freq).last()
             period_df = period_df.dropna(subset=["value"])
-
-            # ── DEBUG: show raw daily values for last 5 days ────────────────────
-            with st.expander("🐛 Debug: laatste 5 dagen raw waarden"):
-                _last5 = ttl_history.tail(5).copy()
-                _last5["cum_pl"] = _last5["value"] - _last5["invested"]
-                st.write("ttl_history index tz:", str(_last5.index.tz))
-                st.dataframe(_last5[["value","invested","cum_pl"]])
-                st.write("period_df (na resample):")
-                _pdf5 = period_df.tail(5)[[ "value","invested","cum_pl"]].copy() if not period_df.empty else pd.DataFrame()
-                _pdf5["period_pl"] = _pdf5["cum_pl"].diff()
-                st.dataframe(_pdf5)
-            # ── END DEBUG ─────────────────────────────────────────────────────────
 
             if len(period_df) > 1:
                 # Cumulative P/L (already computed at daily level, just carry through)
@@ -1069,7 +1064,8 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     lookback_label = st.selectbox("Periode filter:", list(lookback_options.keys()))
                     days_back = lookback_options[lookback_label]
                     
-                    cutoff_date = pd.Timestamp.now(tz="Europe/Amsterdam") - pd.Timedelta(days=days_back)
+                    # index is tz-naive, so compare against tz-naive cutoff
+                    cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=days_back)
                     display_df = period_df[(period_df.index >= cutoff_date) & (period_df["invested"] > 0)].copy()
 
                 if display_df.empty:
