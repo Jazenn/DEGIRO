@@ -347,7 +347,12 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
             
         if price_series_daily.index.tz is not None:
              price_series_daily.index = price_series_daily.index.tz_localize(None)
-        price_series_daily.index = price_series_daily.index.normalize()
+        # Place the daily close at 23:59:59 instead of midnight (00:00).
+        # Midnight = start-of-day quantity → transactions during the day are NOT yet
+        # reflected (e.g. a sell at 09:41 is invisible at 00:00 → value stays high).
+        # 23:59:59 = end-of-day → all transactions of that day ARE in the cumsum,
+        # so value correctly shows 0 after a full sell, 14 shares after a re-buy, etc.
+        price_series_daily.index = price_series_daily.index.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
 
         if not price_series_hourly.empty:
              if price_series_hourly.index.tz is not None:
