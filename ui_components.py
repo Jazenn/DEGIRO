@@ -970,7 +970,29 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             ).sort_index()
             _pivot = _pivot.ffill()
             _raw_value = _pivot.sum(axis=1)
-            _daily_value = _raw_value.resample("D").last().dropna()
+
+            # Convert to Amsterdam time BEFORE resampling so that "end of day" aligns
+            # with Amsterdam midnight, not 23:59 UTC.
+            # Without this, two problems arise:
+            #   1. NVDA after-hours data (22:00–00:00 UTC) inflates "yesterday close"
+            #      vs the official prev_close used by the metrics panel.
+            #   2. BTC/ETH trade from midnight AMS until 23:59 UTC, meaning
+            #      "yesterday" in UTC includes 60 extra minutes of crypto movement
+            #      that the metrics panel's midnight_price baseline doesn't see.
+            # By resampling in Amsterdam time, the day boundary is at 00:00 AMS:
+            #   - European stocks: last tick ~21:00 UTC (22:00 CET) ≈ prev_close ✓
+            #   - NVDA (prepost=False): last tick ~21:00 UTC ≈ prev_close ✓
+            #   - Crypto: last tick ~22:55 UTC (just before 00:00 AMS) ≈ midnight_price ✓
+            _raw_value_ams = _raw_value.copy()
+            _raw_value_ams.index = (
+                pd.to_datetime(_raw_value_ams.index)
+                .tz_localize("UTC")
+                .tz_convert("Europe/Amsterdam")
+            )
+            _daily_value_ams = _raw_value_ams.resample("D").last().dropna()
+            # Strip tz for downstream processing (invested lookup uses tz-naive keys)
+            _daily_value = _daily_value_ams.copy()
+            _daily_value.index = _daily_value.index.tz_localize(None)
 
             # ── Step 2: invested — CRITICAL: filter to TRACKED products only ─────
             # history_df only contains products that have a ticker mapping.
@@ -1002,7 +1024,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 [_lookup_invested(d) for d in _daily_value.index],
                 index=_daily_value.index
             ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
-            
+
             # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
             # Both series are now daily and share the same index → no timing skew.
             # cum_pl = market_value - total_cost_basis.
@@ -1013,10 +1035,13 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 "cum_pl":   _daily_value - _daily_invested,
             })
 
+            # Index is already Amsterdam-day-aligned (tz-naive midnight per AMS day).
+            # Localize directly to Amsterdam so downstream resample/display is correct.
             try:
                 if ttl_history.index.tz is None:
-                    ttl_history.index = ttl_history.index.tz_localize("UTC")
-                ttl_history.index = ttl_history.index.tz_convert("Europe/Amsterdam")
+                    ttl_history.index = ttl_history.index.tz_localize(
+                        "Europe/Amsterdam", ambiguous="infer", nonexistent="shift_forward"
+                    )
             except: pass
 
             st.markdown("Kies een periode om je gerealiseerde en ongerealiseerde groei-ontwikkeling te analyseren.")

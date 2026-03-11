@@ -290,7 +290,7 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         yf_data = yf.download(unique_tickers, start=start_date_str, interval="1d", group_by="ticker", progress=False, threads=False)
         
         start_hourly = (pd.Timestamp.now() - pd.Timedelta(days=8)).strftime("%Y-%m-%d")
-        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", prepost=True, progress=False, threads=False)
+        yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", prepost=False, progress=False, threads=False)
         
     except Exception as e:
         st.error(f"Fout bij ophalen historische data: {e}")
