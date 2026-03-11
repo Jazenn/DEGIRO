@@ -369,28 +369,27 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if hist_df.index.tz is not None:
             hist_df.index = hist_df.index.tz_localize(None)
 
-        # 1. Create a continuous daily index covering start to now
+        # 1. Create a continuous daily anchor index covering start to now (guarantees weekend coverage)
         daily_idx = pd.date_range(start=start_date, end=now, freq="D")
         
-        # 2. Daily quantities and invested: resample 'D' and take .last() (end-of-day balances)
-        daily_qty_eod = daily_qty.resample('D').last()
-        daily_inv_eod = daily_invested.resample('D').last()
+        # 2. Combine the daily midnight anchors with the high-resolution price data
+        final_idx = daily_idx.union(hist_df.index).sort_values()
         
-        # Expand any trailing days (until 'now') by forward filling
-        daily_qty_eod = daily_qty_eod.reindex(daily_idx, method='ffill').fillna(0)
-        daily_inv_eod = daily_inv_eod.reindex(daily_idx, method='ffill').fillna(0)
+        # 3. Reindex quantities and invested forward onto this new combined high-res timeline
+        combined_qty = daily_qty.reindex(final_idx, method='ffill').fillna(0)
+        combined_inv = daily_invested.reindex(final_idx, method='ffill').fillna(0)
         
-        # 3. Daily prices: resample 'D' and forward fill missing weekend prices
-        # First, ensure the raw prices are aligned to the days they occurred
-        hist_eod = hist_df.resample('D').last().ffill()  # This handles any intermediate missing days 
-        hist_eod = hist_eod.reindex(daily_idx, method='ffill')
-
-        # 4. Combine into final continuous daily frame
-        combined_df = pd.DataFrame(index=daily_idx)
-        combined_df["price"] = hist_eod["price"]
+        # 4. Reindex prices forward
+        # This cleanly pushes Friday's last known 5-minute stock price into Saturday/Sunday midnight slots,
+        # while keeping all the intraday 5-minute ticks perfectly intact.
+        combined_price = hist_df.reindex(final_idx, method='ffill')
         
-        combined_df["quantity"] = daily_qty_eod
-        combined_df["invested"] = daily_inv_eod
+        # 5. Combine into final continuous frame
+        combined_df = pd.DataFrame(index=final_idx)
+        combined_df["price"] = combined_price["price"]
+        
+        combined_df["quantity"] = combined_qty
+        combined_df["invested"] = combined_inv
         
         combined_df["product"] = p
         combined_df["ticker"] = ticker
