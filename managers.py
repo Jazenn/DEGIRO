@@ -649,15 +649,41 @@ class PriceManager:
         results = {t: 0.0 for t in tickers_tuple}
         try:
             tickers_str = " ".join(tickers_tuple)
-            data = yf.download(tickers_str, period="1d", interval="1h", group_by="ticker", prepost=True, progress=False, threads=True)
-            today = pd.Timestamp.now().normalize()
+            
+            # Handle single ticker cleanly using Ticker().history()
+            if len(tickers_tuple) == 1:
+                t = tickers_tuple[0]
+                hist = yf.Ticker(t).history(period="2d", interval="1h", prepost=True)
+                if not hist.empty and "Close" in hist.columns:
+                    hist = hist.reset_index()
+                    col_dt = hist.columns[0]
+                    if hist[col_dt].dt.tz is None:
+                         hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
+                    hist[col_dt] = hist[col_dt].dt.tz_convert("UTC")
+                    today_utc = pd.Timestamp.now(tz="UTC").normalize()
+                    yesterday_utc = today_utc - pd.Timedelta(days=1)
+                    mask = (hist[col_dt].dt.normalize() == yesterday_utc) & (hist[col_dt].dt.hour == 22)
+                    if mask.any():
+                         results[t] = float(hist.loc[mask, "Close"].iloc[0])
+                return results
+                
+            # Handle multi-ticker downloaded batch
+            data = yf.download(tickers_str, period="2d", interval="1h", group_by="ticker", prepost=True, progress=False, threads=True)
+            today_utc = pd.Timestamp.now(tz="UTC").normalize()
+            yesterday_utc = today_utc - pd.Timedelta(days=1)
             
             for t in tickers_tuple:
                 try:
-                    if len(tickers_tuple) == 1:
-                        df_t = data.dropna(subset=["Close"])
+                    df_t = pd.DataFrame()
+                    if isinstance(data.columns, pd.MultiIndex):
+                        if t in data.columns.levels[0]:
+                            try:
+                                sub_df = data.xs(t, axis=1, level=0)
+                                if "Close" in sub_df.columns:
+                                    df_t = sub_df.dropna(subset=["Close"])
+                            except: pass
                     else:
-                        df_t = data[t].dropna(subset=["Close"]) if t in data else pd.DataFrame()
+                        df_t = data.dropna(subset=["Close"]) if "Close" in data.columns else pd.DataFrame()
                         
                     if not df_t.empty:
                         hist = df_t.reset_index()
@@ -665,8 +691,7 @@ class PriceManager:
                         if hist[col_dt].dt.tz is None:
                              hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
                         hist[col_dt] = hist[col_dt].dt.tz_convert("UTC")
-                        today_utc = pd.Timestamp.now(tz="UTC").normalize()
-                        mask = hist[col_dt].dt.normalize() == today_utc
+                        mask = (hist[col_dt].dt.normalize() == yesterday_utc) & (hist[col_dt].dt.hour == 22)
                         if mask.any():
                              results[t] = float(hist.loc[mask, "Close"].iloc[0])
                 except: pass
@@ -682,19 +707,21 @@ class PriceManager:
     @st.cache_data(ttl=3600)
     def _fetch_midnight_price_cached(_self, ticker, current_date_str):
         try:
-            # Fetch 1d of hourly data
-            hist = yf.Ticker(ticker).history(period="1d", interval="1h", prepost=True)
+            # Fetch 2d of hourly data
+            hist = yf.Ticker(ticker).history(period="2d", interval="1h", prepost=True)
             if hist.empty: return 0.0
             
-            # Find first datapoint of "today"
+            # Find predefined baseline point
             today_utc = pd.Timestamp.now(tz="UTC").normalize()
+            yesterday_utc = today_utc - pd.Timedelta(days=1)
             hist = hist.reset_index()
+            
             # Convert to UTC time correctly
             if hist["Datetime"].dt.tz is None:
                 hist["Datetime"] = hist["Datetime"].dt.tz_localize("UTC")
                 
             hist["Datetime"] = hist["Datetime"].dt.tz_convert("UTC")
-            mask = hist["Datetime"].dt.normalize() == today_utc
+            mask = (hist["Datetime"].dt.normalize() == yesterday_utc) & (hist["Datetime"].dt.hour == 22)
             if mask.any():
                  return float(hist.loc[mask, "Close"].iloc[0])
         except: pass
