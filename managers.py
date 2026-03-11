@@ -279,20 +279,26 @@ class PriceManager:
                 return resolved_legacy
 
         # 4. Auto-discover using Yahoo Finance Search API
-        quotes = []
+        # Always prioritize ISIN search over generic string search to avoid penny stock name collisions.
         if isin:
-            quotes.extend(self._get_yf_search_quotes(isin))
+            quotes = self._get_yf_search_quotes(isin)
+            discovered_ticker = self._select_best_quote(quotes) if quotes else None
+            if discovered_ticker:
+                self.config.set_mapping(isin, discovered_ticker)
+                if product_str: 
+                    self.config.set_mapping(product_str, discovered_ticker)
+                return discovered_ticker
+                
+        # 5. Fallback to product name auto-discovery if ISIN fails or is missing
         if product_str:
-            quotes.extend(self._get_yf_search_quotes(product_str))
-             
-        discovered_ticker = self._select_best_quote(quotes) if quotes else None
-        
-        if discovered_ticker:
-            # Auto-save discovered ticker
-            mapping_key = isin if isin else product_str
-            if mapping_key:
-                self.config.set_mapping(mapping_key, discovered_ticker)
-            return discovered_ticker
+            quotes = self._get_yf_search_quotes(product_str)
+            discovered_ticker = self._select_best_quote(quotes) if quotes else None
+            
+            if discovered_ticker:
+                mapping_key = isin if isin else product_str
+                if mapping_key:
+                    self.config.set_mapping(mapping_key, discovered_ticker)
+                return discovered_ticker
             
         return None
 
