@@ -3,7 +3,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from utils import format_eur, format_pct, _shorten_name, fragment
+from utils import format_eur, format_pct, _shorten_name, fragment, is_tradegate_open
 from data_processing import build_positions, build_global_invested_history
 
 @fragment(run_every=300)
@@ -64,7 +64,7 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             
             # Hide non-crypto Daily P/L when market is closed
             is_crypto = str(r.get("isin", "")).startswith("XFC")
-            if not is_crypto and not _is_tradegate_open():
+            if not is_crypto and not is_tradegate_open():
                 return 0.0
             
             base_val = r.get("daily_base_val")
@@ -222,7 +222,7 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     else:
                         base = row.get("prev_close")
                         # Hide non-crypto Daily P/L when market is closed
-                        if not _is_tradegate_open():
+                        if not is_tradegate_open():
                             return 0.0, 0.0
                         
                     if pd.isna(base) or base == 0:
