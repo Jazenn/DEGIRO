@@ -347,12 +347,16 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
             
         if price_series_daily.index.tz is not None:
              price_series_daily.index = price_series_daily.index.tz_localize(None)
-        # Place the daily close at 23:59:59 instead of midnight (00:00).
-        # Midnight = start-of-day quantity → transactions during the day are NOT yet
-        # reflected (e.g. a sell at 09:41 is invisible at 00:00 → value stays high).
-        # 23:59:59 = end-of-day → all transactions of that day ARE in the cumsum,
-        # so value correctly shows 0 after a full sell, 14 shares after a re-buy, etc.
-        price_series_daily.index = price_series_daily.index.normalize() + pd.Timedelta(hours=23, minutes=59, seconds=59)
+        # Place the daily close at 21:30 UTC instead of midnight (00:00 UTC).
+        # Problem with midnight: it is start-of-day, so intra-day transactions
+        # (e.g. a sell at 09:41 CET = 08:41 UTC) are NOT yet in the cumsum → wrong value.
+        # 21:30 UTC is chosen because:
+        #   - After all European market closes (~16:30 UTC)
+        #   - After NYSE close (21:00 UTC winter / 20:00 UTC summer)
+        #   - Before Amsterdam midnight in BOTH winter (22:30 CET) AND summer (23:30 CEST)
+        #     → daily close stays in the correct Amsterdam-day bucket for the resample.
+        #   - 23:59:59 UTC was tried before but = 00:59:59 AMS → wrong bucket.
+        price_series_daily.index = price_series_daily.index.normalize() + pd.Timedelta(hours=21, minutes=30)
 
         if not price_series_hourly.empty:
              if price_series_hourly.index.tz is not None:
