@@ -641,7 +641,7 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        current_date_str = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
         return self._fetch_midnight_prices_batch_cached(tuple(set(valid)), current_date_str)
 
     @st.cache_data(ttl=3600)
@@ -664,8 +664,9 @@ class PriceManager:
                         col_dt = hist.columns[0]
                         if hist[col_dt].dt.tz is None:
                              hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
-                        hist[col_dt] = hist[col_dt].dt.tz_convert("Europe/Amsterdam")
-                        mask = hist[col_dt].dt.normalize() == pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
+                        hist[col_dt] = hist[col_dt].dt.tz_convert("UTC")
+                        today_utc = pd.Timestamp.now(tz="UTC").normalize()
+                        mask = hist[col_dt].dt.normalize() == today_utc
                         if mask.any():
                              results[t] = float(hist.loc[mask, "Close"].iloc[0])
                 except: pass
@@ -675,7 +676,7 @@ class PriceManager:
     def get_midnight_price(self, ticker):
         """Return price at start of today (midnight) for daily P/L."""
         if not ticker: return 0.0
-        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        current_date_str = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
         return self._fetch_midnight_price_cached(ticker, current_date_str)
 
     @st.cache_data(ttl=3600)
@@ -686,14 +687,14 @@ class PriceManager:
             if hist.empty: return 0.0
             
             # Find first datapoint of "today"
-            today = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
+            today_utc = pd.Timestamp.now(tz="UTC").normalize()
             hist = hist.reset_index()
-            # Convert to Amsterdam time correctly
+            # Convert to UTC time correctly
             if hist["Datetime"].dt.tz is None:
                 hist["Datetime"] = hist["Datetime"].dt.tz_localize("UTC")
                 
-            hist["Datetime"] = hist["Datetime"].dt.tz_convert("Europe/Amsterdam")
-            mask = hist["Datetime"].dt.normalize() == today
+            hist["Datetime"] = hist["Datetime"].dt.tz_convert("UTC")
+            mask = hist["Datetime"].dt.normalize() == today_utc
             if mask.any():
                  return float(hist.loc[mask, "Close"].iloc[0])
         except: pass
