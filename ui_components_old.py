@@ -961,20 +961,10 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         if history_df.empty:
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
-            # Aggregate history values across all products.
-            # IMPORTANT: we use a pivot approach instead of a plain groupby-sum.
-            # With groupby-sum, a timestamp that only appears for *some* products gives a
-            # partial portfolio value.  On Friday the very last 5-min tick belongs to
-            # whichever product traded latest, so only that product's value ends up in
-            # ttl_history for that timestamp.  On Sat/Sun *all* products shared the same
-            # midnight anchor → complete sum → artificial spike at the weekend boundary.
-            # The pivot + ffill ensures that at every timestamp the full portfolio value
-            # (each product forward-filled to its most recent known value) is used.
-            _pivot = history_df.pivot_table(
-                index="date", columns="product", values="value", aggfunc="last"
-            ).sort_index()
-            _pivot = _pivot.ffill()          # carry each product's last price forward
-            ttl_history = pd.DataFrame({"value": _pivot.sum(axis=1)})
+            # Aggregate history values across all products by date
+            ttl_history = history_df.groupby("date").agg({
+                "value": "sum"
+            }).sort_index()
             
             # Fetch the global invested timeline (accurate cost curve)
             global_inv = build_global_invested_history(df)

@@ -369,36 +369,19 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if hist_df.index.tz is not None:
             hist_df.index = hist_df.index.tz_localize(None)
 
-        # 1. Determine if this product is crypto (trades 24/7) or a regular stock/ETF.
-        #    For stocks: use business-day anchors only (Mon-Fri) so that weekend midnight
-        #    timestamps are never injected.  Those phantom weekend points were the root
-        #    cause of the P/L spikes: on Sat/Sun every product shared the same midnight
-        #    anchor → ttl_history showed a *complete* portfolio sum, while on Friday only
-        #    the products with the very latest 5-min tick contributed → partial sum →
-        #    artificial delta on the weekend transition.
-        #    For crypto: keep daily (all-day) anchors because those markets never close.
-        p_isin_series = df.loc[df["product"] == p, "isin"]
-        p_isin = str(p_isin_series.iloc[0]).strip() if not p_isin_series.empty and pd.notna(p_isin_series.iloc[0]) else ""
-        is_crypto_product = p_isin.startswith("XFC")
-
-        if is_crypto_product:
-            daily_idx = pd.date_range(start=start_date, end=now, freq="D")
-        else:
-            # Business days only – no Saturday/Sunday midnight anchors
-            daily_idx = pd.bdate_range(start=start_date, end=now)
-
-        # 2. Combine the daily anchors with the high-resolution price data.
-        #    The 5-min ticks from hist_df are still fully preserved here.
+        # 1. Create a continuous daily anchor index covering start to now (guarantees weekend coverage)
+        daily_idx = pd.date_range(start=start_date, end=now, freq="D")
+        
+        # 2. Combine the daily midnight anchors with the high-resolution price data
         final_idx = daily_idx.union(hist_df.index).sort_values()
         
-        # 3. Reindex quantities and invested forward onto this new combined high-res timeline.
-        #    daily_qty was built against a full-daily (all 7 days) index so it correctly
-        #    carries positions across weekends; reindexing onto final_idx (which skips
-        #    weekends for non-crypto) simply doesn't request those weekend rows.
+        # 3. Reindex quantities and invested forward onto this new combined high-res timeline
         combined_qty = daily_qty.reindex(final_idx, method='ffill').fillna(0)
         combined_inv = daily_invested.reindex(final_idx, method='ffill').fillna(0)
         
-        # 4. Reindex prices forward onto the combined timeline.
+        # 4. Reindex prices forward
+        # This cleanly pushes Friday's last known 5-minute stock price into Saturday/Sunday midnight slots,
+        # while keeping all the intraday 5-minute ticks perfectly intact.
         combined_price = hist_df.reindex(final_idx, method='ffill')
         
         # 5. Combine into final continuous frame
