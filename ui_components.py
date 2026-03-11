@@ -961,45 +961,46 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
         if history_df.empty:
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
-            # Aggregate history values across all products.
-            # IMPORTANT: we use a pivot approach instead of a plain groupby-sum.
-            # With groupby-sum, a timestamp that only appears for *some* products gives a
-            # partial portfolio value.  On Friday the very last 5-min tick belongs to
-            # whichever product traded latest, so only that product's value ends up in
-            # ttl_history for that timestamp.  On Sat/Sun *all* products shared the same
-            # midnight anchor → complete sum → artificial spike at the weekend boundary.
-            # The pivot + ffill ensures that at every timestamp the full portfolio value
-            # (each product forward-filled to its most recent known value) is used.
+            # ── Step 1: build a DAILY value series ───────────────────────────────
+            # Use a pivot so that at every timestamp all products contribute their
+            # most-recent known value (ffill per product), then sum.  This avoids the
+            # partial-sum problem where only some products have a tick at a given time.
             _pivot = history_df.pivot_table(
                 index="date", columns="product", values="value", aggfunc="last"
             ).sort_index()
-            _pivot = _pivot.ffill()          # carry each product's last price forward
-            ttl_history = pd.DataFrame({"value": _pivot.sum(axis=1)})
-            
-            # Fetch the global invested timeline (accurate cost curve).
-            global_inv = build_global_invested_history(df)
+            _pivot = _pivot.ffill()
+            _raw_value = _pivot.sum(axis=1)   # sub-daily (5-min) total portfolio value
 
-            # CRITICAL: map invested BEFORE timezone conversion.
-            # global_inv has a tz-naive index (plain dates).  After tz_convert below
-            # ttl_history.index becomes tz-aware (Amsterdam), so d.normalize() would
-            # return a tz-aware midnight that never matches the tz-naive global_inv keys
-            # → invested would be 0 everywhere → period P/L equals Δvalue, which
-            # creates giant spikes on every day you buy or sell.
+            # Resample the raw value to DAILY end-of-day immediately.
+            # This collapses all sub-daily noise and gives us one clean value per
+            # calendar day — which is exactly the resolution of global_inv.
+            # By resampling first we eliminate ALL sub-daily timing mismatches between
+            # position changes (which happen at exact transaction time in history_df)
+            # and the invested curve (which is always midnight-aligned in global_inv).
+            _daily_value = _raw_value.resample("D").last().dropna()
+
+            # ── Step 2: map invested onto the same DAILY index ────────────────────
+            global_inv = build_global_invested_history(df)  # tz-naive daily Series
+
             def _lookup_invested(d):
-                # Strip tz (if any) before normalising so the key is always tz-naive.
-                naive = d.tz_localize(None) if (d.tzinfo is not None) else d
+                # Always strip tz before normalising so the key is tz-naive,
+                # matching global_inv's index regardless of any upstream tz state.
+                naive = d.tz_localize(None) if d.tzinfo is not None else d
                 return global_inv.get(naive.normalize(), pd.NA)
 
-            ttl_history["invested"] = ttl_history.index.map(_lookup_invested)
-            ttl_history["invested"] = ttl_history["invested"].ffill().fillna(0.0)
+            _daily_invested = _daily_value.index.map(_lookup_invested)
+            _daily_invested = pd.Series(_daily_invested, index=_daily_value.index,
+                                        dtype=float).ffill().fillna(0.0)
 
-            # Compute cumulative P/L at the RAW timestamp level, before resampling.
-            # At each raw timestamp, value and invested are already aligned to the same
-            # trade events (buy/sell on the same calendar day), so the difference is the
-            # true unrealised + realised gain at that moment.  Deriving period_pl_eur
-            # as diff(cum_pl) after resampling is mathematically identical to
-            # ΔValue - ΔInvested but avoids any residual timing-skew artefacts.
-            ttl_history["cum_pl"] = ttl_history["value"] - ttl_history["invested"]
+            # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
+            # Both series are now daily and share the same index → no timing skew.
+            # cum_pl = market_value - total_cost_basis.
+            # period_pl = diff(cum_pl) = market return only (buys/sells cancel out).
+            ttl_history = pd.DataFrame({
+                "value":    _daily_value,
+                "invested": _daily_invested,
+                "cum_pl":   _daily_value - _daily_invested,
+            })
 
             try:
                 if ttl_history.index.tz is None:
@@ -1012,23 +1013,21 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             selected_pnl_mode = st.radio("Tijdsbestek:", list(pnl_modes.keys()), horizontal=True, label_visibility="collapsed")
             res_freq = pnl_modes[selected_pnl_mode]
 
-            # Resample: take the last known value of each period.
-            # Only drop rows where 'value' is missing; 'invested' might legitimately be 0
-            # in the very first period (before any transactions).
+            # ── Step 4: resample to the chosen display granularity ────────────────
             period_df = ttl_history[["value", "invested", "cum_pl"]].resample(res_freq).last()
             period_df = period_df.dropna(subset=["value"])
 
             if len(period_df) > 1:
-                # --- Cumulative P/L ---
+                # Cumulative P/L (already computed at daily level, just carry through)
                 period_df["cum_pl_eur"] = period_df["cum_pl"]
                 period_df["cum_pl_pct"] = (
                     (period_df["cum_pl_eur"] / period_df["invested"].replace(0, pd.NA)) * 100.0
-                )
-                period_df["cum_pl_pct"] = period_df["cum_pl_pct"].fillna(0)
+                ).fillna(0)
 
-                # --- Period P/L = change in cumulative P/L over the period ---
-                # This is equivalent to ΔValue - ΔInvested but computed via the
-                # pre-aligned cum_pl column so timing skew cannot create false spikes.
+                # Period P/L = change in cumulative P/L.
+                # Because cum_pl already accounts for both value AND invested changes,
+                # diff() gives the pure market return within the period — buys and
+                # sells do not inflate or deflate the number.
                 period_df["period_pl_eur"] = period_df["cum_pl_eur"].diff()
                 period_df = period_df.dropna(subset=["period_pl_eur"])
 
