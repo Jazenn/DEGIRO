@@ -369,14 +369,28 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         if hist_df.index.tz is not None:
             hist_df.index = hist_df.index.tz_localize(None)
 
-        combined_df = pd.DataFrame(index=hist_df.index)
-        combined_df["price"] = hist_df["price"]
+        # 1. Create a continuous daily index covering start to now
+        daily_idx = pd.date_range(start=start_date, end=now, freq="D")
         
-        aligned_qty = daily_qty.reindex(hist_df.index, method='ffill').fillna(0)
-        aligned_invested = daily_invested.reindex(hist_df.index, method='ffill').fillna(0)
+        # 2. Daily quantities and invested: resample 'D' and take .last() (end-of-day balances)
+        daily_qty_eod = daily_qty.resample('D').last()
+        daily_inv_eod = daily_invested.resample('D').last()
         
-        combined_df["quantity"] = aligned_qty
-        combined_df["invested"] = aligned_invested
+        # Expand any trailing days (until 'now') by forward filling
+        daily_qty_eod = daily_qty_eod.reindex(daily_idx, method='ffill').fillna(0)
+        daily_inv_eod = daily_inv_eod.reindex(daily_idx, method='ffill').fillna(0)
+        
+        # 3. Daily prices: resample 'D' and forward fill missing weekend prices
+        # First, ensure the raw prices are aligned to the days they occurred
+        hist_eod = hist_df.resample('D').last().ffill()  # This handles any intermediate missing days 
+        hist_eod = hist_eod.reindex(daily_idx, method='ffill')
+
+        # 4. Combine into final continuous daily frame
+        combined_df = pd.DataFrame(index=daily_idx)
+        combined_df["price"] = hist_eod["price"]
+        
+        combined_df["quantity"] = daily_qty_eod
+        combined_df["invested"] = daily_inv_eod
         
         combined_df["product"] = p
         combined_df["ticker"] = ticker
