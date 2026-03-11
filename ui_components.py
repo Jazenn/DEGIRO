@@ -957,106 +957,107 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             
     with tab_pnl:
         st.subheader("Winst & Verlies Analyse")
-        
+
         if history_df.empty:
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
-            # ── Step 1: build a DAILY value series ───────────────────────────────
-            # Pivot so every product is its own column, ffill per product, then sum.
-            # This ensures every timestamp has the *full* tracked-portfolio value,
-            # not a partial sum of whichever products happened to have a tick.
-            _pivot = history_df.pivot_table(
-                index="date", columns="product", values="value", aggfunc="last"
-            ).sort_index()
-            _pivot = _pivot.ffill()
-            _raw_value = _pivot.sum(axis=1)
-            _daily_value = _raw_value.resample("D").last().dropna()
-
-            # ── Step 2: invested — CRITICAL: filter to TRACKED products only ─────
-            # history_df only contains products that have a ticker mapping.
-            # global_inv by default uses ALL transactions (including untracked
-            # products the user bought/sold).  When the user buys an untracked ETF,
-            # invested jumps but value stays the same → fake negative P/L spike.
-            # Vice versa for selling an untracked product.
-            # Fix: build invested using only the products that are in history_df.
-            tracked_products = set(history_df["product"].dropna().unique())
-            
-            tracked_df = df[df["product"].isin(tracked_products)].copy()
-            
-            global_inv = build_global_invested_history(tracked_df)
-
-            def _lookup_invested(d):
-                naive = d.tz_localize(None) if d.tzinfo is not None else d
-                return global_inv.get(naive.normalize(), pd.NA)
-
-            _daily_invested = pd.Series(
-                [_lookup_invested(d) for d in _daily_value.index],
-                index=_daily_value.index
-            ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
-
-            # ── Step 3: build ttl_history ─────────────────────────────────────────
-            ttl_history = pd.DataFrame({
-                "value":    _daily_value,
-                "invested": _daily_invested,
-                "cum_pl":   _daily_value - _daily_invested,
-            })
-            # Keep tz-naive for simple date comparisons below.
-
             st.markdown("Kies een periode om je gerealiseerde en ongerealiseerde groei-ontwikkeling te analyseren.")
             pnl_modes = {"Dagelijks": "D", "Wekelijks": "W-MON", "Maandelijks": "ME"}
             selected_pnl_mode = st.radio("Tijdsbestek:", list(pnl_modes.keys()), horizontal=True, label_visibility="collapsed")
             res_freq = pnl_modes[selected_pnl_mode]
 
-            # ── Step 4: resample to chosen granularity ────────────────────────────
-            period_df = ttl_history[["value", "invested", "cum_pl"]].resample(res_freq).last()
-            period_df = period_df.dropna(subset=["value"])
+            # ── Stap 1: dagelijkse close en qty per product ───────────────────────
+            # Pivot history_df naar dagelijkse close-prijs en qty per product.
+            # Resample naar "D" zodat we één waarde per kalenderdag hebben.
+            _close_pivot = (
+                history_df
+                .pivot_table(index="date", columns="product", values="price", aggfunc="last")
+                .resample("D").last()
+                .ffill()
+            )
+            _qty_pivot = (
+                history_df
+                .pivot_table(index="date", columns="product", values="quantity", aggfunc="last")
+                .resample("D").last()
+                .ffill()
+                .fillna(0)
+            )
 
-            # ── Step 5: inject live price for TODAY into the last row ─────────────
-            # history_df comes from build_portfolio_history (ttl=3600, yfinance 5-min).
-            # render_metrics uses price_manager (TradeGate, ttl=60) → always fresher.
-            # By replacing the last period's cum_pl with a live-computed value we
-            # ensure the P/L bar for today/this-week/this-month matches the metrics.
-            if price_manager is not None and not period_df.empty:
+            # ── Stap 2: dagelijkse P/L = (close - prev_close) × qty ──────────────
+            # Identiek aan de logica in de metrics panel:
+            #   dag_pl = (live - prev_close) × qty
+            # Alleen gebruiken we hier close en prev_close uit de historische data.
+            _prev_close = _close_pivot.shift(1)
+            _daily_pl_per_product = (_close_pivot - _prev_close) * _qty_pivot
+            _daily_pl = _daily_pl_per_product.sum(axis=1)          # totaal over alle producten
+            _daily_pl = _daily_pl.iloc[1:]                          # eerste rij (geen prev) weggooien
+
+            # ── Stap 3: overschrijf vandaag met live prijs van price_manager ──────
+            # build_portfolio_history is gecached (ttl=3600). Voor vandaag gebruiken
+            # we price_manager (zelfde bron als de metrics panel) zodat de laatste
+            # balk altijd klopt.
+            today = pd.Timestamp.now().normalize()
+            if price_manager is not None:
                 try:
                     _pos = build_positions(df)
                     _tracked = set(history_df["product"].dropna().unique())
                     _pos = _pos[_pos["product"].isin(_tracked)]
                     if not _pos.empty:
                         _pos["_ticker"] = _pos.apply(
-                            lambda r: price_manager.resolve_ticker(
-                                r.get("product"), r.get("isin")), axis=1)
-                        _live_px = price_manager.get_live_prices_batch(
-                            _pos["_ticker"].dropna().unique().tolist())
-                        _pos["_live_val"] = _pos.apply(
-                            lambda r: r["quantity"] * _live_px.get(r["_ticker"], 0.0)
-                            if pd.notna(r.get("_ticker")) else 0.0, axis=1)
-                        _live_total = float(_pos["_live_val"].sum())
-                        if _live_total > 0:
-                            # Today's invested cost basis (tz-naive lookup)
-                            _today_key = pd.Timestamp.now().normalize()
-                            _live_invested = float(
-                                global_inv.get(_today_key, period_df["invested"].iloc[-1]))
-                            _live_cum_pl = _live_total - _live_invested
-                            # Overwrite only the last row (current period)
-                            period_df.loc[period_df.index[-1], "value"]   = _live_total
-                            period_df.loc[period_df.index[-1], "invested"] = _live_invested
-                            period_df.loc[period_df.index[-1], "cum_pl"]  = _live_cum_pl
+                            lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1)
+                        _live_px   = price_manager.get_live_prices_batch(_pos["_ticker"].dropna().unique().tolist())
+                        _open_px   = price_manager.get_market_open_prices_batch(_pos["_ticker"].dropna().unique().tolist())
+                        _today_pl  = float(_pos.apply(
+                            lambda r: r["quantity"] * (
+                                _live_px.get(r["_ticker"], 0.0) - _open_px.get(r["_ticker"], 0.0)
+                            ) if pd.notna(r.get("_ticker")) else 0.0, axis=1
+                        ).sum())
+                        if today not in _daily_pl.index:
+                            _daily_pl[today] = _today_pl
+                        else:
+                            _daily_pl[today] = _today_pl
+                        _daily_pl = _daily_pl.sort_index()
                 except Exception:
-                    pass  # fall back to cached value silently
+                    pass
+
+            # ── Stap 4: cumulatieve P/L = cumsum van dagelijkse P/L ───────────────
+            _cum_pl = _daily_pl.cumsum()
+
+            period_series = pd.DataFrame({
+                "period_pl_eur": _daily_pl,
+                "cum_pl_eur":    _cum_pl,
+            })
+
+            # Resample naar gekozen granulariteit (dag/week/maand)
+            if res_freq == "D":
+                period_df = period_series.copy()
+            else:
+                period_df = period_series.resample(res_freq).agg({
+                    "period_pl_eur": "sum",    # tel dagelijkse P/L op binnen periode
+                    "cum_pl_eur":    "last",   # cumulatieve P/L = laatste waarde in periode
+                })
+            period_df = period_df.dropna(subset=["period_pl_eur"])
+
+            # Invested nodig voor rendements-% berekening
+            tracked_products = set(history_df["product"].dropna().unique())
+            tracked_df = df[df["product"].isin(tracked_products)].copy()
+            global_inv = build_global_invested_history(tracked_df)
+
+            def _lookup_invested(d):
+                naive = d.tz_localize(None) if d.tzinfo is not None else d
+                return global_inv.get(naive.normalize(), pd.NA)
+
+            period_df["invested"] = pd.Series(
+                [_lookup_invested(d) for d in period_df.index],
+                index=period_df.index
+            ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
+
+            period_df["cum_pl_pct"] = (
+                (period_df["cum_pl_eur"] / period_df["invested"].replace(0, pd.NA)) * 100.0
+            ).fillna(0)
 
             if len(period_df) > 1:
-                # Cumulative P/L
-                period_df["cum_pl_eur"] = period_df["cum_pl"]
-                period_df["cum_pl_pct"] = (
-                    (period_df["cum_pl_eur"] / period_df["invested"].replace(0, pd.NA)) * 100.0
-                ).fillna(0)
-
-                # Period P/L = diff of cum_pl.
-                # Buys/sells cancel out because both value and invested shift together.
-                period_df["period_pl_eur"] = period_df["cum_pl_eur"].diff()
-                period_df = period_df.dropna(subset=["period_pl_eur"])
-
-                # Formatting dates for display
+                # Datum labels
                 if selected_pnl_mode == "Maandelijks":
                     period_df["period_str"] = period_df.index.strftime("%b %Y")
                 else:
@@ -1067,20 +1068,22 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     lookback_options = {"Afgelopen 30 Dagen": 30, "Afgelopen 90 Dagen": 90, "Afgelopen Jaar": 365, "Alles": 9999}
                     if selected_pnl_mode != "Dagelijks":
                         lookback_options = {"Afgelopen 6 Maanden": 180, "Afgelopen Jaar": 365, "Alles": 9999}
-                    
+
                     lookback_label = st.selectbox("Periode filter:", list(lookback_options.keys()))
                     days_back = lookback_options[lookback_label]
-                    
+
                     cutoff_date = pd.Timestamp.now().normalize() - pd.Timedelta(days=days_back)
-                    display_df = period_df[(period_df.index >= cutoff_date) & (period_df["invested"] > 0)].copy()
+                    display_df = period_df[
+                        (period_df.index >= cutoff_date) & (period_df["invested"] > 0)
+                    ].copy()
 
                 if display_df.empty:
                     st.warning("Geen data voor deze specifieke periode.")
                 else:
                     st.markdown("#### Periodieke P/L")
-                    # Bar Chart
-                    display_df["color"] = display_df["period_pl_eur"].apply(lambda x: "#00CC96" if x >= 0 else "#EF553B")
-                    
+                    display_df["color"] = display_df["period_pl_eur"].apply(
+                        lambda x: "#00CC96" if x >= 0 else "#EF553B")
+
                     fig_bar = go.Figure()
                     fig_bar.add_trace(go.Bar(
                         x=display_df["period_str"],
@@ -1096,33 +1099,31 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         showlegend=False,
                         dragmode=False
                     )
-                    st.plotly_chart(fig_bar, use_container_width=True, config={'scrollZoom': False})
+                    st.plotly_chart(fig_bar, use_container_width=True, config={"scrollZoom": False})
 
                     st.markdown("#### Cumulatieve P/L")
-                    # Line Chart layout
                     fig_cum = make_subplots(specs=[[{"secondary_y": True}]])
-                    
+
                     fig_cum.add_trace(go.Scatter(
-                        x=display_df["period_str"], 
+                        x=display_df["period_str"],
                         y=display_df["cum_pl_eur"],
                         name="Cumulatieve P/L (€)",
-                        mode='lines',
+                        mode="lines",
                         line=dict(color="#636EFA", width=3)
                     ), secondary_y=False)
-                    
+
                     fig_cum.add_trace(go.Scatter(
-                        x=display_df["period_str"], 
+                        x=display_df["period_str"],
                         y=display_df["cum_pl_pct"],
                         name="Rendement (%)",
-                        mode='lines',
+                        mode="lines",
                         line=dict(color="#FFA15A", width=3)
                     ), secondary_y=True)
 
-                    # Voeg een duidelijke nullijn toe
                     fig_cum.add_hline(
-                        y=0, 
-                        line_dash="dash", 
-                        line_color="rgba(255, 255, 255, 0.5)", 
+                        y=0,
+                        line_dash="dash",
+                        line_color="rgba(255, 255, 255, 0.5)",
                         line_width=2,
                         secondary_y=False
                     )
@@ -1137,26 +1138,28 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         hovermode="x unified",
                         dragmode=False
                     )
-                    st.plotly_chart(fig_cum, use_container_width=True, config={'scrollZoom': False})
+                    st.plotly_chart(fig_cum, use_container_width=True, config={"scrollZoom": False})
 
-                    # Data Table
                     st.markdown("#### Resultatenoverzicht")
                     table_df = display_df[["period_str", "period_pl_eur", "cum_pl_eur", "cum_pl_pct"]].copy()
                     table_df = table_df.sort_index(ascending=False)
                     table_df = table_df.rename(columns={
-                        "period_str": "Datum",
+                        "period_str":    "Datum",
                         "period_pl_eur": "P/L in Periode",
-                        "cum_pl_eur": "Totale P/L",
-                        "cum_pl_pct": "Rendement"
+                        "cum_pl_eur":    "Totale P/L",
+                        "cum_pl_pct":    "Rendement"
                     })
-                    
+
                     styled_table = table_df.style.format({
                         "P/L in Periode": "€ {:.2f}",
-                        "Totale P/L": "€ {:.2f}",
-                        "Rendement": "{:.2f} %"
-                    }).applymap(lambda x: 'color: #00CC96' if isinstance(x, (int, float)) and x > 0 else ('color: #EF553B' if isinstance(x, (int, float)) and x < 0 else ''), subset=["P/L in Periode", "Totale P/L", "Rendement"])
-                    
+                        "Totale P/L":     "€ {:.2f}",
+                        "Rendement":      "{:.2f} %"
+                    }).applymap(
+                        lambda x: "color: #00CC96" if isinstance(x, (int, float)) and x > 0
+                        else ("color: #EF553B" if isinstance(x, (int, float)) and x < 0 else ""),
+                        subset=["P/L in Periode", "Totale P/L", "Rendement"]
+                    )
                     st.dataframe(styled_table, use_container_width=True, hide_index=True)
 
             else:
-                 st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
+                st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
