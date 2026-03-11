@@ -1003,6 +1003,42 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 index=_daily_value.index
             ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
 
+            # ── DEBUG ────────────────────────────────────────────────────────────
+            with st.expander("🐛 Debug: tracked products & invested"):
+                st.write("**Tracked products:**", sorted(tracked_products))
+                
+                # Transactions on 18/19/20 feb in tracked_df
+                feb_tx = tracked_df[
+                    tracked_df["value_date"].dt.normalize().isin([
+                        pd.Timestamp("2026-02-18"),
+                        pd.Timestamp("2026-02-19"),
+                        pd.Timestamp("2026-02-20"),
+                    ])
+                ][["value_date","product","type","amount","quantity"]].copy()
+                st.write("**Transacties 18-20 feb (tracked_df):**")
+                st.dataframe(feb_tx)
+                
+                # global_inv for those dates
+                gi_slice = global_inv[
+                    (global_inv.index >= pd.Timestamp("2026-02-16")) &
+                    (global_inv.index <= pd.Timestamp("2026-02-22"))
+                ]
+                st.write("**global_inv (16-22 feb, na tracked filter):**")
+                st.dataframe(gi_slice.rename("invested"))
+                
+                # daily value + invested side by side
+                feb_mask = (
+                    (_daily_value.index >= pd.Timestamp("2026-02-16")) &
+                    (_daily_value.index <= pd.Timestamp("2026-02-22"))
+                )
+                st.write("**daily_value vs daily_invested:**")
+                st.dataframe(pd.DataFrame({
+                    "value": _daily_value[feb_mask],
+                    "invested": _daily_invested[feb_mask],
+                    "cum_pl": _daily_value[feb_mask] - _daily_invested[feb_mask],
+                }))
+            # ── END DEBUG ─────────────────────────────────────────────────────────
+            
             # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
             # Both series are now daily and share the same index → no timing skew.
             # cum_pl = market_value - total_cost_basis.
