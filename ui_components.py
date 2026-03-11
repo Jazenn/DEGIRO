@@ -976,10 +976,30 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             _pivot = _pivot.ffill()          # carry each product's last price forward
             ttl_history = pd.DataFrame({"value": _pivot.sum(axis=1)})
             
-            # Fetch the global invested timeline (accurate cost curve)
+            # Fetch the global invested timeline (accurate cost curve).
             global_inv = build_global_invested_history(df)
-            ttl_history["invested"] = ttl_history.index.map(lambda d: global_inv.get(d.normalize(), pd.NA))
+
+            # CRITICAL: map invested BEFORE timezone conversion.
+            # global_inv has a tz-naive index (plain dates).  After tz_convert below
+            # ttl_history.index becomes tz-aware (Amsterdam), so d.normalize() would
+            # return a tz-aware midnight that never matches the tz-naive global_inv keys
+            # → invested would be 0 everywhere → period P/L equals Δvalue, which
+            # creates giant spikes on every day you buy or sell.
+            def _lookup_invested(d):
+                # Strip tz (if any) before normalising so the key is always tz-naive.
+                naive = d.tz_localize(None) if (d.tzinfo is not None) else d
+                return global_inv.get(naive.normalize(), pd.NA)
+
+            ttl_history["invested"] = ttl_history.index.map(_lookup_invested)
             ttl_history["invested"] = ttl_history["invested"].ffill().fillna(0.0)
+
+            # Compute cumulative P/L at the RAW timestamp level, before resampling.
+            # At each raw timestamp, value and invested are already aligned to the same
+            # trade events (buy/sell on the same calendar day), so the difference is the
+            # true unrealised + realised gain at that moment.  Deriving period_pl_eur
+            # as diff(cum_pl) after resampling is mathematically identical to
+            # ΔValue - ΔInvested but avoids any residual timing-skew artefacts.
+            ttl_history["cum_pl"] = ttl_history["value"] - ttl_history["invested"]
 
             try:
                 if ttl_history.index.tz is None:
@@ -992,24 +1012,24 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
             selected_pnl_mode = st.radio("Tijdsbestek:", list(pnl_modes.keys()), horizontal=True, label_visibility="collapsed")
             res_freq = pnl_modes[selected_pnl_mode]
 
-            # Resample taking the *last* known value of the period
-            period_df = ttl_history.resample(res_freq).last().dropna()
-            
-            # Drop the very first period as it serves only as a baseline, unless we only have 1
+            # Resample: take the last known value of each period.
+            # Only drop rows where 'value' is missing; 'invested' might legitimately be 0
+            # in the very first period (before any transactions).
+            period_df = ttl_history[["value", "invested", "cum_pl"]].resample(res_freq).last()
+            period_df = period_df.dropna(subset=["value"])
+
             if len(period_df) > 1:
-                # Calculate period over period metrics
-                # Cumulative P/L mapping
-                period_df["cum_pl_eur"] = period_df["value"] - period_df["invested"]
-                period_df["cum_pl_pct"] = (period_df["cum_pl_eur"] / period_df["invested"]) * 100.0
+                # --- Cumulative P/L ---
+                period_df["cum_pl_eur"] = period_df["cum_pl"]
+                period_df["cum_pl_pct"] = (
+                    (period_df["cum_pl_eur"] / period_df["invested"].replace(0, pd.NA)) * 100.0
+                )
                 period_df["cum_pl_pct"] = period_df["cum_pl_pct"].fillna(0)
 
-                # Period-specific P/L
-                # The profit GENERATED specifically within this period is:
-                # Change in Value minus Change in Invested
-                period_df["prev_value"] = period_df["value"].shift(1)
-                period_df["prev_invested"] = period_df["invested"].shift(1)
-                
-                period_df["period_pl_eur"] = (period_df["value"] - period_df["prev_value"]) - (period_df["invested"] - period_df["prev_invested"])
+                # --- Period P/L = change in cumulative P/L over the period ---
+                # This is equivalent to ΔValue - ΔInvested but computed via the
+                # pre-aligned cum_pl column so timing skew cannot create false spikes.
+                period_df["period_pl_eur"] = period_df["cum_pl_eur"].diff()
                 period_df = period_df.dropna(subset=["period_pl_eur"])
 
                 # Formatting dates for display
