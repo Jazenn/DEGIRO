@@ -988,9 +988,10 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                 naive = d.tz_localize(None) if d.tzinfo is not None else d
                 return global_inv.get(naive.normalize(), pd.NA)
 
-            _daily_invested = _daily_value.index.map(_lookup_invested)
-            _daily_invested = pd.Series(_daily_invested, index=_daily_value.index,
-                                        dtype=float).ffill().fillna(0.0)
+            _daily_invested = pd.Series(
+                [_lookup_invested(d) for d in _daily_value.index],
+                index=_daily_value.index
+            ).astype(object).apply(pd.to_numeric, errors="coerce").ffill().fillna(0.0)
 
             # ── Step 3: compute cum_pl ONCE on the aligned daily series ───────────
             # Both series are now daily and share the same index → no timing skew.
