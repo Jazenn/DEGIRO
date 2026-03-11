@@ -62,6 +62,11 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             qty = r.get("quantity")
             if pd.isna(lp) or pd.isna(qty): return pd.NA
             
+            # Hide non-crypto Daily P/L when market is closed
+            is_crypto = str(r.get("isin", "")).startswith("XFC")
+            if not is_crypto and not _is_tradegate_open():
+                return 0.0
+            
             base_val = r.get("daily_base_val")
             if pd.notna(base_val) and base_val > 0:
                 return (lp * qty) - base_val
@@ -216,6 +221,9 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         base = row.get("midnight_price")
                     else:
                         base = row.get("prev_close")
+                        # Hide non-crypto Daily P/L when market is closed
+                        if not _is_tradegate_open():
+                            return 0.0, 0.0
                         
                     if pd.isna(base) or base == 0:
                         base = row.get("market_open")

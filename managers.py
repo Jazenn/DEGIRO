@@ -508,10 +508,11 @@ class PriceManager:
     def get_prev_closes_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        return self._fetch_prev_closes_batch_cached(tuple(set(valid)))
+        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        return self._fetch_prev_closes_batch_cached(tuple(set(valid)), current_date_str)
 
     @st.cache_data(ttl=21600)
-    def _fetch_prev_closes_batch_cached(_self, tickers_tuple: tuple) -> dict:
+    def _fetch_prev_closes_batch_cached(_self, tickers_tuple: tuple, current_date_str: str) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         yf_tickers = []
         import requests
@@ -562,10 +563,11 @@ class PriceManager:
     def get_prev_close(self, ticker):
         """Return previous trading day close."""
         if not ticker: return 0.0
-        return self._fetch_prev_close_cached(ticker)
+        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        return self._fetch_prev_close_cached(ticker, current_date_str)
 
     @st.cache_data(ttl=21600) # Cache for 6 hours
-    def _fetch_prev_close_cached(_self, ticker):
+    def _fetch_prev_close_cached(_self, ticker, current_date_str):
         import requests
         # 1. Try TradeGate API first for any valid ISINs
         isin = None
@@ -639,10 +641,11 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        return self._fetch_midnight_prices_batch_cached(tuple(set(valid)))
+        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        return self._fetch_midnight_prices_batch_cached(tuple(set(valid)), current_date_str)
 
     @st.cache_data(ttl=3600)
-    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple, current_date_str: str) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         try:
             tickers_str = " ".join(tickers_tuple)
@@ -658,9 +661,11 @@ class PriceManager:
                         
                     if not df_t.empty:
                         hist = df_t.reset_index()
-                        if hist.iloc[:, 0].dt.tz is not None:
-                             hist.iloc[:, 0] = hist.iloc[:, 0].dt.tz_localize(None)
-                        mask = hist.iloc[:, 0].dt.normalize() == today
+                        col_dt = hist.columns[0]
+                        if hist[col_dt].dt.tz is None:
+                             hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
+                        hist[col_dt] = hist[col_dt].dt.tz_convert("Europe/Amsterdam")
+                        mask = hist[col_dt].dt.normalize() == pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
                         if mask.any():
                              results[t] = float(hist.loc[mask, "Close"].iloc[0])
                 except: pass
@@ -670,22 +675,24 @@ class PriceManager:
     def get_midnight_price(self, ticker):
         """Return price at start of today (midnight) for daily P/L."""
         if not ticker: return 0.0
-        return self._fetch_midnight_price_cached(ticker)
+        current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+        return self._fetch_midnight_price_cached(ticker, current_date_str)
 
     @st.cache_data(ttl=3600)
-    def _fetch_midnight_price_cached(_self, ticker):
+    def _fetch_midnight_price_cached(_self, ticker, current_date_str):
         try:
             # Fetch 1d of hourly data
             hist = yf.Ticker(ticker).history(period="1d", interval="1h", prepost=True)
             if hist.empty: return 0.0
             
             # Find first datapoint of "today"
-            today = pd.Timestamp.now().normalize()
+            today = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
             hist = hist.reset_index()
-            # Ensure Datetime is timezone naive or compatible
-            if hist["Datetime"].dt.tz is not None:
-                hist["Datetime"] = hist["Datetime"].dt.tz_localize(None)
+            # Convert to Amsterdam time correctly
+            if hist["Datetime"].dt.tz is None:
+                hist["Datetime"] = hist["Datetime"].dt.tz_localize("UTC")
                 
+            hist["Datetime"] = hist["Datetime"].dt.tz_convert("Europe/Amsterdam")
             mask = hist["Datetime"].dt.normalize() == today
             if mask.any():
                  return float(hist.loc[mask, "Close"].iloc[0])
