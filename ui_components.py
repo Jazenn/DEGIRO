@@ -4,7 +4,7 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from utils import format_eur, format_pct, _shorten_name, fragment
-from data_processing import build_positions
+from data_processing import build_positions, build_global_invested_history
 
 @fragment(run_every=300)
 def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
@@ -950,14 +950,18 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
     with tab_pnl:
         st.subheader("Winst & Verlies Analyse")
         
-        if history_df.empty or "invested" not in history_df.columns:
+        if history_df.empty:
             st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
         else:
-            # Aggregate history across all products by date
+            # Aggregate history values across all products by date
             ttl_history = history_df.groupby("date").agg({
-                "value": "sum",
-                "invested": "sum"
+                "value": "sum"
             }).sort_index()
+            
+            # Fetch the global invested timeline (accurate cost curve)
+            global_inv = build_global_invested_history(df)
+            ttl_history["invested"] = ttl_history.index.map(lambda d: global_inv.get(d.normalize(), pd.NA))
+            ttl_history["invested"] = ttl_history["invested"].ffill().fillna(0.0)
 
             try:
                 if ttl_history.index.tz is None:

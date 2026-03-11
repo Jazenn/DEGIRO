@@ -408,3 +408,50 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
     final_df = pd.concat(history_frames)
     final_df.index.name = "date"
     return final_df.reset_index()
+
+@st.cache_data(ttl=3600)
+def build_global_invested_history(df: pd.DataFrame) -> pd.Series:
+    """
+    Bereken de cumulatieve 'invested' lijn over de tijd, op EXAACT dezelfde
+    wijze als de '-62 P/L' op het dashboard berekend wordt.
+    Dit houdt rekening met álle kosten (buy, fee) minus álle opbrengsten (sell, dividend),
+    inclusief aandelen die nu niet meer in portfolio zitten.
+    """
+    if df.empty or "value_date" not in df.columns:
+        return pd.Series(dtype=float)
+        
+    # We want to match: total_costs = abs(buys) + fees - abs(sells) - dividends
+    cost_flow = pd.Series(0.0, index=df.index)
+    
+    cost_flow.loc[df["type"] == "Buy"] = df.loc[df["type"] == "Buy", "amount"].abs()
+    cost_flow.loc[df["is_fee"]] = df.loc[df["is_fee"], "amount"].abs() # usually amount is negative
+    cost_flow.loc[df["type"] == "Sell"] = -df.loc[df["type"] == "Sell", "amount"].abs()
+    cost_flow.loc[df["is_dividend"]] = -df.loc[df["is_dividend"], "amount"].abs() # dividends reduce invested cash
+    
+    # Give the frame the proper dates (normalized to day)
+    temp_df = pd.DataFrame({
+        "date": df["value_date"].dt.normalize(),
+        "cost_flow": cost_flow
+    }).dropna(subset=["date"])
+    
+    if temp_df.empty:
+        return pd.Series(dtype=float)
+        
+    # Group by day to get the daily net cost injection
+    daily_cost_flows = temp_df.groupby("date")["cost_flow"].sum().sort_index()
+    
+    # Cumulative Sum to get the running total
+    cumulative_invested = daily_cost_flows.cumsum()
+    
+    # Forward-fill to a continuous daily index up to today
+    start_date = cumulative_invested.index.min()
+    now = pd.Timestamp.now().normalize()
+    if pd.isna(start_date):
+        return pd.Series(dtype=float)
+        
+    daily_idx = pd.date_range(start=start_date, end=now, freq="D")
+    
+    # Reindex and forward fill to carry over historical invested values dynamically
+    continuous_invested = cumulative_invested.reindex(daily_idx, method='ffill').fillna(0.0)
+    
+    return continuous_invested
