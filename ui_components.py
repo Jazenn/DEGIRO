@@ -316,6 +316,34 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                         c2.metric("Dag Resultaat", f"{dag_indicator} {dag_raw} ({dag_pct})")
 
         st.divider()
+
+@fragment(run_every=300)
+def render_rebalancing(df: pd.DataFrame, config_manager, price_manager) -> None:
+    """Render de portefeuilleverdeling en rebalancing tool."""
+    positions = build_positions(df)
+    
+    if not positions.empty:
+        positions["ticker"] = positions.apply(
+            lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1
+        )
+        
+        unique_tickers = positions["ticker"].dropna().unique().tolist()
+        batch_live = price_manager.get_live_prices_batch(unique_tickers)
+        batch_mid = price_manager.get_midnight_prices_batch(unique_tickers)
+        batch_open = price_manager.get_market_open_prices_batch(unique_tickers)
+        positions["last_price"] = positions["ticker"].map(lambda t: batch_live.get(t, 0.0))
+        positions["midnight_price"] = positions["ticker"].map(lambda t: batch_mid.get(t, 0.0))
+        positions["market_open"] = positions["ticker"].map(lambda t: batch_open.get(t, 0.0))
+
+        positions["current_value"] = positions.apply(
+            lambda r: (
+                r["quantity"] * r["last_price"]
+                if pd.notna(r.get("last_price")) and pd.notna(r.get("quantity"))
+                else pd.NA
+            ),
+            axis=1,
+        )
+
         st.subheader("Portefeuilleverdeling & Rebalancing")
         
         saved_assets = config_manager.get_assets()
@@ -431,7 +459,6 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             with st.form("rebalance_form"):
                 st.write("Pas hieronder de gewenste verdeling aan (en pas namen aan):")
                 
-                # Gebruik st.columns in plaats van st.data_editor om de verspringingsbug op mobiel compleet op te heffen.
                 st.markdown("Pas de percentages aan met de + en - knoppen. Je kunt ook de weergavenaam aanpassen.")
                 
                 edited_rows = []
@@ -704,7 +731,6 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
             
             st.markdown("#### Huidig vs Doel (Overlay)")
             
-            
             fig = go.Figure()
 
             fig.add_trace(go.Pie(
@@ -746,12 +772,15 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
 
 def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None) -> None:
     st.markdown("---")
-    tab_overview, tab_balance, tab_history, tab_pnl = st.tabs(
-        ["📈 Overzicht", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L"]
+    tab_overview, tab_rebalance, tab_balance, tab_history, tab_pnl = st.tabs(
+        ["📈 Overzicht", "⚖️ Rebalancing", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L"]
     )
 
     with tab_overview:
         render_overview(df, config_manager=config_manager, price_manager=price_manager)
+
+    with tab_rebalance:
+        render_rebalancing(df, config_manager, price_manager)
 
 
     with tab_balance:
@@ -1144,26 +1173,8 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     )
                     st.plotly_chart(fig_cum, use_container_width=True, config={"scrollZoom": False})
 
-                    st.markdown("#### Resultatenoverzicht")
-                    table_df = display_df[["period_str", "period_pl_eur", "cum_pl_eur", "cum_pl_pct"]].copy()
-                    table_df = table_df.sort_index(ascending=False)
-                    table_df = table_df.rename(columns={
-                        "period_str":    "Datum",
-                        "period_pl_eur": "P/L in Periode",
-                        "cum_pl_eur":    "Totale P/L",
-                        "cum_pl_pct":    "Rendement"
-                    })
-
-                    styled_table = table_df.style.format({
-                        "P/L in Periode": "€ {:.2f}",
-                        "Totale P/L":     "€ {:.2f}",
-                        "Rendement":      "{:.2f} %"
-                    }).applymap(
-                        lambda x: "color: #00CC96" if isinstance(x, (int, float)) and x > 0
-                        else ("color: #EF553B" if isinstance(x, (int, float)) and x < 0 else ""),
-                        subset=["P/L in Periode", "Totale P/L", "Rendement"]
-                    )
-                    st.dataframe(styled_table, use_container_width=True, hide_index=True)
+                    # Resultatenoverzicht table removed per user request
+                    pass
 
             else:
                 st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
