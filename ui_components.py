@@ -1006,14 +1006,14 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                         _pos["_ticker"] = _pos.apply(
                             lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1)
                         _live_px   = price_manager.get_live_prices_batch(_pos["_ticker"].dropna().unique().tolist())
-                        _open_px   = price_manager.get_market_open_prices_batch(_pos["_ticker"].dropna().unique().tolist())
+                        _prev_px   = price_manager.get_prev_closes_batch(_pos["_ticker"].dropna().unique().tolist())
                         def _safe_today_pl(r):
                             tick = r.get("_ticker")
                             if not tick: return 0.0
                             lp = _live_px.get(tick, 0.0)
-                            op = _open_px.get(tick, 0.0)
-                            if lp <= 0 or op <= 0: return 0.0
-                            return r["quantity"] * (lp - op)
+                            pp = _prev_px.get(tick, 0.0)
+                            if lp <= 0 or pp <= 0: return 0.0
+                            return r["quantity"] * (lp - pp)
                             
                         _today_pl = float(_pos.apply(_safe_today_pl, axis=1).sum())
                         if today not in _daily_pl.index:
