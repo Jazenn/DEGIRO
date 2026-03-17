@@ -369,6 +369,8 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         
         full_price_series = pd.concat([part1, part2]).sort_index()
         full_price_series = full_price_series[~full_price_series.index.duplicated(keep='last')]
+        # Safeguard: remove any zero or negative prices which cause P/L spikes
+        full_price_series = full_price_series[full_price_series > 0]
              
         hist_df = full_price_series.to_frame(name="price")
         

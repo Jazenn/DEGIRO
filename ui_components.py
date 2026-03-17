@@ -68,9 +68,9 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
                 return 0.0
             
             base_val = r.get("daily_base_val")
-            if pd.notna(base_val) and base_val > 0:
+            if pd.notna(base_val) and base_val > 0 and pd.notna(lp) and lp > 0:
                 return (lp * qty) - base_val
-            return pd.NA
+            return 0.0
 
         positions["daily_pl_eur"] = positions.apply(calc_daily, axis=1)
         total_daily_pl = positions["daily_pl_eur"].dropna().sum() if not positions.empty else 0.0
@@ -228,12 +228,12 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     if pd.isna(base) or base == 0:
                         base = row.get("market_open")
                         
-                    if pd.notna(base) and base > 0:
+                    if pd.notna(base) and base > 0 and pd.notna(lp) and lp > 0:
                         pl_eur = qty * (lp - base)
                         base_val = qty * base
                         pl_pct = (pl_eur / base_val * 100.0) if base_val > 0 else 0.0
                         return pl_eur, pl_pct
-                    return pd.NA, pd.NA
+                    return 0.0, 0.0
                     
                 display[["Dag W/V (EUR)", "Dag W/V (%)"]] = display.apply(calc_daily_display, axis=1, result_type="expand")
 
@@ -1007,11 +1007,15 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                             lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1)
                         _live_px   = price_manager.get_live_prices_batch(_pos["_ticker"].dropna().unique().tolist())
                         _open_px   = price_manager.get_market_open_prices_batch(_pos["_ticker"].dropna().unique().tolist())
-                        _today_pl  = float(_pos.apply(
-                            lambda r: r["quantity"] * (
-                                _live_px.get(r["_ticker"], 0.0) - _open_px.get(r["_ticker"], 0.0)
-                            ) if pd.notna(r.get("_ticker")) else 0.0, axis=1
-                        ).sum())
+                        def _safe_today_pl(r):
+                            tick = r.get("_ticker")
+                            if not tick: return 0.0
+                            lp = _live_px.get(tick, 0.0)
+                            op = _open_px.get(tick, 0.0)
+                            if lp <= 0 or op <= 0: return 0.0
+                            return r["quantity"] * (lp - op)
+                            
+                        _today_pl = float(_pos.apply(_safe_today_pl, axis=1).sum())
                         if today not in _daily_pl.index:
                             _daily_pl[today] = _today_pl
                         else:

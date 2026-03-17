@@ -641,36 +641,49 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        current_date_str = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
-        return self._fetch_midnight_prices_batch_cached(tuple(set(valid)), current_date_str)
+        # Use Amsterdam midnight for the cache key, but normalized to UTC base for YF logic
+        amsterdam_now = pd.Timestamp.now(tz="Europe/Amsterdam")
+        midnight_ams = amsterdam_now.normalize()
+        date_str = midnight_ams.strftime("%Y-%m-%d %H:%M:%S %Z")
+        return self._fetch_midnight_prices_batch_cached(tuple(set(valid)), date_str)
 
     @st.cache_data(ttl=3600)
-    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple, current_date_str: str) -> dict:
+    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple, date_str: str) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         try:
             tickers_str = " ".join(tickers_tuple)
             
+            # Amsterdam today 00:00 local time
+            ams_midnight = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
+            # The point we want is usually the last point of "yesterday" or first of "today"
+            # To be safe, we fetch 3 days and find the exact hour that matches AMS midnight.
+            
             # Handle single ticker cleanly using Ticker().history()
             if len(tickers_tuple) == 1:
                 t = tickers_tuple[0]
-                hist = yf.Ticker(t).history(period="2d", interval="1h", prepost=True)
+                hist = yf.Ticker(t).history(period="3d", interval="1h", prepost=True)
                 if not hist.empty and "Close" in hist.columns:
                     hist = hist.reset_index()
                     col_dt = hist.columns[0]
                     if hist[col_dt].dt.tz is None:
                          hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
-                    hist[col_dt] = hist[col_dt].dt.tz_convert("UTC")
-                    today_utc = pd.Timestamp.now(tz="UTC").normalize()
-                    yesterday_utc = today_utc - pd.Timedelta(days=1)
-                    mask = (hist[col_dt].dt.normalize() == yesterday_utc) & (hist[col_dt].dt.hour == 22)
+                    
+                    # Convert history to Amsterdam time
+                    hist[col_dt] = hist[col_dt].dt.tz_convert("Europe/Amsterdam")
+                    
+                    # Find the row where the time is 00:00 on the current day
+                    mask = (hist[col_dt].dt.normalize() == ams_midnight) & (hist[col_dt].dt.hour == 0)
                     if mask.any():
                          results[t] = float(hist.loc[mask, "Close"].iloc[0])
+                    else:
+                        # Fallback to the very latest point before midnight
+                        before_midnight = hist[hist[col_dt] < ams_midnight]
+                        if not before_midnight.empty:
+                            results[t] = float(before_midnight["Close"].iloc[-1])
                 return results
                 
             # Handle multi-ticker downloaded batch
-            data = yf.download(tickers_str, period="2d", interval="1h", group_by="ticker", prepost=True, progress=False, threads=True)
-            today_utc = pd.Timestamp.now(tz="UTC").normalize()
-            yesterday_utc = today_utc - pd.Timedelta(days=1)
+            data = yf.download(tickers_str, period="3d", interval="1h", group_by="ticker", prepost=True, progress=False, threads=True)
             
             for t in tickers_tuple:
                 try:
@@ -690,40 +703,49 @@ class PriceManager:
                         col_dt = hist.columns[0]
                         if hist[col_dt].dt.tz is None:
                              hist[col_dt] = hist[col_dt].dt.tz_localize("UTC")
-                        hist[col_dt] = hist[col_dt].dt.tz_convert("UTC")
-                        mask = (hist[col_dt].dt.normalize() == yesterday_utc) & (hist[col_dt].dt.hour == 22)
+                        
+                        hist[col_dt] = hist[col_dt].dt.tz_convert("Europe/Amsterdam")
+                        mask = (hist[col_dt].dt.normalize() == ams_midnight) & (hist[col_dt].dt.hour == 0)
                         if mask.any():
                              results[t] = float(hist.loc[mask, "Close"].iloc[0])
+                        else:
+                            before_midnight = hist[hist[col_dt] < ams_midnight]
+                            if not before_midnight.empty:
+                                results[t] = float(before_midnight["Close"].iloc[-1])
                 except: pass
         except: pass
         return results
 
     def get_midnight_price(self, ticker):
-        """Return price at start of today (midnight) for daily P/L."""
+        """Return price at start of today (midnight Amsterdam time) for daily P/L."""
         if not ticker: return 0.0
-        current_date_str = pd.Timestamp.now(tz="UTC").strftime("%Y-%m-%d")
-        return self._fetch_midnight_price_cached(ticker, current_date_str)
+        ams_midnight = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
+        date_str = ams_midnight.strftime("%Y-%m-%d %H:%M:%S %Z")
+        return self._fetch_midnight_price_cached(ticker, date_str)
 
     @st.cache_data(ttl=3600)
-    def _fetch_midnight_price_cached(_self, ticker, current_date_str):
+    def _fetch_midnight_price_cached(_self, ticker, date_str):
         try:
-            # Fetch 2d of hourly data
-            hist = yf.Ticker(ticker).history(period="2d", interval="1h", prepost=True)
+            # Fetch 3d of hourly data
+            hist = yf.Ticker(ticker).history(period="3d", interval="1h", prepost=True)
             if hist.empty: return 0.0
             
-            # Find predefined baseline point
-            today_utc = pd.Timestamp.now(tz="UTC").normalize()
-            yesterday_utc = today_utc - pd.Timedelta(days=1)
+            # Amsterdam today 00:00 local time
+            ams_midnight = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
             hist = hist.reset_index()
             
-            # Convert to UTC time correctly
+            # Convert to Amsterdam time correctly
             if hist["Datetime"].dt.tz is None:
                 hist["Datetime"] = hist["Datetime"].dt.tz_localize("UTC")
                 
-            hist["Datetime"] = hist["Datetime"].dt.tz_convert("UTC")
-            mask = (hist["Datetime"].dt.normalize() == yesterday_utc) & (hist["Datetime"].dt.hour == 22)
+            hist["Datetime"] = hist["Datetime"].dt.tz_convert("Europe/Amsterdam")
+            mask = (hist["Datetime"].dt.normalize() == ams_midnight) & (hist["Datetime"].dt.hour == 0)
             if mask.any():
                  return float(hist.loc[mask, "Close"].iloc[0])
+            else:
+                before_midnight = hist[hist["Datetime"] < ams_midnight]
+                if not before_midnight.empty:
+                    return float(before_midnight["Close"].iloc[-1])
         except: pass
         return 0.0
 
