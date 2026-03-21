@@ -50,4 +50,4 @@ Het dashboard opent nu automatisch in je browser.
 > [!TIP]
 > Als je later het dashboard opnieuw wilt starten, hoef je alleen stap 3, 4 (activeren) en 7 te herhalen.
 
-test
+test2
