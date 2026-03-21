@@ -35,7 +35,7 @@ def main() -> None:
     use_drive = False
     
     try:
-        drive = DriveStorage(st.secrets["connections"]["gsheets"], DRIVE_FOLDER_ID)
+        drive = DriveStorage(DRIVE_FOLDER_ID)
         df_drive = drive.load_data()
         use_drive = True
         sidebar.success("✅ Verbonden met Google Drive (CSV)")
