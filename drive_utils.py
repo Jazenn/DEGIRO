@@ -9,26 +9,40 @@ import json
 
 class DriveStorage:
     def __init__(self, folder_id):
-        def get_secret(key):
-            # Try streamlit secrets first
+        def get_secret(key, env_key=None):
+            # 1. Try nested streamlit structure: connections.gsheets.key
+            try:
+                if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+                    if key in st.secrets["connections"]["gsheets"]:
+                        return st.secrets["connections"]["gsheets"][key]
+            except Exception:
+                pass
+            
+            # 2. Try flat streamlit secrets: st.secrets["GCP_KEY"] or st.secrets["key"]
+            if env_key and env_key in st.secrets:
+                return st.secrets[env_key]
             if key in st.secrets:
                 return st.secrets[key]
-            # Fallback to environment variables
+                
+            # 3. Try environment variables: os.environ["GCP_KEY"] or os.environ["key"]
+            if env_key and env_key in os.environ:
+                return os.environ[env_key]
             if key in os.environ:
                 return os.environ[key]
-            raise KeyError(f"Secret '{key}' not found in st.secrets or os.environ")
+                
+            raise KeyError(f"Secret '{key}' (or '{env_key}') not found in any source.")
 
         creds_dict = {
             "type": "service_account",
-            "project_id": get_secret("GCP_PROJECT_ID"),
-            "private_key_id": get_secret("GCP_PRIVATE_KEY_ID"),
-            "private_key": get_secret("GCP_PRIVATE_KEY").replace("\\n", "\n"),
-            "client_email": get_secret("GCP_CLIENT_EMAIL"),
-            "client_id": get_secret("GCP_CLIENT_ID"),
+            "project_id": get_secret("project_id", "GCP_PROJECT_ID"),
+            "private_key_id": get_secret("private_key_id", "GCP_PRIVATE_KEY_ID"),
+            "private_key": get_secret("private_key", "GCP_PRIVATE_KEY").replace("\\n", "\n"),
+            "client_email": get_secret("client_email", "GCP_CLIENT_EMAIL"),
+            "client_id": get_secret("client_id", "GCP_CLIENT_ID"),
             "auth_uri": "https://accounts.google.com/o/oauth2/auth",
             "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/v1/certs",
-            "client_x509_cert_url": get_secret("GCP_CLIENT_X509_CERT_URL"),
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+            "client_x509_cert_url": get_secret("client_x509_cert_url", "GCP_CLIENT_X509_CERT_URL"),
             "universe_domain": "googleapis.com"
         }
         
