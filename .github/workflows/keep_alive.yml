@@ -1,0 +1,53 @@
+name: Keep App Alive
+
+on:
+  schedule:
+    - cron: '0 0,6,12,18 * * *' # Runs 4 times a day (every 6 hours)
+  workflow_dispatch: # Allows manual trigger for testing
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Playwright
+        run: npm install playwright
+
+      - name: Install Playwright Browser
+        run: npx playwright install chromium --with-deps
+
+      - name: Run Wake Up Logic
+        run: |
+          node -e "
+          const { chromium } = require('playwright');
+          (async () => {
+            const browser = await chromium.launch({ headless: true });
+            const page = await browser.newPage();
+            const url = 'https://dashboard-degiro.streamlit.app/';
+            try {
+              console.log('Navigating to ' + url + '...');
+              await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+              const wakeUpButton = page.getByRole('button', { name: /Yes, get this app back up!/i });
+              if (await wakeUpButton.count() > 0) {
+                console.log('App is sleeping. Clicking \"Wake Up\" button...');
+                await wakeUpButton.click();
+                await page.waitForTimeout(15000);
+                console.log('Done.');
+              } else {
+                console.log('App is already awake.');
+              }
+            } catch (error) {
+              console.error('Error:', error);
+              process.exit(1);
+            } finally {
+              await browser.close();
+            }
+          })();
+          "
