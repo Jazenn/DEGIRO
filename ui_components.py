@@ -959,11 +959,22 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                     if "product" in compare_df.columns:
                         compare_df["product"] = compare_df["product"].apply(_shorten_name)
                     
+                    # Bereken rendementspercentage ten opzichte van de investering
+                    compare_df["return_pct"] = 0.0
+                    mask_invested = (compare_df["invested"] != 0) & (compare_df["invested"].notna())
+                    compare_df.loc[mask_invested, "return_pct"] = (
+                        (compare_df.loc[mask_invested, "value"] - compare_df.loc[mask_invested, "invested"]) 
+                        / compare_df.loc[mask_invested, "invested"].abs()
+                    ) * 100.0
+
                     fig_compare = px.line(
-                        compare_df, x="date", y="value", color="product", 
-                        title="Waarde per aandeel in de tijd (EUR)", 
-                        labels={"value": "Waarde (EUR)", "date": "Datum", "product": "Product"}
+                        compare_df, x="date", y="return_pct", color="product", 
+                        title="Rendement per product in de tijd (%)", 
+                        labels={"return_pct": "Rendement (%)", "date": "Datum", "product": "Product"}
                     )
+                    
+                    # Voeg een nullijn toe ter referentie
+                    fig_compare.add_hline(y=0, line_dash="dash", line_color="rgba(255, 255, 255, 0.5)", line_width=2)
                     
                     fig_compare.update_traces(connectgaps=True)
                 
