@@ -2,7 +2,7 @@ name: Keep App Alive
 
 on:
   schedule:
-    - cron: '0 0,6,12,18 * * *' # Runs 4 times a day (every 6 hours)
+    - cron: '0 */4 * * *' # Runs 6 times a day (every 4 hours)
   workflow_dispatch: # Allows manual trigger for testing
 
 jobs:
@@ -33,15 +33,27 @@ jobs:
             const url = 'https://dashboard-degiro.streamlit.app/';
             try {
               console.log('Navigating to ' + url + '...');
-              await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+              // Use 'load' instead of 'networkidle' as websockets can interfere with networkidle
+              await page.goto(url, { waitUntil: 'load', timeout: 60000 });
+              
               const wakeUpButton = page.getByRole('button', { name: /Yes, get this app back up!/i });
-              if (await wakeUpButton.count() > 0) {
+              try {
+                // Wait for up to 10 seconds for the button to appear
+                await wakeUpButton.waitFor({ state: 'visible', timeout: 10000 });
                 console.log('App is sleeping. Clicking \"Wake Up\" button...');
                 await wakeUpButton.click();
-                await page.waitForTimeout(15000);
+                
+                // Wait for the app to properly spin up so it stays awake
+                console.log('Waiting for app to initialize...');
+                await page.waitForTimeout(30000);
+                console.log('Done waking up.');
+              } catch (e) {
+                console.log('Wake up button not found. App is likely already awake.');
+                // Crucially, Streamlit needs a sustained connection for a short duration to register a legitimate view.
+                // Closing immediately looks like a bot ping/bounce.
+                console.log('Holding the connection open so Streamlit registers activity...');
+                await page.waitForTimeout(20000);
                 console.log('Done.');
-              } else {
-                console.log('App is already awake.');
               }
             } catch (error) {
               console.error('Error:', error);
