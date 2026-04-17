@@ -1458,8 +1458,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
         if val >= 1000: return f"€{round(val/1000, 1) if val % 1000 != 0 else int(val/1000)}k"
         return f"€{val}"
     
-    def fmt_eur_n(n):
-        return f"€{round(n):,}".replace(",", ".")
+    def fmt_eur_exact(n):
+        return f"€{n:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
     # Calculate ranges and scales
     all_prices = [live_price, avg_price] + [t["price"] for t in sell_targets] + [t["price"] for t in buy_targets]
@@ -1501,8 +1501,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
             <stop offset="0%" stop-color="{color_buy_brand}" stop-opacity="0"/>
             <stop offset="100%" stop-color="{color_buy_brand}" stop-opacity="0.15"/>
         </linearGradient>
-        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
+        <filter id="glow" x="-25%" y="-25%" width="150%" height="150%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feComposite in="SourceGraphic" in2="blur" operator="over" />
         </filter>
     </defs>
@@ -1518,10 +1518,6 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{y_mid - pad_t}" fill="url(#sellGrad)" rx="8"/>')
     # Buy zone (Mid to bottom)
     els.append(f'<rect x="{bar_x}" y="{y_mid}" width="{bar_w}" height="{pad_t + chart_h - y_mid}" fill="url(#buyGrad)" rx="8"/>')
-
-    # 2.5 Progress Fill overlay
-    y_cur = py(live_price)
-    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.1" rx="12"/>')
 
     # Helper for Labels and Markers
     def draw_marker(price, color, label, subtext, side="right", is_bold=False, has_glow=False):
@@ -1547,38 +1543,40 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
 
     # 4. Sell Targets (Left Side)
     for t in sell_targets:
-        profit = round((amount * 0.25) * (t["price"] - avg_price))
+        profit_val = (amount * 0.25) * (t["price"] - avg_price)
         label_with_price = f"{t['label']} ({fmt_k_custom(t['price'])})"
-        draw_marker(t["price"], color_sell_brand, label_with_price, f"+{fmt_eur_n(profit)}", side="left")
+        draw_marker(t["price"], color_sell_brand, label_with_price, f"+{fmt_eur_exact(profit_val)}", side="left")
 
     # 5. Buy Targets (Right Side)
     for t in buy_targets:
-        cost = round(buy_budget / 4)
+        cost_val = (buy_budget / 4)
         label_with_price = f"{t['label']} ({fmt_k_custom(t['price'])})"
-        draw_marker(t["price"], color_buy_brand, label_with_price, f"Koop {fmt_eur_n(cost)}", side="right")
+        draw_marker(t["price"], color_buy_brand, label_with_price, f"Koop {fmt_eur_exact(cost_val)}", side="right")
 
     # 6. Average Price
     draw_marker(avg_price, color_avg_brand, f"Break-even ({fmt_k_custom(avg_price)})", "gem. aankoopprijs", side="left")
 
-    # 7. Current Price (Special Focus - Centered INSIDE the bar)
+    # 7. Current Price (Indicator & Badge) - RENDERED LAST TO STAY ON TOP
+    y_cur = py(live_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
-    badge_w = 72 # Narrower so it fits inside 80px bar
-    badge_h = 24 # Slightly shorter
+    badge_w = 64 
+    badge_h = 22
     
-    # Position badge slightly BELOW the line so line is at the top edge of badge
+    # Fill indicator background
+    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.12" rx="12"/>')
+    
+    # The Badge (Inside, placed below the line)
     els.append(f"""
-    <g transform="translate({bar_mid - badge_w/2}, {y_cur + 4})">
-        <rect width="{badge_w}" height="{badge_h}" fill="{color_cur_brand}" rx="4" { 'filter="url(#glow)"' if abs(unreal_pct) > 0 else '' }/>
-        <text x="{badge_w/2}" y="{badge_h/2 + 4}" font-size="10" font-weight="900" fill="#000" text-anchor="middle" font-family="sans-serif">
-            {fmt_k_custom(live_price)} ({unreal_pct:+.0f}%)
+    <g transform="translate({bar_mid - badge_w/2}, {y_cur + 5})">
+        <rect width="{badge_w}" height="{badge_h}" fill="{color_cur_brand}" rx="4" filter="url(#glow)"/>
+        <text x="{badge_w/2}" y="{badge_h/2 + 4}" font-size="9" font-weight="900" fill="#000" text-anchor="middle" font-family="sans-serif">
+            {fmt_k_custom(live_price)} ({unreal_pct:+.1f}%)
         </text>
     </g>
     """)
-    # Focus line extending from bar edges
-    els.append(f'<line x1="{bar_x - 12}" y1="{y_cur}" x2="{bar_x}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5"/>')
-    els.append(f'<line x1="{bar_x + bar_w}" y1="{y_cur}" x2="{bar_x + bar_w + 12}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5"/>')
-
-    svg_content = "".join(els)
+    
+    # Sharp indicator lines ON TOP of the bar (Exact width, no overhang)
+    els.append(f'<line x1="{bar_x}" y1="{y_cur}" x2="{bar_x+bar_w}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5" filter="url(#glow)"/>')
 
     svg_content = "".join(els)
     svg_full = f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="background:transparent; overflow:visible;">{svg_content}</svg>'
