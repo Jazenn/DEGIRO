@@ -1314,7 +1314,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
         # Show data hints
         st.caption(f"💡 **Data-check**: Jaarpiek: {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal: {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
-        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} (Cash: {format_eur(current_cash)} | Assets: {format_eur(total_assets_val)})")
+        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} (Cash: {format_eur(current_cash)} | Assets: {format_eur(asset_val)})")
         st.caption(f"💡 **Doel**: {target_pct}% van portfolio = {format_eur(target_val)} | Huidig: {format_eur(current_asset_val)} | **Gap: {format_eur(auto_budget)}**")
 
         c1, c2, c3 = st.columns(3)
