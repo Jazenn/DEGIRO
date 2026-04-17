@@ -1359,7 +1359,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     ]
     
     # 5.6 Visual Price Chart (SVG)
-    render_trading_chart(live_price, avg_price, sell_targets, buy_targets, qty, selected_product)
+    render_trading_chart(live_price, avg_price, sell_targets, buy_targets, qty, selected_product, buy_budget)
 
     # 6. Sell Ladder
     st.markdown("#### 📊 Verkoop-ladder")
@@ -1438,9 +1438,10 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     avg_buyback = weighted_sum / total_rebound_coins if total_rebound_coins > 0 else 0.0
     st.write(f"Gem. terugkooprijs bij volledige uitvoering: **{format_eur_smart(avg_buyback)}**")
 
-def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amount, selected_product):
-    """Generates and renders a vertical SVG price scale diagram (based on user design)."""
+def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amount, selected_product, buy_budget):
+    """Generates a premium, modern vertical trading chart (SVG) for mobile and desktop."""
     import html
+    
     def fmt_k(n):
         if n >= 1000: return f"€{round(n/1000, 1)}k"
         return f"€{round(n)}"
@@ -1450,87 +1451,129 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
 
     # Calculate ranges and scales
     all_prices = [live_price, avg_price] + [t["price"] for t in sell_targets] + [t["price"] for t in buy_targets]
-    max_p = max(all_prices) * 1.05
-    min_p = min(all_prices) * 0.95
+    max_p = max(all_prices) * 1.08
+    min_p = min(all_prices) * 0.92
     p_range = max_p - min_p
     
     W = 600
-    H = 650
-    pad_t = 40
-    pad_b = 40
+    H = 700
+    pad_t = 50
+    pad_b = 50
     chart_h = H - pad_t - pad_b
-    bar_x = 280
-    bar_w = 14
+    bar_x = 260 # Moved slightly left to give room for right labels
+    bar_w = 80  # Much wider track for a modern look
     bar_mid = bar_x + (bar_w / 2)
     
     def py(price):
         return pad_t + (1 - (price - min_p) / p_range) * chart_h
 
-    # Colors
-    is_dark = True # Most users prefer dark mode for these charts, or we can detect if possible. 
-    # Streamlit doesn't give us easy dark-mode detection in Python without extra JS.
-    # We'll use theme-aware colors via CSS variables where possible.
-    sell_c = "#5DCAA5"
-    buy_c = "#85B7EB"
-    cur_c = "#EF9F27"
-    avg_c = "#888780"
-    bar_bg = "rgba(255,255,255,0.1)"
-    dot_bg = "#1e1e1e"
+    # Premium Color Palette
+    color_bg = "#0E1117"
+    color_sell_brand = "#00D094" # Vibrant Green
+    color_buy_brand  = "#00A3FF" # Deep Blue
+    color_cur_brand  = "#FF9500" # Warning Orange
+    color_avg_brand  = "#94A3B8" # Slate
+    color_track      = "rgba(255, 255, 255, 0.04)"
+    color_track_border = "rgba(255, 255, 255, 0.1)"
 
     els = []
-    # Background bar
-    els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{chart_h}" fill="{bar_bg}" rx="7"/>')
 
-    # Helper for levels
-    def draw_lvl(y, color, dash, left_txt, right_txt, bold=False, big=False):
-        sw = 2 if bold else 1
-        r = 6 if big else 4
-        fill = color if big else dot_bg
-        # Lines
-        els.append(f'<line x1="0" y1="{y}" x2="{bar_x}" y2="{y}" stroke="{color}" stroke-width="{sw}" stroke-dasharray="{dash}"/>')
-        els.append(f'<line x1="{bar_x+bar_w}" y1="{y}" x2="{W}" y2="{y}" stroke="{color}" stroke-width="{sw}" stroke-dasharray="{dash}"/>')
-        # Dot
-        els.append(f'<circle cx="{bar_mid}" cy="{y}" r="{r}" fill="{fill}" stroke="{color}" stroke-width="1.5"/>')
-        # Text
-        if left_txt:
-            els.append(f'<text x="{bar_x-15}" y="{y+5}" font-size="12" font-weight="{"600" if bold else "400"}" fill="{color}" text-anchor="end" font-family="sans-serif">{html.escape(left_txt)}</text>')
-        if right_txt:
-            els.append(f'<text x="{bar_x+bar_w+15}" y="{y+5}" font-size="12" fill="{color}" text-anchor="start" font-family="sans-serif">{html.escape(right_txt)}</text>')
+    # 1. Defs for Gradients and Filters
+    els.append(f"""
+    <defs>
+        <linearGradient id="sellGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="{color_sell_brand}" stop-opacity="0.15"/>
+            <stop offset="100%" stop-color="{color_sell_brand}" stop-opacity="0"/>
+        </linearGradient>
+        <linearGradient id="buyGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="{color_buy_brand}" stop-opacity="0"/>
+            <stop offset="100%" stop-color="{color_buy_brand}" stop-opacity="0.15"/>
+        </linearGradient>
+        <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+        </filter>
+    </defs>
+    """)
 
-    # 1. Sell Targets
-    for i, t in enumerate(sell_targets):
-        price = t["price"]
-        profit = (amount * 0.25) * (price - avg_price)
-        draw_lvl(py(price), sell_c, "5 3", f"{t['label']} {fmt_k(price)}", f"verkoop 25% → +{fmt_eur_n(profit)}")
+    # 2. Main Track
+    els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{chart_h}" fill="{color_track}" stroke="{color_track_border}" stroke-width="1" rx="12"/>')
 
-    # 2. Buy Targets
+    # 3. Zone Highlights
+    y_s_max = py(max(t["price"] for t in sell_targets))
+    y_s_min = py(min(t["price"] for t in sell_targets))
+    els.append(f'<rect x="{bar_x}" y="{y_s_max}" width="{bar_w}" height="{y_s_min - y_s_max}" fill="url(#sellGrad)" rx="8"/>')
+    
+    y_b_max = py(max(t["price"] for t in buy_targets))
+    y_b_min = py(min(t["price"] for t in buy_targets))
+    els.append(f'<rect x="{bar_x}" y="{y_b_max}" width="{bar_w}" height="{y_b_min - y_b_max}" fill="url(#buyGrad)" rx="8"/>')
+
+    # Helper for Labels and Markers
+    def draw_marker(price, color, label, subtext, side="right", is_bold=False, has_glow=False):
+        y = py(price)
+        glow_attr = 'filter="url(#glow)"' if has_glow else ""
+        
+        # Connection Line (Only inside or near the track)
+        if side == "right":
+            els.append(f'<line x1="{bar_x + bar_w}" y1="{y}" x2="{bar_x + bar_w + 10}" y2="{y}" stroke="{color}" stroke-width="1.5" opacity="0.6"/>')
+            tx = bar_x + bar_w + 15
+            anchor = "start"
+        else:
+            els.append(f'<line x1="{bar_x - 10}" y1="{y}" x2="{bar_x}" y2="{y}" stroke="{color}" stroke-width="1.5" opacity="0.6"/>')
+            tx = bar_x - 15
+            anchor = "end"
+
+        # Dot on Track
+        els.append(f'<circle cx="{bar_mid if side=="cur" else (bar_x if side=="left" else bar_x+bar_w)}" cy="{y}" r="4" fill="{color}" {glow_attr}/>')
+        
+        # Label Text
+        els.append(f'<text x="{tx}" y="{y - 2}" font-size="13" font-weight="{"600" if is_bold else "500"}" fill="{color}" text-anchor="{anchor}" font-family="sans-serif">{html.escape(label)}</text>')
+        els.append(f'<text x="{tx}" y="{y + 12}" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="{anchor}" font-family="sans-serif">{html.escape(subtext)}</text>')
+
+    # 4. Sell Targets (Left Side)
+    for t in sell_targets:
+        profit = (amount * 0.25) * (t["price"] - avg_price)
+        draw_marker(t["price"], color_sell_brand, t["label"], f"+{fmt_eur_n(profit)}", side="left")
+
+    # 5. Buy Targets (Right Side)
     for t in buy_targets:
-        price = t["price"]
-        draw_lvl(py(price), buy_c, "5 3", f"{t['label']} {fmt_k(price)}", f"terugkoop 25% → {fmt_k(price)}")
+        cost = (buy_budget / 4)
+        draw_marker(t["price"], color_buy_brand, t["label"], f"Koop {fmt_eur_n(cost)}", side="right")
 
-    # 3. Current Price
+    # 6. Average Price
+    draw_marker(avg_price, color_avg_brand, "Break-even", f"Inkoop {fmt_k(avg_price)}", side="left")
+
+    # 7. Current Price (Special Focus)
+    y_cur = py(live_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
-    draw_lvl(py(live_price), cur_c, "0", f"Huidig {fmt_k(live_price)}", f"{fmt_eur_n(amount * live_price)} ({unreal_pct:+.1f}%)", bold=True, big=True)
-
-    # 4. Inkoop Price
-    draw_lvl(py(avg_price), avg_c, "4 3", f"Inkoop {fmt_k(avg_price)}", "gem. aankoopprijs")
+    
+    # Glowing pointer line
+    els.append(f'<line x1="{bar_x - 20}" y1="{y_cur}" x2="{bar_x + bar_w + 20}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5" filter="url(#glow)"/>')
+    # Background for current price label to make it pop
+    els.append(f'<rect x="{bar_x + bar_w + 30}" y="{y_cur - 15}" width="140" height="30" fill="{color_bg}" rx="6" stroke="{color_cur_brand}" stroke-width="1" opacity="0.9"/>')
+    els.append(f'<text x="{bar_x + bar_w + 40}" y="{y_cur + 5}" font-size="14" font-weight="700" fill="{color_cur_brand}" font-family="sans-serif">{fmt_k(live_price)} ({unreal_pct:+.1f}%)</text>')
 
     svg_content = "".join(els)
     svg_full = f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="background:transparent; overflow:visible;">{svg_content}</svg>'
     
     st.markdown("#### 🔭 Visuele Prijsladder")
+    # Wrap in a modern card
     st.markdown(
-        f'<div style="background:#1e1e1e; border-radius:12px; padding:20px 10px; border:1px solid #333;">{svg_full}</div>', 
+        f"""
+        <div style="background:{color_bg}; border-radius:16px; padding:30px 15px; border:1px solid rgba(255,255,255,0.05); box-shadow: 0 10px 30px rgba(0,0,0,0.4); margin-bottom:20px;">
+            {svg_full}
+        </div>
+        """, 
         unsafe_allow_html=True
     )
     
     # Legend
-    st.markdown("""
-    <div style="display:flex; gap:15px; margin-top:10px; font-size:12px; color:#888; flex-wrap:wrap; justify-content:center;">
-        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#5DCAA5;border-radius:1px;"></div> Verkooptarget</span>
-        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#85B7EB;border-radius:1px;"></div> Terugkoopdoel</span>
-        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#EF9F27;border-radius:1px;"></div> Huidige prijs</span>
-        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#888780;border-radius:1px;"></div> Gem. inkoop</span>
+    st.markdown(f"""
+    <div style="display:flex; gap:20px; margin-top:5px; font-size:12px; color:#64748B; flex-wrap:wrap; justify-content:center; letter-spacing:0.3px;">
+        <span style="display:flex;align-items:center;gap:8px;"><div style="width:10px;height:10px;background:{color_sell_brand};border-radius:2px;"></div> VERKOOP</span>
+        <span style="display:flex;align-items:center;gap:8px;"><div style="width:10px;height:10px;background:{color_buy_brand};border-radius:2px;"></div> INKOOP</span>
+        <span style="display:flex;align-items:center;gap:8px;"><div style="width:10px;height:10px;background:{color_cur_brand};border-radius:2px;"></div> HUIDIG</span>
+        <span style="display:flex;align-items:center;gap:8px;"><div style="width:10px;height:10px;background:{color_avg_brand};border-radius:2px;"></div> BREAK-EVEN</span>
     </div>
     """, unsafe_allow_html=True)
 
