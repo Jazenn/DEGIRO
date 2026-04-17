@@ -1559,8 +1559,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     # 7. Current Price (Indicator & Badge) - RENDERED LAST TO STAY ON TOP
     y_cur = py(live_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
-    badge_w = 64 
-    badge_h = 22
+    badge_w = 80 
+    badge_h = 26
     
     # Fill indicator background
     els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.12" rx="12"/>')
