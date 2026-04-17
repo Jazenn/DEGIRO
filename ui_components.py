@@ -1278,8 +1278,11 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     strategy = config_manager.get_trading_strategy(selected_product)
     
     # Data-driven Defaults
-    t1_sell_def = strategy.get("t1_sell", yearly_max if yearly_max else round(avg_price * 1.5, 0))
-    t1_buy_def = strategy.get("t1_buy", yearly_min if yearly_min else round(avg_price * 0.7, 0))
+    # User wants Yearly Max/Min to be the FINAL targets (T4/Dip4).
+    # Since T4_sell = T1 * 1.50, then T1_def = YearlyMax / 1.50
+    # Since T4_buy = T1 * 0.55, then T1_def = YearlyMin / 0.55
+    t1_sell_def = strategy.get("t1_sell", (yearly_max / 1.5) if yearly_max else round(avg_price * 1.15, 0))
+    t1_buy_def = strategy.get("t1_buy", (yearly_min / 0.55) if yearly_min else round(avg_price * 0.85, 0))
     buy_budget_def = strategy.get("buy_budget", auto_budget)
 
     # 4. Layout: Metrics Row
@@ -1312,10 +1315,8 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     # 5. Interactive Inputs
     st.markdown("#### ⚙️ Strategie Instellingen")
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
-        # Show data hints
-        st.caption(f"💡 **Data-check**: Jaarpiek: {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal: {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
-        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} (Cash: {format_eur(current_cash)} | Assets: {format_eur(asset_val)})")
-        st.caption(f"💡 **Doel**: {target_pct}% van portfolio = {format_eur(target_val)} | Huidig: {format_eur(current_asset_val)} | **Gap: {format_eur(auto_budget)}**")
+        # Show data hints (Simplified per user request)
+        st.caption(f"💡 **Data-check**: Jaarpiek (Doel 4): {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal (Dip 4): {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
 
         c1, c2, c3 = st.columns(3)
         t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
@@ -1332,13 +1333,13 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             st.toast("Instellingen opgeslagen!", icon="💾")
             
         # Reset Button to force data-driven values
-        if st.button("🔄 Gebruik data-targets (Jaarpiek / Jaardal / Rebalancing)"):
+        if st.button("🔄 Gebruik data-targets (Jaarpiek & Jaardal als NL4)"):
             config_manager.set_trading_strategy(selected_product, {
-                "t1_sell": yearly_max if yearly_max else t1_sell,
-                "t1_buy": yearly_min if yearly_min else t1_buy,
+                "t1_sell": (yearly_max / 1.5) if yearly_max else t1_sell,
+                "t1_buy": (yearly_min / 0.55) if yearly_min else t1_buy,
                 "buy_budget": auto_budget
             })
-            st.toast("Targets bijgewerkt op basis van actuele data! ✅")
+            st.toast("Targets bijgewerkt! (Jaarpiek/dal ingesteld als einddoelen) ✅")
             st.rerun()
 
     # 6. Sell Ladder
