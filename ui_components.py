@@ -1241,24 +1241,30 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     
     yearly_max, yearly_min = _fetch_stats(ticker)
 
-    # Calculate Total Portfolio BEFORE filtering positions
-    all_positions = build_positions(df)
-    total_assets_val = 0.0
-    for _, prow in all_positions.iterrows():
-        pticker = price_manager.resolve_ticker(prow.get("product"), prow.get("isin"))
-        if pticker:
-            lprice = price_manager.get_live_price(pticker)
-            if lprice > 0:
-                total_assets_val += prow["quantity"] * lprice
+    # Calculate Total Portfolio exactly as in other dashboard tabs
+    all_pos = build_positions(df)
+    asset_val = 0.0
+    for _, prow in all_pos.iterrows():
+        # Try to get live value
+        ptick = price_manager.resolve_ticker(prow.get("product"), prow.get("isin"))
+        if ptick:
+            lp = price_manager.get_live_price(ptick)
+            if lp > 0:
+                asset_val += prow["quantity"] * lp
                 continue
-        
-        # Fallback: if no ticker or live price fails, use average buy price as a placeholder for total cap
-        # This ensures the total portfolio value remains realistic even for obscure assets.
-        p_avg = (prow["invested"] / prow["quantity"]) if prow["quantity"] > 0 else 0.0
-        total_assets_val += prow["quantity"] * p_avg
+        # Fallback to invested amount (same as rebalancing tab)
+        asset_val += prow.get("invested", 0.0)
+
+    # Get the exact current balance from the last CSV row (same as dashboard metrics)
+    current_cash = 0.0
+    if not df.empty:
+        if "csv_row_id" in df.columns:
+            sorted_df = df.sort_values(["value_date", "csv_row_id"], ascending=[False, True])
+        else:
+            sorted_df = df.sort_values("value_date", ascending=False)
+        current_cash = sorted_df.iloc[0].get("balance", 0.0)
             
-    current_cash = df["amount"].sum()
-    total_portfolio_val = total_assets_val + current_cash
+    total_portfolio_val = asset_val + current_cash
     
     asset_config = config_manager.get_asset(selected_product)
     target_pct = asset_config.get("target_percentage", asset_config.get("target_pct", 0.0))
