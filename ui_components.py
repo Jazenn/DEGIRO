@@ -1302,7 +1302,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
         # Show data hints
         st.caption(f"💡 **Data-check**: Jaarpiek: {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal: {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
-        st.caption(f"💡 **Rebalancing**: Doel-waarde voor {selected_product}: {format_eur(target_val)} (Gap: {format_eur(auto_budget)})")
+        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} | Doel: {target_pct}% ({format_eur(target_val)}) | Gap: {format_eur(auto_budget)}")
 
         c1, c2, c3 = st.columns(3)
         t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
