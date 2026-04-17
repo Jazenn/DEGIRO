@@ -1496,22 +1496,21 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     </defs>
     """)
 
-    # 2. Main Track
+    # 2. Main Track (Background)
     els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{chart_h}" fill="{color_track}" stroke="{color_track_border}" stroke-width="1" rx="12"/>')
 
-    # 2.5 Progress Fill (From bottom to current price)
-    y_cur = py(live_price)
-    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.15" rx="12"/>')
-    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="4" fill="{color_cur_brand}" opacity="0.8" rx="2"/>') # Subtle highlight at the top of the fill
-
-    # 3. Zone Highlights
-    y_s_max = py(max(t["price"] for t in sell_targets))
-    y_s_min = py(min(t["price"] for t in sell_targets))
-    els.append(f'<rect x="{bar_x}" y="{y_s_max}" width="{bar_w}" height="{y_s_min - y_s_max}" fill="url(#sellGrad)" rx="8"/>')
+    # 3. Full-length Zone Highlights (Up to the top and bottom)
+    # We use a mid-point between the lowest sell and highest buy for the split
+    y_mid = (py(min(t["price"] for t in sell_targets)) + py(max(t["price"] for t in buy_targets))) / 2
     
-    y_b_max = py(max(t["price"] for t in buy_targets))
-    y_b_min = py(min(t["price"] for t in buy_targets))
-    els.append(f'<rect x="{bar_x}" y="{y_b_max}" width="{bar_w}" height="{y_b_min - y_b_max}" fill="url(#buyGrad)" rx="8"/>')
+    # Sell zone (Top to mid)
+    els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{y_mid - pad_t}" fill="url(#sellGrad)" rx="8"/>')
+    # Buy zone (Mid to bottom)
+    els.append(f'<rect x="{bar_x}" y="{y_mid}" width="{bar_w}" height="{pad_t + chart_h - y_mid}" fill="url(#buyGrad)" rx="8"/>')
+
+    # 2.5 Progress Fill overlay (Stronger indicator up to current price)
+    y_cur = py(live_price)
+    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.1" rx="12"/>')
 
     # Helper for Labels and Markers
     def draw_marker(price, color, label, subtext, side="right", is_bold=False, has_glow=False):
@@ -1528,8 +1527,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
             tx = bar_x - 15
             anchor = "end"
 
-        # Dot on Track
-        els.append(f'<circle cx="{bar_mid if side=="cur" else (bar_x if side=="left" else bar_x+bar_w)}" cy="{y}" r="4" fill="{color}" {glow_attr}/>')
+        # Dot on Track boundary
+        els.append(f'<circle cx="{bar_x if side=="left" else bar_x+bar_w}" cy="{y}" r="4" fill="{color}" {glow_attr}/>')
         
         # Label Text
         els.append(f'<text x="{tx}" y="{y - 2}" font-size="13" font-weight="{"600" if is_bold else "500"}" fill="{color}" text-anchor="{anchor}" font-family="sans-serif">{html.escape(label)}</text>')
@@ -1537,28 +1536,35 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
 
     # 4. Sell Targets (Left Side)
     for t in sell_targets:
-        profit = (amount * 0.25) * (t["price"] - avg_price)
+        profit = round((amount * 0.25) * (t["price"] - avg_price))
         label_with_price = f"{t['label']} ({fmt_k(t['price'])})"
         draw_marker(t["price"], color_sell_brand, label_with_price, f"+{fmt_eur_n(profit)}", side="left")
 
     # 5. Buy Targets (Right Side)
     for t in buy_targets:
-        cost = (buy_budget / 4)
+        cost = round(buy_budget / 4)
         label_with_price = f"{t['label']} ({fmt_k(t['price'])})"
         draw_marker(t["price"], color_buy_brand, label_with_price, f"Koop {fmt_eur_n(cost)}", side="right")
 
     # 6. Average Price
     draw_marker(avg_price, color_avg_brand, f"Break-even ({fmt_k(avg_price)})", "gem. aankoopprijs", side="left")
 
-    # 7. Current Price (Special Focus)
-    # y_cur recalculated above
+    # 7. Current Price (Special Focus - Centered INSIDE the bar)
+    # Background for current price label (badge)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
-    
-    # Glowing pointer line
-    els.append(f'<line x1="{bar_x - 20}" y1="{y_cur}" x2="{bar_x + bar_w + 20}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5" filter="url(#glow)"/>')
-    # Background for current price label to make it pop
-    els.append(f'<rect x="{bar_x + bar_w + 30}" y="{y_cur - 15}" width="140" height="30" fill="{color_bg}" rx="6" stroke="{color_cur_brand}" stroke-width="1" opacity="0.9"/>')
-    els.append(f'<text x="{bar_x + bar_w + 40}" y="{y_cur + 5}" font-size="14" font-weight="700" fill="{color_cur_brand}" font-family="sans-serif">{fmt_k(live_price)} ({unreal_pct:+.1f}%)</text>')
+    badge_w = 110
+    badge_h = 32
+    els.append(f"""
+    <g transform="translate({bar_mid - badge_w/2}, {y_cur - badge_h/2})">
+        <rect width="{badge_w}" height="{badge_h}" fill="{color_cur_brand}" rx="8" filter="url(#glow)"/>
+        <text x="{badge_w/2}" y="{badge_h/2 + 5}" font-size="13" font-weight="800" fill="#000" text-anchor="middle" font-family="sans-serif">
+            {fmt_k(live_price)} ({unreal_pct:+.0f}%)
+        </text>
+    </g>
+    """)
+    # Focus line extending from bar
+    els.append(f'<line x1="{bar_x - 10}" y1="{y_cur}" x2="{bar_x}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2"/>')
+    els.append(f'<line x1="{bar_x + bar_w}" y1="{y_cur}" x2="{bar_x + bar_w + 10}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2"/>')
 
     svg_content = "".join(els)
     svg_full = f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="background:transparent; overflow:visible;">{svg_content}</svg>'
