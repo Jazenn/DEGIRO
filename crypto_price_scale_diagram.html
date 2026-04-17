@@ -1,0 +1,167 @@
+
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+input[type=number] { width:100%; padding:6px 10px; border:0.5px solid var(--color-border-secondary); border-radius:var(--border-radius-md); font-size:14px; background:var(--color-background-primary); color:var(--color-text-primary); }
+.ig label { display:block; font-size:12px; color:var(--color-text-secondary); margin-bottom:4px; }
+.mc { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:12px; }
+.mc .ml { font-size:12px; color:var(--color-text-secondary); margin-bottom:3px; }
+.mc .mv { font-size:17px; font-weight:500; color:var(--color-text-primary); }
+.tab { font-size:13px; padding:4px 14px; border:0.5px solid var(--color-border-secondary); border-radius:99px; cursor:pointer; }
+</style>
+
+<div style="padding:1rem 0;">
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1.25rem;">
+  <div>
+    <div style="font-size:18px; font-weight:500; color:var(--color-text-primary);">Crypto tracker</div>
+    <div style="font-size:13px; color:var(--color-text-secondary);">Verkoop &amp; terugkoop strategie</div>
+  </div>
+  <div style="display:flex; gap:8px;">
+    <div id="tBtc" class="tab" onclick="setCoin('btc')" style="background:var(--color-text-primary);color:var(--color-background-primary);">BTC</div>
+    <div id="tEth" class="tab" onclick="setCoin('eth')" style="background:var(--color-background-primary);color:var(--color-text-secondary);">ETH</div>
+  </div>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-bottom:1rem;">
+  <div class="ig"><label id="amtLbl">Aantal (BTC)</label><input type="number" id="amt" value="0.15" step="0.001" oninput="draw()"></div>
+  <div class="ig"><label>Gem. aankoopprijs (€)</label><input type="number" id="avgI" value="61000" step="500" oninput="draw()"></div>
+  <div class="ig"><label>Huidige prijs (€)</label><input type="number" id="curI" value="66000" step="500" oninput="draw()"></div>
+  <div class="ig"><label>Eerste verkooptarget (€)</label><input type="number" id="s1I" value="70000" step="500" oninput="draw()"></div>
+  <div class="ig"><label>Eerste terugkoop (€)</label><input type="number" id="b1I" value="55000" step="500" oninput="draw()"></div>
+  <div class="ig"><label>Terugkoop budget (€)</label><input type="number" id="bgtI" value="5000" step="100" oninput="draw()"></div>
+</div>
+
+<div style="display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; margin-bottom:1.5rem;">
+  <div class="mc"><div class="ml">Huidige waarde</div><div class="mv" id="mVal">—</div></div>
+  <div class="mc"><div class="ml">Ongerealiseerd</div><div class="mv" id="mUnreal">—</div></div>
+  <div class="mc"><div class="ml">Totale verkoopwinst</div><div class="mv" id="mSell" style="color:#3B6D11;">—</div></div>
+  <div class="mc"><div class="ml">Gem. terugkooprijs</div><div class="mv" id="mBuy" style="color:#185FA5;">—</div></div>
+</div>
+
+<div style="background:var(--color-background-primary); border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); padding:1rem 0.25rem;">
+  <svg id="chart" viewBox="0 0 600 580" width="100%" style="display:block; overflow:visible;" aria-label="Verticale prijsschaal met verkoop- en terugkoop-targets"></svg>
+</div>
+
+<div style="display:flex; gap:20px; margin-top:1rem; font-size:12px; color:var(--color-text-secondary); flex-wrap:wrap; align-items:center;">
+  <span style="display:flex;align-items:center;gap:6px;"><svg width="22" height="8" style="display:block;"><line x1="0" y1="4" x2="22" y2="4" stroke="#0F6E56" stroke-width="1.5" stroke-dasharray="5 3"/></svg>Verkooptarget</span>
+  <span style="display:flex;align-items:center;gap:6px;"><svg width="22" height="8" style="display:block;"><line x1="0" y1="4" x2="22" y2="4" stroke="#185FA5" stroke-width="1.5" stroke-dasharray="5 3"/></svg>Terugkoopdoel</span>
+  <span style="display:flex;align-items:center;gap:6px;"><svg width="22" height="8" style="display:block;"><line x1="0" y1="4" x2="22" y2="4" stroke="#BA7517" stroke-width="2"/></svg>Huidige prijs</span>
+  <span style="display:flex;align-items:center;gap:6px;"><svg width="22" height="8" style="display:block;"><line x1="0" y1="4" x2="22" y2="4" stroke="#888780" stroke-width="1" stroke-dasharray="4 3"/></svg>Gem. aankoopprijs</span>
+</div>
+
+</div>
+
+<script>
+let coin = 'btc';
+
+function setCoin(c) {
+  coin = c;
+  const on  = 'background:var(--color-text-primary);color:var(--color-background-primary);';
+  const off = 'background:var(--color-background-primary);color:var(--color-text-secondary);';
+  document.getElementById('tBtc').style.cssText += c === 'btc' ? on : off;
+  document.getElementById('tEth').style.cssText += c === 'eth' ? on : off;
+  document.getElementById('amtLbl').textContent = `Aantal (${c.toUpperCase()})`;
+  draw();
+}
+
+function fmt(n)  { return '€' + Math.round(n).toLocaleString('nl-NL'); }
+function fmtK(n) { return '€' + (Math.round(n / 100) / 10).toFixed(1) + 'k'; }
+function esc(s)  { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;'); }
+
+function draw() {
+  const amount = parseFloat(document.getElementById('amt').value)  || 0;
+  const avgP   = parseFloat(document.getElementById('avgI').value) || 0;
+  const curP   = parseFloat(document.getElementById('curI').value) || 0;
+  const s1P    = parseFloat(document.getElementById('s1I').value)  || 0;
+  const b1P    = parseFloat(document.getElementById('b1I').value)  || 0;
+  const budget = parseFloat(document.getElementById('bgtI').value) || 0;
+
+  if (!s1P || !b1P || !avgP || !curP) return;
+
+  const s2P = s1P * 1.15, s3P = s1P * 1.30;
+  const b2P = b1P * 0.82, b3P = b1P * 0.65, b4P = b1P * 0.55;
+  const perSlice = budget / 4;
+
+  const curVal    = amount * curP;
+  const unrealized = curVal - amount * avgP;
+  const unrealPct  = avgP > 0 ? (curP - avgP) / avgP * 100 : 0;
+
+  let totalSell = 0;
+  [s1P, s2P, s3P].forEach(sp => { totalSell += (amount * 0.25) * (sp - avgP); });
+
+  const totalCoins = [b1P, b2P, b3P, b4P].reduce((acc, bp) => acc + (bp > 0 ? perSlice / bp : 0), 0);
+  const avgBuyBack = totalCoins > 0 ? budget / totalCoins : 0;
+
+  document.getElementById('mVal').textContent    = fmt(curVal);
+  document.getElementById('mUnreal').textContent = (unrealized >= 0 ? '+' : '') + fmt(unrealized) + ' (' + unrealPct.toFixed(1) + '%)';
+  document.getElementById('mUnreal').style.color = unrealized >= 0 ? '#3B6D11' : '#A32D2D';
+  document.getElementById('mSell').textContent   = '+' + fmt(totalSell);
+  document.getElementById('mBuy').textContent    = fmt(Math.round(avgBuyBack));
+
+  const isDark = matchMedia('(prefers-color-scheme: dark)').matches;
+  const W = 600, H = 580, padT = 30, padB = 30;
+  const chartH = H - padT - padB;
+  const barX = 282, barW = 12, barMid = barX + barW / 2;
+
+  const allP  = [s3P, s2P, s1P, curP, avgP, b1P, b2P, b3P, b4P];
+  const maxP  = Math.max(...allP) * 1.068;
+  const minP  = Math.min(...allP) * 0.905;
+  const range = maxP - minP;
+
+  function py(price) { return padT + (1 - (price - minP) / range) * chartH; }
+
+  const sellC = isDark ? '#5DCAA5' : '#0F6E56';
+  const buyC  = isDark ? '#85B7EB' : '#185FA5';
+  const curC  = isDark ? '#EF9F27' : '#BA7517';
+  const avgC  = isDark ? '#888780' : '#5F5E5A';
+  const barBg = isDark ? 'rgba(255,255,255,0.07)' : 'rgba(0,0,0,0.05)';
+  const sellZ = isDark ? 'rgba(13,110,86,0.22)'   : '#DFF2EB';
+  const gainZ = isDark ? 'rgba(13,110,86,0.11)'   : '#EFF9F4';
+  const buyZ  = isDark ? 'rgba(24,95,165,0.2)'    : '#E4F0FB';
+  const dotBg = isDark ? '#181816' : '#ffffff';
+
+  const yS1 = py(s1P), yS2 = py(s2P), yS3 = py(s3P);
+  const yCur = py(curP), yAvg = py(avgP);
+  const yB1  = py(b1P), yB2  = py(b2P), yB3  = py(b3P), yB4  = py(b4P);
+
+  const els = [];
+
+  els.push(`<rect x="${barX}" y="${padT}" width="${barW}" height="${chartH}" fill="${barBg}" rx="6"/>`);
+
+  const szT = Math.min(yS3, yCur), szB = Math.max(yS3, yCur);
+  if (szB > szT) els.push(`<rect x="${barX}" y="${szT}" width="${barW}" height="${szB - szT}" fill="${sellZ}"/>`);
+  const gzT = Math.min(yCur, yAvg), gzB = Math.max(yCur, yAvg);
+  if (gzB > gzT) els.push(`<rect x="${barX}" y="${gzT}" width="${barW}" height="${gzB - gzT}" fill="${gainZ}"/>`);
+  if (yB4 > yB1) els.push(`<rect x="${barX}" y="${yB1}" width="${barW}" height="${yB4 - yB1}" fill="${buyZ}"/>`);
+
+  function lvl(yPos, color, dash, leftTxt, rightTxt, bold, big) {
+    const sw = bold ? 2 : 1;
+    const r  = big ? 5.5 : 3.5;
+    const df = big ? color : dotBg;
+    els.push(
+      `<line x1="0" y1="${yPos}" x2="${barX}" y2="${yPos}" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${dash}"/>`,
+      `<line x1="${barX+barW}" y1="${yPos}" x2="${W}" y2="${yPos}" stroke="${color}" stroke-width="${sw}" stroke-dasharray="${dash}"/>`,
+      `<circle cx="${barMid}" cy="${yPos}" r="${r}" fill="${df}" stroke="${color}" stroke-width="1.5"/>`
+    );
+    if (leftTxt)  els.push(`<text x="${barX-12}" y="${yPos+4}" font-size="11" font-weight="${bold?500:400}" fill="${color}" text-anchor="end" font-family="system-ui,sans-serif">${esc(leftTxt)}</text>`);
+    if (rightTxt) els.push(`<text x="${barX+barW+12}" y="${yPos+4}" font-size="11" fill="${color}" text-anchor="start" font-family="system-ui,sans-serif">${esc(rightTxt)}</text>`);
+  }
+
+  [[s1P,'Doel 1'],[s2P,'Doel 2'],[s3P,'Doel 3']].forEach(([price, name]) => {
+    const profit = (amount * 0.25) * (price - avgP);
+    lvl(py(price), sellC, '5 3', `${name}  ${fmtK(price)}`, `verkoop 25%  →  +${fmt(profit)}`, false, false);
+  });
+
+  lvl(yCur, curC, '0', `Huidig  ${fmtK(curP)}`, `${fmt(curVal)}  (${unrealPct >= 0 ? '+' : ''}${unrealPct.toFixed(1)}%)`, true, true);
+  lvl(yAvg, avgC, '4 3', `Inkoop  ${fmtK(avgP)}`, `gem. aankoopprijs`, false, false);
+
+  [[b1P,'Terug 1'],[b2P,'Terug 2'],[b3P,'Terug 3'],[b4P,'Terug 4']].forEach(([price, name]) => {
+    const coins = price > 0 ? (perSlice / price).toFixed(5) : '0';
+    lvl(py(price), buyC, '5 3', `${name}  ${fmtK(price)}`, `${fmt(perSlice)}  →  ${coins} ${coin.toUpperCase()}`, false, false);
+  });
+
+  document.getElementById('chart').innerHTML = els.join('');
+}
+
+draw();
+</script>

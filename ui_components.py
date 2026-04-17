@@ -1344,19 +1344,28 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             st.toast("Targets bijgewerkt naar 30% spanne op basis van live data! ✅")
             st.rerun()
 
-    # 6. Sell Ladder
-    st.markdown("#### 📊 Verkoop-ladder")
-    st.caption("25% verkoper per niveau (4 doelen). Targets gebaseerd op jaarpiek.")
-    
+    # 5.5 Shared Target Definitions (Used for Chart & Ladders)
     sell_targets = [
         {"label": "Doel 1", "price": t1_sell},
         {"label": "Doel 2", "price": t1_sell * (0.8/0.7)},
         {"label": "Doel 3", "price": t1_sell * (0.9/0.7)},
         {"label": "Doel 4", "price": t1_sell * (1.0/0.7)},
     ]
+    buy_targets = [
+        {"label": "Dip 1", "price": t1_buy},
+        {"label": "Dip 2", "price": t1_buy * (1.2/1.3)},
+        {"label": "Dip 3", "price": t1_buy * (1.1/1.3)},
+        {"label": "Dip 4", "price": t1_buy * (1.0/1.3)},
+    ]
+    
+    # 5.6 Visual Price Chart (SVG)
+    render_trading_chart(live_price, avg_price, sell_targets, buy_targets, qty, selected_product)
+
+    # 6. Sell Ladder
+    st.markdown("#### 📊 Verkoop-ladder")
+    st.caption("25% verkoper per niveau (4 doelen). Targets gebaseerd op jaarpiek.")
     
     total_potential_profit = 0
-    
     with st.container(border=True):
         hcols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
         hcols[0].write("**Niveau**")
@@ -1391,13 +1400,6 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     st.markdown("#### 🛒 Terugkoop-ladder")
     st.caption("Gespreid terugkopen — budget gebaseerd op rebalancing doelpercentage.")
     
-    buy_targets = [
-        {"label": "Dip 1", "price": t1_buy},
-        {"label": "Dip 2", "price": t1_buy * (1.2/1.3)},
-        {"label": "Dip 3", "price": t1_buy * (1.1/1.3)},
-        {"label": "Dip 4", "price": t1_buy * (1.0/1.3)},
-    ]
-    
     slice_budget = buy_budget / 4
     weighted_sum = 0
     total_rebound_coins = 0
@@ -1420,16 +1422,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             total_rebound_coins += coins_back
             
             reached = live_price <= price
-            # Reverse progress: 1.0 at start, decreasing as price approaches target?
-            # User wants: "Ik lijk nu dichterbij het punt van 36k te zijn dan het punt van 55k."
-            # If Price = 66k, T1 = 55k, T2 = 45k. 
-            # Progression should be 1.0 when price is high, 0.0 when it hits 36k?
-            # Let's show: how much % of the dip we have covered.
-            # 0% covered if live_price >= start_price (e.g. T1). 100% covered if live_price <= target.
-            # Start of dip context is likely live_price or previous peak. 
-            # Simple: min(1.0, 1.0 - (live_price - price)/price) ? Or just use simple pct from T1.
-            # Let's use: progress = 1.0 - min(1.0, (live_price - price) / price) if price > 0 else 0.0
-            p_val = min(1.0, max(0.0, price / live_price)) # When live is 60k, T1=55k -> 0.91 progress. When live is 55k -> 1.0 progress.
+            p_val = min(1.0, max(0.0, price / live_price))
             
             cols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
             cols[0].markdown(f"**{target['label']}**<br><span style='font-size:11px; color:#666;'>{format_eur_smart(price)}</span>", unsafe_allow_html=True)
@@ -1444,4 +1437,100 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
 
     avg_buyback = weighted_sum / total_rebound_coins if total_rebound_coins > 0 else 0.0
     st.write(f"Gem. terugkooprijs bij volledige uitvoering: **{format_eur_smart(avg_buyback)}**")
+
+def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amount, selected_product):
+    """Generates and renders a vertical SVG price scale diagram (based on user design)."""
+    import html
+    def fmt_k(n):
+        if n >= 1000: return f"€{round(n/1000, 1)}k"
+        return f"€{round(n)}"
+    
+    def fmt_eur_n(n):
+        return f"€{round(n):,}".replace(",", ".")
+
+    # Calculate ranges and scales
+    all_prices = [live_price, avg_price] + [t["price"] for t in sell_targets] + [t["price"] for t in buy_targets]
+    max_p = max(all_prices) * 1.05
+    min_p = min(all_prices) * 0.95
+    p_range = max_p - min_p
+    
+    W = 600
+    H = 650
+    pad_t = 40
+    pad_b = 40
+    chart_h = H - pad_t - pad_b
+    bar_x = 280
+    bar_w = 14
+    bar_mid = bar_x + (bar_w / 2)
+    
+    def py(price):
+        return pad_t + (1 - (price - min_p) / p_range) * chart_h
+
+    # Colors
+    is_dark = True # Most users prefer dark mode for these charts, or we can detect if possible. 
+    # Streamlit doesn't give us easy dark-mode detection in Python without extra JS.
+    # We'll use theme-aware colors via CSS variables where possible.
+    sell_c = "#5DCAA5"
+    buy_c = "#85B7EB"
+    cur_c = "#EF9F27"
+    avg_c = "#888780"
+    bar_bg = "rgba(255,255,255,0.1)"
+    dot_bg = "#1e1e1e"
+
+    els = []
+    # Background bar
+    els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{chart_h}" fill="{bar_bg}" rx="7"/>')
+
+    # Helper for levels
+    def draw_lvl(y, color, dash, left_txt, right_txt, bold=False, big=False):
+        sw = 2 if bold else 1
+        r = 6 if big else 4
+        fill = color if big else dot_bg
+        # Lines
+        els.append(f'<line x1="0" y1="{y}" x2="{bar_x}" y2="{y}" stroke="{color}" stroke-width="{sw}" stroke-dasharray="{dash}"/>')
+        els.append(f'<line x1="{bar_x+bar_w}" y1="{y}" x2="{W}" y2="{y}" stroke="{color}" stroke-width="{sw}" stroke-dasharray="{dash}"/>')
+        # Dot
+        els.append(f'<circle cx="{bar_mid}" cy="{y}" r="{r}" fill="{fill}" stroke="{color}" stroke-width="1.5"/>')
+        # Text
+        if left_txt:
+            els.append(f'<text x="{bar_x-15}" y="{y+5}" font-size="12" font-weight="{"600" if bold else "400"}" fill="{color}" text-anchor="end" font-family="sans-serif">{html.escape(left_txt)}</text>')
+        if right_txt:
+            els.append(f'<text x="{bar_x+bar_w+15}" y="{y+5}" font-size="12" fill="{color}" text-anchor="start" font-family="sans-serif">{html.escape(right_txt)}</text>')
+
+    # 1. Sell Targets
+    for i, t in enumerate(sell_targets):
+        price = t["price"]
+        profit = (amount * 0.25) * (price - avg_price)
+        draw_lvl(py(price), sell_c, "5 3", f"{t['label']} {fmt_k(price)}", f"verkoop 25% → +{fmt_eur_n(profit)}")
+
+    # 2. Buy Targets
+    for t in buy_targets:
+        price = t["price"]
+        draw_lvl(py(price), buy_c, "5 3", f"{t['label']} {fmt_k(price)}", f"terugkoop 25% → {fmt_k(price)}")
+
+    # 3. Current Price
+    unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
+    draw_lvl(py(live_price), cur_c, "0", f"Huidig {fmt_k(live_price)}", f"{fmt_eur_n(amount * live_price)} ({unreal_pct:+.1f}%)", bold=True, big=True)
+
+    # 4. Inkoop Price
+    draw_lvl(py(avg_price), avg_c, "4 3", f"Inkoop {fmt_k(avg_price)}", "gem. aankoopprijs")
+
+    svg_content = "".join(els)
+    svg_full = f'<svg viewBox="0 0 {W} {H}" width="100%" xmlns="http://www.w3.org/2000/svg" style="background:transparent; overflow:visible;">{svg_content}</svg>'
+    
+    st.markdown("#### 🔭 Visuele Prijsladder")
+    st.markdown(
+        f'<div style="background:#1e1e1e; border-radius:12px; padding:20px 10px; border:1px solid #333;">{svg_full}</div>', 
+        unsafe_allow_html=True
+    )
+    
+    # Legend
+    st.markdown("""
+    <div style="display:flex; gap:15px; margin-top:10px; font-size:12px; color:#888; flex-wrap:wrap; justify-content:center;">
+        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#5DCAA5;border-radius:1px;"></div> Verkooptarget</span>
+        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#85B7EB;border-radius:1px;"></div> Terugkoopdoel</span>
+        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#EF9F27;border-radius:1px;"></div> Huidige prijs</span>
+        <span style="display:flex;align-items:center;gap:6px;"><div style="width:12px;height:2px;background:#888780;border-radius:1px;"></div> Gem. inkoop</span>
+    </div>
+    """, unsafe_allow_html=True)
 
