@@ -31,6 +31,22 @@ def format_eur(value: float) -> str:
         return f"-€ {s}"
     return f"€ {s}"
 
+def format_eur_smart(value: float) -> str:
+    """Format euro string with 'k' notation for values >= 10,000."""
+    if pd.isna(value):
+        return "€ 0"
+    abs_val = abs(value)
+    if abs_val >= 10000:
+        # Round to whole thousands
+        val_k = round(abs_val / 1000)
+        s = f"{val_k}k"
+    else:
+        # Round to whole numbers
+        s = f"{round(abs_val):,}".replace(",", ".")
+    
+    prefix = "-€ " if value < 0 else "€ "
+    return f"{prefix}{s}"
+
 def format_pct(value: float) -> str:
     """Format a float as percentage with European decimal separator."""
     if pd.isna(value):

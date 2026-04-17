@@ -3,7 +3,7 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from utils import format_eur, format_pct, _shorten_name, fragment, is_tradegate_open
+from utils import format_eur, format_eur_smart, format_pct, _shorten_name, fragment, is_tradegate_open
 from data_processing import build_positions, build_global_invested_history
 
 @fragment(run_every=300)
@@ -1195,7 +1195,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
 
 @fragment(run_every=300)
 def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) -> None:
-    """Render the Short Term Trading insights with Claude-inspired design."""
+    """Render the Short Term Trading insights with Claude-inspired design and data-driven targets."""
     st.subheader("🚀 Short Term Trading Insights")
     
     positions = build_positions(df)
@@ -1228,146 +1228,186 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     avg_price = pos["invested"] / qty if qty != 0 else 0.0
     live_price = price_manager.get_live_price(ticker)
     
-    # 2. Strategy Data Persistence
+    # 2. Automated Data: Yearly Stats & Rebalancing Budget
+    @st.cache_data(ttl=3600)
+    def _fetch_stats(t):
+        h = price_manager.get_history(t, "1y")
+        if h.empty: return None, None
+        return float(h["High"].max()), float(h["Low"].min())
+    
+    yearly_max, yearly_min = _fetch_stats(ticker)
+    
+    # Rebalancing budget calculation
+    # Total Portfolio = Current Value of all assets + Cash
+    all_current_values = []
+    for _, prow in positions.iterrows():
+        pticker = prow.get("ticker")
+        if pticker:
+            lprice = price_manager.get_live_price(pticker)
+            all_current_values.append(prow["quantity"] * lprice)
+            
+    total_assets_val = sum(all_current_values)
+    current_cash = df["amount"].sum()
+    total_portfolio_val = total_assets_val + current_cash
+    
+    asset_config = config_manager.get_asset(selected_product)
+    target_pct = asset_config.get("target_percentage", 0.0)
+    # Target value for this asset
+    target_val = (total_portfolio_val * target_pct) / 100
+    current_asset_val = qty * live_price
+    # Default budget is the gap to reach target
+    auto_budget = max(0.0, target_val - current_asset_val)
+    
+    # 3. Strategy Data Persistence
     strategy = config_manager.get_trading_strategy(selected_product)
     
-    # Defaults based on HTML template
-    t1_sell_def = strategy.get("t1_sell", round(avg_price * 1.15, 0))
-    t1_buy_def = strategy.get("t1_buy", round(avg_price * 0.90, 0))
-    buy_budget_def = strategy.get("buy_budget", 1000.0)
+    # Data-driven Defaults
+    t1_sell_def = strategy.get("t1_sell", yearly_max if yearly_max else round(avg_price * 1.5, 0))
+    t1_buy_def = strategy.get("t1_buy", yearly_min if yearly_min else round(avg_price * 0.7, 0))
+    buy_budget_def = strategy.get("buy_budget", auto_budget)
 
-    # 3. Layout: Metrics Row
-    cur_val = qty * live_price
-    unreal_profit = cur_val - (qty * avg_price)
+    # 4. Layout: Metrics Row
+    unreal_profit = current_asset_val - (qty * avg_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0.0
+    # Realized Profit = Net Cashflow + (Qty * AvgPrice)
+    total_realized_profit = pos["net_cashflow"] + (qty * avg_price)
 
     st.markdown("---")
-    m1, m2, m3 = st.columns(3)
+    m1, m2, m3, m4 = st.columns(4)
     with m1.container(border=True):
         st.write("**Huidige waarde**")
-        st.write(f"### {format_eur(cur_val)}")
+        st.write(f"### {format_eur_smart(current_asset_val)}")
         st.write(f"{qty:.4f} {selected_product}")
     with m2.container(border=True):
         st.write("**Ongerealiseerde winst**")
         color = "green" if unreal_profit >= 0 else "red"
-        st.markdown(f"<h3 style='color:{color}'>{format_eur(unreal_profit)}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{color}'>{format_eur_smart(unreal_profit)}</h3>", unsafe_allow_html=True)
         st.write(format_pct(unreal_pct))
     with m3.container(border=True):
+        st.write("**Gerealiseerde winst**")
+        color_r = "green" if total_realized_profit >= 0 else "red"
+        st.markdown(f"<h3 style='color:{color_r}'>{format_eur_smart(total_realized_profit)}</h3>", unsafe_allow_html=True)
+        st.write("incl. dividenden")
+    with m4.container(border=True):
         st.write("**Break-even**")
-        st.write(f"### {format_eur(avg_price)}")
+        st.write(f"### {format_eur_smart(avg_price)}")
         st.write("gem. aankoopprijs")
 
-    # 4. Interactive Inputs
+    # 5. Interactive Inputs
     st.markdown("#### ⚙️ Strategie Instellingen")
-    c1, c2, c3 = st.columns(3)
-    t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
-    t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_def), step=500.0)
-    buy_budget = c3.number_input("Budget om terug te kopen (€)", value=float(buy_budget_def), step=100.0)
+    with st.expander("Pas targets en budget handmatig aan", expanded=False):
+        c1, c2, c3 = st.columns(3)
+        t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
+        t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_def), step=500.0)
+        buy_budget = c3.number_input("Handmatig budget (€)", value=float(buy_budget_def), step=100.0)
+        
+        if (t1_sell != t1_sell_def or t1_buy != t1_buy_def or buy_budget != buy_budget_def):
+            config_manager.set_trading_strategy(selected_product, {
+                "t1_sell": t1_sell,
+                "t1_buy": t1_buy,
+                "buy_budget": buy_budget
+            })
+            st.toast("Instellingen opgeslagen!", icon="💾")
 
-    if (t1_sell != t1_sell_def or t1_buy != t1_buy_def or buy_budget != buy_budget_def):
-        config_manager.set_trading_strategy(selected_product, {
-            "t1_sell": t1_sell,
-            "t1_buy": t1_buy,
-            "buy_budget": buy_budget
-        })
-        st.toast("Instellingen opgeslagen!", icon="💾")
-
-    # 5. Sell Ladder
+    # 6. Sell Ladder
     st.markdown("#### 📊 Verkoop-ladder")
-    st.caption("25% verkopen per niveau — targets automatisch berekend (+15%, +30%)")
+    st.caption("25% verkoper per niveau (4 doelen). Targets gebaseerd op jaarpiek.")
     
     sell_targets = [
         {"label": "Doel 1", "price": t1_sell},
         {"label": "Doel 2", "price": t1_sell * 1.15},
         {"label": "Doel 3", "price": t1_sell * 1.30},
+        {"label": "Doel 4", "price": t1_sell * 1.50}, # Final exit
     ]
     
-    total_sell_profit = 0
+    total_potential_profit = 0
     
     with st.container(border=True):
+        # Header for clarity
+        hcols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
+        hcols[0].write("**Niveau**")
+        hcols[1].write("**Voortgang**")
+        hcols[2].write("**%**")
+        hcols[3].write("**Aantal**")
+        hcols[4].write("**Winst**")
+        hcols[5].write("**Status**")
+        st.divider()
+
         for target in sell_targets:
             price = target["price"]
-            sell_amt = qty * 0.25
-            profit = sell_amt * (price - avg_price)
-            total_sell_profit += profit
+            sell_qty_lvl = qty * 0.25
+            profit = sell_qty_lvl * (price - avg_price)
+            total_potential_profit += profit
             
             reached = live_price >= price
             progress = min(1.0, live_price / price) if price > 0 else 0.0
             
-            cols = st.columns([2, 5, 1, 2, 2])
-            cols[0].write(f"**{target['label']}**\n\n{format_eur(price)}")
+            cols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
+            cols[0].markdown(f"**{target['label']}**<br><span style='font-size:11px; color:#666;'>{format_eur_smart(price)}</span>", unsafe_allow_html=True)
             cols[1].progress(progress)
             cols[2].write("25%")
-            cols[3].write(f"**{'+' if profit >= 0 else ''}{format_eur(profit)}**")
+            cols[3].write(f"{sell_qty_lvl:.4f}")
+            cols[4].write(f"**{'+' if profit >= 0 else ''}{format_eur_smart(profit)}**")
             if reached:
-                cols[4].markdown("<span style='background:#EAF3DE; color:#27500A; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
+                cols[5].markdown("<span style='background:#EAF3DE; color:#27500A; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
             else:
-                cols[4].markdown("<span style='background:#f0f0f0; color:#666; padding:2px 8px; border-radius:4px; font-size:12px;'>Nog niet</span>", unsafe_allow_html=True)
-        
-        # Last Tier: Restant
-        cols = st.columns([2, 5, 1, 2, 2])
-        cols[0].write(f"**Restant**\n\nHouden")
-        cols[1].progress(1.0)
-        cols[2].write("25%")
-        cols[3].write("-")
-        cols[4].markdown("<span style='background:#FAEEDA; color:#633806; padding:2px 8px; border-radius:4px; font-size:12px;'>Houden</span>", unsafe_allow_html=True)
+                cols[5].markdown("<span style='background:#f0f0f0; color:#666; padding:2px 8px; border-radius:4px; font-size:12px;'>Nog niet</span>", unsafe_allow_html=True)
 
-    st.write(f"Totale gerealiseerde winst bij volledige uitvoering: **{format_eur(total_sell_profit)}**")
-
-    # 6. Buy Ladder
+    # 7. Buy Ladder
     st.markdown("#### 🛒 Terugkoop-ladder")
-    st.caption("Gespreid terugkopen na de piek — targets gebaseerd op T1 (-18%, -35%, -45%)")
+    st.caption("Gespreid terugkopen — budget gebaseerd op rebalancing doelpercentage.")
     
     buy_targets = [
-        {"label": "Niveau 1", "price": t1_buy},
-        {"label": "Niveau 2", "price": t1_buy * 0.82},
-        {"label": "Niveau 3", "price": t1_buy * 0.65},
-        {"label": "Niveau 4", "price": t1_buy * 0.55},
+        {"label": "Dip 1", "price": t1_buy},
+        {"label": "Dip 2", "price": t1_buy * 0.82},
+        {"label": "Dip 3", "price": t1_buy * 0.65},
+        {"label": "Dip 4", "price": t1_buy * 0.55},
     ]
     
-    per_slice = buy_budget / 4
+    slice_budget = buy_budget / 4
     weighted_sum = 0
-    total_coins = 0
+    total_rebound_coins = 0
     
     with st.container(border=True):
-        for i, target in enumerate(buy_targets):
+        # Header
+        hcols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
+        hcols[0].write("**Niveau**")
+        hcols[1].write("**Voortgang**")
+        hcols[2].write("**%**")
+        hcols[3].write("**Kosten**")
+        hcols[4].write("**Inkoop**")
+        hcols[5].write("**Status**")
+        st.divider()
+
+        for target in buy_targets:
             price = target["price"]
-            coins_back = per_slice / price if price > 0 else 0
+            coins_back = slice_budget / price if price > 0 else 0
             weighted_sum += coins_back * price
-            total_coins += coins_back
+            total_rebound_coins += coins_back
             
             reached = live_price <= price
-            progress = (i + 1) * 0.25 # To match the look of the template
+            # Reverse progress: 1.0 at start, decreasing as price approaches target?
+            # User wants: "Ik lijk nu dichterbij het punt van 36k te zijn dan het punt van 55k."
+            # If Price = 66k, T1 = 55k, T2 = 45k. 
+            # Progression should be 1.0 when price is high, 0.0 when it hits 36k?
+            # Let's show: how much % of the dip we have covered.
+            # 0% covered if live_price >= start_price (e.g. T1). 100% covered if live_price <= target.
+            # Start of dip context is likely live_price or previous peak. 
+            # Simple: min(1.0, 1.0 - (live_price - price)/price) ? Or just use simple pct from T1.
+            # Let's use: progress = 1.0 - min(1.0, (live_price - price) / price) if price > 0 else 0.0
+            p_val = min(1.0, max(0.0, price / live_price)) # When live is 60k, T1=55k -> 0.91 progress. When live is 55k -> 1.0 progress.
             
-            cols = st.columns([2, 5, 1, 2, 2])
-            cols[0].write(f"**{target['label']}**\n\n{format_eur(price)}")
-            cols[1].progress(progress)
+            cols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
+            cols[0].markdown(f"**{target['label']}**<br><span style='font-size:11px; color:#666;'>{format_eur_smart(price)}</span>", unsafe_allow_html=True)
+            cols[1].progress(p_val)
             cols[2].write("25%")
-            cols[3].write(f"**{format_eur(per_slice)}**")
+            cols[3].write(f"{format_eur_smart(slice_budget)}")
+            cols[4].write(f"**{coins_back:.4f}**")
             if reached:
-                cols[4].markdown("<span style='background:#E6F1FB; color:#0C447C; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
+                cols[5].markdown("<span style='background:#E6F1FB; color:#0C447C; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
             else:
-                cols[4].markdown("<span style='background:#f0f0f0; color:#666; padding:2px 8px; border-radius:4px; font-size:12px;'>Nog niet</span>", unsafe_allow_html=True)
+                cols[5].markdown("<span style='background:#f0f0f0; color:#666; padding:2px 8px; border-radius:4px; font-size:12px;'>Nog niet</span>", unsafe_allow_html=True)
 
-    avg_buyback = weighted_sum / total_coins if total_coins > 0 else 0.0
-    st.write(f"Gem. terugkooprijs bij volledige uitvoering: **{format_eur(avg_buyback)}**")
-
-    # 7. Summary
-    st.markdown("#### 📝 Scenario samenvatting")
-    net_result = total_sell_profit - buy_budget
-    
-    with st.container(border=True):
-        col1, col2 = st.columns([3, 1])
-        col1.write("Winst bij volledig verkopen")
-        col2.write(f"**+{format_eur(total_sell_profit)}**")
-        
-        col1, col2 = st.columns([3, 1])
-        col1.write("Kosten terugkopen (totaal budget)")
-        col2.write(f"**{format_eur(buy_budget)}**")
-        
-        st.divider()
-        col1, col2 = st.columns([3, 1])
-        col1.write("**Netto resultaat**")
-        color = "green" if net_result >= 0 else "red"
-        col2.markdown(f"<span style='color:{color}; font-weight:bold;'>{'+' if net_result >= 0 else ''}{format_eur(net_result)}</span>", unsafe_allow_html=True)
+    avg_buyback = weighted_sum / total_rebound_coins if total_rebound_coins > 0 else 0.0
+    st.write(f"Gem. terugkooprijs bij volledige uitvoering: **{format_eur_smart(avg_buyback)}**")
 
