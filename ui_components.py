@@ -1499,6 +1499,11 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     # 2. Main Track
     els.append(f'<rect x="{bar_x}" y="{pad_t}" width="{bar_w}" height="{chart_h}" fill="{color_track}" stroke="{color_track_border}" stroke-width="1" rx="12"/>')
 
+    # 2.5 Progress Fill (From bottom to current price)
+    y_cur = py(live_price)
+    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.15" rx="12"/>')
+    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="4" fill="{color_cur_brand}" opacity="0.8" rx="2"/>') # Subtle highlight at the top of the fill
+
     # 3. Zone Highlights
     y_s_max = py(max(t["price"] for t in sell_targets))
     y_s_min = py(min(t["price"] for t in sell_targets))
@@ -1513,7 +1518,7 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
         y = py(price)
         glow_attr = 'filter="url(#glow)"' if has_glow else ""
         
-        # Connection Line (Only inside or near the track)
+        # Connection Line
         if side == "right":
             els.append(f'<line x1="{bar_x + bar_w}" y1="{y}" x2="{bar_x + bar_w + 10}" y2="{y}" stroke="{color}" stroke-width="1.5" opacity="0.6"/>')
             tx = bar_x + bar_w + 15
@@ -1533,18 +1538,20 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     # 4. Sell Targets (Left Side)
     for t in sell_targets:
         profit = (amount * 0.25) * (t["price"] - avg_price)
-        draw_marker(t["price"], color_sell_brand, t["label"], f"+{fmt_eur_n(profit)}", side="left")
+        label_with_price = f"{t['label']} ({fmt_k(t['price'])})"
+        draw_marker(t["price"], color_sell_brand, label_with_price, f"+{fmt_eur_n(profit)}", side="left")
 
     # 5. Buy Targets (Right Side)
     for t in buy_targets:
         cost = (buy_budget / 4)
-        draw_marker(t["price"], color_buy_brand, t["label"], f"Koop {fmt_eur_n(cost)}", side="right")
+        label_with_price = f"{t['label']} ({fmt_k(t['price'])})"
+        draw_marker(t["price"], color_buy_brand, label_with_price, f"Koop {fmt_eur_n(cost)}", side="right")
 
     # 6. Average Price
-    draw_marker(avg_price, color_avg_brand, "Break-even", f"Inkoop {fmt_k(avg_price)}", side="left")
+    draw_marker(avg_price, color_avg_brand, f"Break-even ({fmt_k(avg_price)})", "gem. aankoopprijs", side="left")
 
     # 7. Current Price (Special Focus)
-    y_cur = py(live_price)
+    # y_cur recalculated above
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
     
     # Glowing pointer line
