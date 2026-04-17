@@ -1229,6 +1229,10 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     live_price = price_manager.get_live_price(ticker)
     
     # 2. Automated Data: Yearly Stats & Rebalancing Budget
+    if config_manager is None or price_manager is None:
+        st.error("Configuratiebeheer of Prijsbeheer is niet beschikbaar.")
+        return
+
     @st.cache_data(ttl=3600)
     def _fetch_stats(t):
         h = price_manager.get_history(t, "1y")
@@ -1251,7 +1255,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     total_portfolio_val = total_assets_val + current_cash
     
     asset_config = config_manager.get_asset(selected_product)
-    target_pct = asset_config.get("target_percentage", 0.0)
+    target_pct = asset_config.get("target_percentage", asset_config.get("target_pct", 0.0))
     # Target value for this asset
     target_val = (total_portfolio_val * target_pct) / 100
     current_asset_val = qty * live_price

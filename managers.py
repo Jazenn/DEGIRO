@@ -133,6 +133,10 @@ class ConfigManager:
     # --- Settings ---
     def get_settings(self): return self._config.get("settings", {})
     
+    def get_asset(self, key):
+        """Get the configuration for a specific asset."""
+        return self._config.get("assets", {}).get(key, {})
+
     def update_settings(self, stock_fee=None, crypto_fee=None):
         changed = False
         settings = self._config.get("settings", {})
