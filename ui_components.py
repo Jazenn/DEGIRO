@@ -1300,11 +1300,16 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     # 5. Interactive Inputs
     st.markdown("#### ⚙️ Strategie Instellingen")
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
+        # Show data hints
+        st.caption(f"💡 **Data-check**: Jaarpiek: {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal: {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
+        st.caption(f"💡 **Rebalancing**: Doel-waarde voor {selected_product}: {format_eur(target_val)} (Gap: {format_eur(auto_budget)})")
+
         c1, c2, c3 = st.columns(3)
         t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
         t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_def), step=500.0)
         buy_budget = c3.number_input("Handmatig budget (€)", value=float(buy_budget_def), step=100.0)
         
+        # Save logic
         if (t1_sell != t1_sell_def or t1_buy != t1_buy_def or buy_budget != buy_budget_def):
             config_manager.set_trading_strategy(selected_product, {
                 "t1_sell": t1_sell,
@@ -1312,6 +1317,16 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
                 "buy_budget": buy_budget
             })
             st.toast("Instellingen opgeslagen!", icon="💾")
+            
+        # Reset Button to force data-driven values
+        if st.button("🔄 Gebruik data-targets (Jaarpiek / Jaardal / Rebalancing)"):
+            config_manager.set_trading_strategy(selected_product, {
+                "t1_sell": yearly_max if yearly_max else t1_sell,
+                "t1_buy": yearly_min if yearly_min else t1_buy,
+                "buy_budget": auto_budget
+            })
+            st.toast("Targets bijgewerkt op basis van actuele data! ✅")
+            st.rerun()
 
     # 6. Sell Ladder
     st.markdown("#### 📊 Verkoop-ladder")
