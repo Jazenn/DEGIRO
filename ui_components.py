@@ -772,8 +772,8 @@ def render_rebalancing(df: pd.DataFrame, config_manager, price_manager) -> None:
 
 def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None) -> None:
     st.markdown("---")
-    tab_overview, tab_rebalance, tab_balance, tab_history, tab_pnl = st.tabs(
-        ["📈 Overzicht", "⚖️ Rebalancing", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L"]
+    tab_overview, tab_rebalance, tab_balance, tab_history, tab_pnl, tab_trader = st.tabs(
+        ["📈 Overzicht", "⚖️ Rebalancing", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L", "🚀 Short Term Trader"]
     )
 
     with tab_overview:
@@ -1189,3 +1189,191 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
 
             else:
                 st.info("Nog onvoldoende data verzameld voor rendementsanalyse.")
+
+    with tab_trader:
+        render_short_term_trader(df, config_manager, price_manager)
+
+@fragment(run_every=300)
+def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) -> None:
+    """Render the Short Term Trading insights and strategy planner."""
+    st.subheader("🚀 Short Term Trading Insights")
+    positions = build_positions(df)
+    
+    if positions.empty:
+        st.warning("Geen open posities gevonden om te analyseren.")
+        return
+
+    # Filter products that have a ticker
+    positions["ticker"] = positions.apply(
+        lambda r: price_manager.resolve_ticker(r.get("product"), r.get("isin")), axis=1
+    )
+    positions = positions.dropna(subset=["ticker"])
+    
+    if positions.empty:
+        st.warning("Geen producten gevonden met een geldige ticker.")
+        return
+
+    # Select product
+    products = sorted(positions["product"].unique())
+    
+    # Try to find Bitcoin or first asset
+    default_idx = 0
+    for i, p in enumerate(products):
+        if any(x in str(p).upper() for x in ["BITCOIN", "BTC", "CRYPTO"]):
+            default_idx = i
+            break
+            
+    selected_product = st.selectbox("Selecteer aandeel om te analyseren:", products, index=default_idx)
+    pos = positions[positions["product"] == selected_product].iloc[0]
+    
+    ticker = pos["ticker"]
+    qty = pos["quantity"]
+    avg_price = pos["invested"] / qty if qty != 0 else 0.0
+    live_price = price_manager.get_live_price(ticker)
+    
+    # Metrics
+    total_result = (qty * live_price) + pos["net_cashflow"]
+    # Total sells is a proxy for realized if we only show cash returned
+    total_cashed_out = pos.get("total_sells", 0.0) + pos.get("total_dividends", 0.0)
+    
+    st.markdown(f"### Live Status: {selected_product}")
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Gem. Inkoopprijs", format_eur(avg_price))
+    m2.metric("Huidige Prijs", format_eur(live_price), delta=format_pct((live_price / avg_price - 1) * 100) if avg_price > 0 else None)
+    m3.metric("Totaal Resultaat", format_eur(total_result), help="Huidige waarde + alle transacties (aan/verkoop/dividend)")
+    m4.metric("Gerealiseerde Cash", format_eur(total_cashed_out), help="Totaal bedrag aan verkopen en dividenden (cash out)")
+
+    st.divider()
+    
+    # Strategy Settings
+    strategy = config_manager.get_trading_strategy(selected_product)
+    
+    # Defaults if empty - Based on user request for "4 sell levels of 25%"
+    if not strategy.get("sell_levels") and not strategy.get("buy_levels"):
+        if avg_price > 0:
+            strategy = {
+                "sell_levels": [
+                    {"price": round(avg_price * 1.25, 0), "percentage": 25.0},
+                    {"price": round(avg_price * 1.50, 0), "percentage": 25.0},
+                    {"price": round(avg_price * 2.00, 0), "percentage": 25.0},
+                    {"price": round(avg_price * 3.00, 0), "percentage": 25.0},
+                ],
+                "buy_levels": [
+                    {"price": round(avg_price * 0.90, 0), "percentage": 20.0},
+                    {"price": round(avg_price * 0.75, 0), "percentage": 20.0},
+                ]
+            }
+        else:
+            strategy = {"sell_levels": [], "buy_levels": []}
+
+    with st.expander("⚖️ Strategie & Target Plannings (Bewerk hier)", expanded=False):
+        st.info("Stel hier je take-profit en buy-the-dip levels in. De percentages bij verkoop zijn van je *huidige* portfolio.")
+        
+        col_s, col_b = st.columns(2)
+        
+        with col_s:
+            st.markdown("#### 🎯 Verkoop (Sell)")
+            new_sells = []
+            for i, lvl in enumerate(strategy.get("sell_levels", [])):
+                c1, c2, c3 = st.columns([2, 2, 1])
+                p = c1.number_input(f"Target Prijs €", value=float(lvl["price"]), key=f"sell_p_{i}")
+                pct = c2.number_input(f"Verkoop %", value=float(lvl["percentage"]), key=f"sell_pct_{i}", min_value=0.0, max_value=100.0)
+                if not c3.button("🗑️", key=f"del_sell_{i}"):
+                    new_sells.append({"price": p, "percentage": pct})
+            if st.button("➕ Voeg verkoopstarget toe"):
+                new_sells.append({"price": live_price * 1.25, "percentage": 25.0})
+                
+        with col_b:
+            st.markdown("#### 🛒 Inkoop (Buy)")
+            new_buys = []
+            for i, lvl in enumerate(strategy.get("buy_levels", [])):
+                c1, c2, c3 = st.columns([2, 2, 1])
+                p = c1.number_input(f"Inkoop Prijs €", value=float(lvl["price"]), key=f"buy_p_{i}")
+                pct = c2.number_input(f"Inleg %", value=float(lvl["percentage"]), key=f"buy_pct_{i}", help="Relatieve vergroting van je positie")
+                if not c3.button("🗑️", key=f"del_buy_{i}"):
+                    new_buys.append({"price": p, "percentage": pct})
+            if st.button("➕ Voeg inkoopniveau toe"):
+                new_buys.append({"price": live_price * 0.85, "percentage": 20.0})
+            
+        if st.button("💾 Strategie Opslaan", type="primary"):
+            config_manager.set_trading_strategy(selected_product, {"sell_levels": new_sells, "buy_levels": new_buys})
+            st.toast("Handelsstrategie succesvol opgeslagen! ✅", icon="💾")
+            st.rerun()
+
+    # Calculation Table
+    st.markdown("#### 📊 Plan Realisatie")
+    
+    rows = []
+    # Calc for sells
+    current_temp_qty = qty
+    for lvl in strategy.get("sell_levels", []):
+        tgt_price = lvl["price"]
+        lvl_pct = lvl["percentage"] / 100
+        sell_qty = current_temp_qty * lvl_pct
+        
+        if avg_price > 0:
+            profit_eur = (tgt_price - avg_price) * sell_qty
+            profit_pct = (tgt_price / avg_price - 1) * 100
+        else:
+            profit_eur = 0
+            profit_pct = 0
+            
+        rows.append({
+            "Type": "🔴 Verkoop",
+            "Target Prijs": format_eur(tgt_price),
+            "Aantal": f"{sell_qty:.4f}",
+            "Winst (EUR)": format_eur(profit_eur),
+            "Winst (%)": format_pct(profit_pct),
+            "Status": "⏳ Gepland" if tgt_price > live_price else "🚀 Uitvoeren!"
+        })
+        current_temp_qty -= sell_qty
+        
+    # Calc for buys
+    for lvl in strategy.get("buy_levels", []):
+        tgt_price = lvl["price"]
+        rows.append({
+            "Type": "🟢 Inkoop",
+            "Target Prijs": format_eur(tgt_price),
+            "Aantal": "-",
+            "Winst (EUR)": "-",
+            "Winst (%)": format_pct((tgt_price / avg_price - 1) * 100) if avg_price > 0 else "-",
+            "Status": "⏳ Gepland" if tgt_price < live_price else "🛒 Koopkans"
+        })
+        
+    if rows:
+        st.table(pd.DataFrame(rows))
+    else:
+        st.info("Voeg targets toe bij de instellingen om de planning te zien.")
+    
+    # Visualization
+    fig = go.Figure()
+    
+    # Current and Avg price lines
+    fig.add_hline(y=live_price, line_dash="solid", line_color="rgba(255,255,255,0.8)", line_width=2,
+                  annotation_text="HUIDIG", annotation_position="top left")
+    
+    if avg_price > 0:
+        fig.add_hline(y=avg_price, line_dash="dash", line_color="rgba(255,165,0,0.6)", line_width=1,
+                      annotation_text="GEM. INKOOP", annotation_position="bottom left")
+    
+    # Strategy levels
+    for lvl in strategy.get("sell_levels", []):
+        fig.add_hline(y=lvl["price"], line_dash="dot", line_color="#00CC96", line_width=2,
+                      annotation_text=f"VERKOOP {lvl['percentage']}%", annotation_position="top right")
+                      
+    for lvl in strategy.get("buy_levels", []):
+        fig.add_hline(y=lvl["price"], line_dash="dot", line_color="#EF553B", line_width=2,
+                      annotation_text=f"INKOOP {lvl['percentage']}%", annotation_position="bottom right")
+                      
+    fig.update_layout(
+        title=dict(text=f"Prijsniveaus & Targets: {selected_product}", x=0.5),
+        yaxis=dict(title="Prijs (€)", showgrid=True, gridcolor="rgba(255,255,255,0.1)"),
+        xaxis=dict(showticklabels=False, zeroline=False),
+        height=550,
+        margin=dict(l=20, r=20, t=60, b=20),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        shapes=[dict(type='rect', xref='paper', yref='y', x0=0, x1=1, y0=live_price*0.999, y1=live_price*1.001, fillcolor="white", opacity=0.2, line_width=0)]
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)

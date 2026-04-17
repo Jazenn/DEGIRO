@@ -31,35 +31,78 @@ jobs:
             const browser = await chromium.launch({ headless: true });
             const page = await browser.newPage();
             const url = 'https://dashboard-degiro.streamlit.app/';
+            
             try {
               console.log('Navigating to ' + url + '...');
-              // Use 'load' instead of 'networkidle' as websockets can interfere with networkidle
+              // We use networkidle to ensure the app has at least tried to load its content
               await page.goto(url, { waitUntil: 'load', timeout: 60000 });
               
-              const wakeUpButton = page.getByRole('button', { name: /Yes, get this app back up!/i });
+              // Define markers for both Sleep and Awake states
+              const sleepMarkers = [
+                page.locator('button:has-text(\"Yes, get this app back up!\")'),
+                page.locator('button:has-text(\"Wake up\")'),
+                page.locator('text=/app is in sleep mode/i')
+              ];
+              
+              const awakeMarkers = [
+                page.locator('[data-testid=\"stAppViewContainer\"]'),
+                page.locator('text=DeGiro Portfolio Dashboard'),
+                page.locator('text=Open posities (afgeleid uit transacties)')
+              ];
+
+              console.log('Detecting app state (waiting up to 45s)...');
+              
+              // Helper to wait for any of the markers
+              const waitForAny = (locators) => Promise.race(locators.map(l => l.waitFor({ state: 'visible', timeout: 45000 })));
+
+              let state = 'unknown';
               try {
-                // Wait for up to 10 seconds for the button to appear
-                await wakeUpButton.waitFor({ state: 'visible', timeout: 10000 });
-                console.log('App is sleeping. Clicking \"Wake Up\" button...');
-                await wakeUpButton.click();
-                
-                // Wait for the app to properly spin up so it stays awake
-                console.log('Waiting for app to initialize...');
-                await page.waitForTimeout(30000);
-                console.log('Done waking up.');
+                await Promise.race([
+                  waitForAny(sleepMarkers).then(() => { state = 'sleep'; }),
+                  waitForAny(awakeMarkers).then(() => { state = 'awake'; })
+                ]);
               } catch (e) {
-                console.log('Wake up button not found. App is likely already awake.');
-                // Crucially, Streamlit needs a sustained connection for a short duration to register a legitimate view.
-                // Closing immediately looks like a bot ping/bounce.
-                console.log('Holding the connection open so Streamlit registers activity...');
-                await page.waitForTimeout(20000);
-                console.log('Done.');
+                console.log('Timeout or error during state detection.');
               }
+
+              console.log('Detected state: ' + state);
+              
+              if (state === 'sleep') {
+                console.log('App is SLEEPING. Attempting to wake it up...');
+                // Click the first visible sleep marker (likely the button)
+                for (const marker of sleepMarkers) {
+                  if (await marker.isVisible()) {
+                    await marker.click();
+                    break;
+                  }
+                }
+                console.log('Wait 30s for initialization...');
+                await page.waitForTimeout(30000);
+                await page.screenshot({ path: 'state.png' });
+                console.log('Wake up sequence complete.');
+              } else if (state === 'awake') {
+                console.log('App is already AWAKE. Verification successful.');
+                await page.screenshot({ path: 'state.png' });
+              } else {
+                await page.screenshot({ path: 'state.png' });
+                throw new Error('Could not confirm app state. Neither the \"Wake Up\" button nor the dashboard content was found. Check state.png artifact.');
+              }
+              
             } catch (error) {
-              console.error('Error:', error);
+              console.error('FATAL ERROR:', error.message);
+              try { await page.screenshot({ path: 'state.png' }); } catch (e) {}
               process.exit(1);
             } finally {
               await browser.close();
             }
           })();
           "
+
+      - name: Upload State Screenshot
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: streamlit-app-state
+          path: state.png
+          retention-days: 7
+

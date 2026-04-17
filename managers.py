@@ -235,6 +235,19 @@ class ConfigManager:
     def set_product_name(self, key, name):
         self.set_asset(key, display_name=name)
 
+    # --- Trading Strategy ---
+    def get_trading_strategy(self, key):
+        """Get the trading strategy for a specific asset."""
+        asset = self._config.get("assets", {}).get(key, {})
+        return asset.get("trading_strategy", {"sell_levels": [], "buy_levels": []})
+
+    def set_trading_strategy(self, key, strategy):
+        """Update the trading strategy for a specific asset."""
+        if key not in self._config["assets"]:
+            self._config["assets"][key] = {}
+        self._config["assets"][key]["trading_strategy"] = strategy
+        self._save_config()
+
 # --- PRICE MANAGER ---
 class PriceManager:
     """Centralized price fetching (Live, History, Metadata)."""
