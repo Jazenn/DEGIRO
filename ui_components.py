@@ -1268,11 +1268,12 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     
     asset_config = config_manager.get_asset(selected_product)
     target_pct = asset_config.get("target_percentage", asset_config.get("target_pct", 0.0))
-    # Target value for this asset
+    # Target value for this asset (e.g. 8% of total portfolio)
     target_val = (total_portfolio_val * target_pct) / 100
     current_asset_val = qty * live_price
-    # Default budget is the gap to reach target
-    auto_budget = max(0.0, target_val - current_asset_val)
+    # The user wants the budget to be the target amount itself (for buyback planning),
+    # not just the gap (which would be 0 if they currently hold more than the target).
+    auto_budget = target_val
     
     # 3. Strategy Data Persistence
     strategy = config_manager.get_trading_strategy(selected_product)
