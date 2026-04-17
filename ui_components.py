@@ -1443,9 +1443,13 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     import html
     
     def fmt_k_custom(n):
-        """Custom rounding logic: <1k -> 1, 1k-10k -> 10, >10k -> 100."""
-        if n < 1000:
+        """Custom rounding logic: <500 -> 0.10, 500-1k -> 1, 1k-10k -> 10, >10k -> 100."""
+        if n < 500:
+            val = round(n * 10) / 10
+            return f"€{val:.2f}".replace(".", ",")
+        elif n < 1000:
             val = round(n)
+            return f"€{val}"
         elif n < 10000:
             val = round(n / 10) * 10
         else:
