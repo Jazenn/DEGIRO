@@ -1556,14 +1556,19 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     # 6. Average Price
     draw_marker(avg_price, color_avg_brand, f"Break-even ({fmt_k_custom(avg_price)})", "gem. aankoopprijs", side="left")
 
-    # 7. Current Price (Indicator & Badge) - RENDERED LAST TO STAY ON TOP
+    # 7. Current Price (Indicator & Text) - RENDERED LAST TO STAY ON TOP
     y_cur = py(live_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0
-    badge_w = 80 
-    badge_h = 26
     
     # Fill indicator background (Slightly brighter progress fill)
     els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.3" rx="12"/>')
+    
+    # Floating Text (Above the line)
+    els.append(f"""
+    <text x="{bar_mid}" y="{y_cur - 6}" font-size="11" font-weight="700" fill="{color_cur_brand}" text-anchor="middle" font-family="sans-serif" filter="url(#glow)">
+        {fmt_k_custom(live_price)} ({unreal_pct:+.1f}%)
+    </text>
+    """)
     
     # Sharp indicator lines ON TOP of the bar (Exact width, no overhang)
     els.append(f'<line x1="{bar_x}" y1="{y_cur}" x2="{bar_x+bar_w}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5" filter="url(#glow)"/>')
