@@ -1,0 +1,248 @@
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  .label { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .metric-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+  .metric { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 12px; }
+  .metric .val { font-size: 20px; font-weight: 500; color: var(--color-text-primary); }
+  .metric .sub { font-size: 12px; color: var(--color-text-secondary); margin-top: 2px; }
+  .positive { color: #3B6D11; }
+  .negative { color: #A32D2D; }
+  .card { background: var(--color-background-primary); border: 0.5px solid var(--color-border-tertiary); border-radius: var(--border-radius-lg); padding: 1rem 1.25rem; }
+  input[type=number] { width: 100%; padding: 6px 10px; border: 0.5px solid var(--color-border-secondary); border-radius: var(--border-radius-md); font-size: 14px; background: var(--color-background-primary); color: var(--color-text-primary); }
+  .tier { display: flex; align-items: center; gap: 8px; padding: 10px 0; border-bottom: 0.5px solid var(--color-border-tertiary); }
+  .tier:last-child { border-bottom: none; }
+  .tier-bar-wrap { flex: 1; height: 6px; background: var(--color-background-secondary); border-radius: 99px; overflow: hidden; }
+  .tier-bar-sell { height: 100%; border-radius: 99px; background: #1D9E75; transition: width 0.3s; }
+  .tier-bar-buy { height: 100%; border-radius: 99px; background: #378ADD; transition: width 0.3s; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: var(--border-radius-md); white-space: nowrap; }
+  .badge-green { background: #EAF3DE; color: #27500A; }
+  .badge-gray { background: var(--color-background-secondary); color: var(--color-text-secondary); }
+  .badge-amber { background: #FAEEDA; color: #633806; }
+  .badge-blue { background: #E6F1FB; color: #0C447C; }
+  .tab-row { display: flex; gap: 8px; }
+  .tab { font-size: 13px; padding: 4px 14px; border: 0.5px solid var(--color-border-secondary); border-radius: 99px; cursor: pointer; background: var(--color-background-primary); color: var(--color-text-secondary); }
+  .tab.active { background: var(--color-text-primary); color: var(--color-background-primary); border-color: var(--color-text-primary); }
+  .input-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 1rem; }
+  .input-group label { display: block; font-size: 12px; color: var(--color-text-secondary); margin-bottom: 4px; }
+  .section-title { font-size: 14px; font-weight: 500; color: var(--color-text-primary); margin-bottom: 4px; }
+  .section-sub { font-size: 12px; color: var(--color-text-secondary); margin-bottom: 12px; }
+  .divider { border: none; border-top: 0.5px solid var(--color-border-tertiary); margin: 1.5rem 0; }
+  .summary-row { display: flex; justify-content: space-between; align-items: center; padding: 6px 0; font-size: 13px; }
+  .summary-row span:first-child { color: var(--color-text-secondary); }
+  .summary-row span:last-child { font-weight: 500; color: var(--color-text-primary); }
+</style>
+
+<div style="padding: 1rem 0;">
+
+  <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.25rem;">
+    <div>
+      <div style="font-size: 18px; font-weight: 500; color: var(--color-text-primary);">Crypto tracker</div>
+      <div style="font-size: 13px; color: var(--color-text-secondary);">Verkoop- & terugkoop-strategie</div>
+    </div>
+    <div class="tab-row">
+      <div class="tab active" onclick="setTab('btc',this)">BTC</div>
+      <div class="tab" onclick="setTab('eth',this)">ETH</div>
+    </div>
+  </div>
+
+  <div class="input-row">
+    <div class="input-group">
+      <label id="amountLabel">Aantal (BTC)</label>
+      <input type="number" id="amount" value="0.15" step="0.001" oninput="update()" />
+    </div>
+    <div class="input-group">
+      <label>Gem. aankoopprijs (€)</label>
+      <input type="number" id="avgPrice" value="61000" step="100" oninput="update()" />
+    </div>
+  </div>
+  <div class="input-row">
+    <div class="input-group">
+      <label>Huidige prijs (€)</label>
+      <input type="number" id="curPrice" value="66000" step="100" oninput="update()" />
+    </div>
+    <div class="input-group">
+      <label>Eerste verkooptarget (€)</label>
+      <input type="number" id="t1sell" value="70000" step="500" oninput="update()" />
+    </div>
+  </div>
+
+  <div class="metric-grid" style="margin-bottom:1.5rem;">
+    <div class="metric">
+      <div class="label">Huidige waarde</div>
+      <div class="val" id="curVal">€9.900</div>
+      <div class="sub" id="curValSub">0,15 BTC</div>
+    </div>
+    <div class="metric">
+      <div class="label">Ongerealiseerde winst</div>
+      <div class="val positive" id="unreal">+€750</div>
+      <div class="sub" id="unrealPct">+8,2%</div>
+    </div>
+    <div class="metric">
+      <div class="label">Break-even</div>
+      <div class="val" id="breakeven">€61.000</div>
+      <div class="sub">gem. aankoopprijs</div>
+    </div>
+  </div>
+
+  <div class="section-title">Verkoop-ladder</div>
+  <div class="section-sub">25% verkopen per niveau — targets automatisch berekend</div>
+  <div class="card" style="margin-bottom:1.5rem;">
+    <div id="sellTiers"></div>
+  </div>
+  <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 1.5rem;">
+    Totale gerealiseerde winst bij volledige uitvoering: <span id="totalSellProfit" style="font-weight: 500; color: var(--color-text-primary);">—</span>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-title">Terugkoop-ladder</div>
+  <div class="section-sub">Gespreid terugkopen na de piek — eerste terugkoopniveau instellen</div>
+
+  <div class="input-row">
+    <div class="input-group">
+      <label>Eerste terugkoopniveau (€)</label>
+      <input type="number" id="t1buy" value="55000" step="500" oninput="update()" />
+    </div>
+    <div class="input-group">
+      <label>Budget om terug te kopen (€)</label>
+      <input type="number" id="buyBudget" value="5000" step="100" oninput="update()" />
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:1rem;">
+    <div id="buyTiers"></div>
+  </div>
+
+  <div style="font-size: 12px; color: var(--color-text-secondary); margin-bottom: 1.5rem;">
+    Gem. terugkooprijs bij volledige uitvoering: <span id="avgBuyBack" style="font-weight: 500; color: var(--color-text-primary);">—</span>
+  </div>
+
+  <hr class="divider">
+
+  <div class="section-title" style="margin-bottom:10px;">Scenario samenvatting</div>
+  <div class="card">
+    <div class="summary-row"><span>Winst bij volledig verkopen</span><span id="sumSell" class="positive">—</span></div>
+    <div class="summary-row"><span>Kosten terugkopen (totaal budget)</span><span id="sumBuy">—</span></div>
+    <div class="summary-row" style="border-top: 0.5px solid var(--color-border-tertiary); padding-top: 10px; margin-top:4px;">
+      <span style="font-weight:500; color: var(--color-text-primary);">Netto resultaat</span>
+      <span id="sumNet" style="font-weight:500;">—</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let coin = 'btc';
+
+  function setTab(c, el) {
+    coin = c;
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    document.getElementById('amountLabel').textContent = `Aantal (${c.toUpperCase()})`;
+    update();
+  }
+
+  function fmt(n) { return '€' + Math.round(n).toLocaleString('nl-NL'); }
+
+  function update() {
+    const amount   = parseFloat(document.getElementById('amount').value)   || 0;
+    const avg      = parseFloat(document.getElementById('avgPrice').value)  || 0;
+    const cur      = parseFloat(document.getElementById('curPrice').value)  || 0;
+    const t1sell   = parseFloat(document.getElementById('t1sell').value)    || 0;
+    const t1buy    = parseFloat(document.getElementById('t1buy').value)     || 0;
+    const budget   = parseFloat(document.getElementById('buyBudget').value) || 0;
+
+    const curVal = amount * cur;
+    const unrealProfit = curVal - amount * avg;
+    const unrealPct = avg > 0 ? ((cur - avg) / avg) * 100 : 0;
+
+    document.getElementById('curVal').textContent   = fmt(curVal);
+    document.getElementById('curValSub').textContent = `${amount} ${coin.toUpperCase()}`;
+    document.getElementById('unreal').textContent   = (unrealProfit >= 0 ? '+' : '') + fmt(unrealProfit);
+    document.getElementById('unreal').className     = 'val ' + (unrealProfit >= 0 ? 'positive' : 'negative');
+    document.getElementById('unrealPct').textContent = (unrealPct >= 0 ? '+' : '') + unrealPct.toFixed(1) + '%';
+    document.getElementById('breakeven').textContent = fmt(avg);
+
+    // --- SELL LADDER ---
+    const sellPrices = [t1sell, t1sell * 1.15, t1sell * 1.30];
+    const sellLabels = ['Doel 1', 'Doel 2', 'Doel 3'];
+    let totalSellProfit = 0;
+
+    const sellHTML = sellPrices.map((price, i) => {
+      const sellAmt   = amount * 0.25;
+      const profit    = sellAmt * (price - avg);
+      totalSellProfit += profit;
+      const reached   = cur >= price;
+      const barWidth  = Math.min(100, price > 0 ? (cur / price) * 100 : 0);
+      const badge     = reached
+        ? `<span class="badge badge-green">Bereikt</span>`
+        : `<span class="badge badge-gray">Nog niet</span>`;
+      return `
+        <div class="tier">
+          <div style="width:68px; flex-shrink:0;">
+            <div style="font-size:12px; color:var(--color-text-secondary);">${sellLabels[i]}</div>
+            <div style="font-size:11px; color:var(--color-text-secondary);">${fmt(Math.round(price))}</div>
+          </div>
+          <div class="tier-bar-wrap"><div class="tier-bar-sell" style="width:${barWidth.toFixed(1)}%"></div></div>
+          <div style="width:32px; text-align:right; font-size:12px; color:var(--color-text-secondary);">25%</div>
+          <div style="width:80px; text-align:right; font-size:13px; font-weight:500; color:var(--color-text-primary);">${profit >= 0 ? '+' : ''}${fmt(profit)}</div>
+          <div style="width:90px; text-align:right;">${badge}</div>
+        </div>`;
+    }).join('') + `
+      <div class="tier">
+        <div style="width:68px; flex-shrink:0;">
+          <div style="font-size:12px; color:var(--color-text-secondary);">Restant</div>
+          <div style="font-size:11px; color:var(--color-text-secondary);">Houden</div>
+        </div>
+        <div class="tier-bar-wrap"><div class="tier-bar-sell" style="width:100%"></div></div>
+        <div style="width:32px; text-align:right; font-size:12px; color:var(--color-text-secondary);">25%</div>
+        <div style="width:80px; text-align:right; font-size:13px; font-weight:500; color:var(--color-text-primary);">—</div>
+        <div style="width:90px; text-align:right;"><span class="badge badge-amber">Houden</span></div>
+      </div>`;
+
+    document.getElementById('sellTiers').innerHTML = sellHTML;
+    document.getElementById('totalSellProfit').textContent = fmt(totalSellProfit);
+
+    // --- BUY LADDER ---
+    const buyPrices = [t1buy, t1buy * 0.82, t1buy * 0.65, t1buy * 0.55];
+    const buyLabels = ['Niveau 1', 'Niveau 2', 'Niveau 3', 'Niveau 4'];
+    const perSlice  = budget / 4;
+    let weightedSum = 0, totalCoins = 0;
+
+    const buyHTML = buyPrices.map((price, i) => {
+      const coinsBack = price > 0 ? perSlice / price : 0;
+      weightedSum += coinsBack * price;
+      totalCoins  += coinsBack;
+      const reached  = cur <= price;
+      const barWidth = price > 0 ? Math.min(100, Math.max(0, (1 - (price / (t1buy || 1))) / 0.5 * 100)) : 0;
+      const badge    = reached
+        ? `<span class="badge badge-blue">Bereikt</span>`
+        : `<span class="badge badge-gray">Nog niet</span>`;
+      return `
+        <div class="tier">
+          <div style="width:68px; flex-shrink:0;">
+            <div style="font-size:12px; color:var(--color-text-secondary);">${buyLabels[i]}</div>
+            <div style="font-size:11px; color:var(--color-text-secondary);">${fmt(Math.round(price))}</div>
+          </div>
+          <div class="tier-bar-wrap"><div class="tier-bar-buy" style="width:${(25 * (i + 1)).toFixed(0)}%"></div></div>
+          <div style="width:32px; text-align:right; font-size:12px; color:var(--color-text-secondary);">25%</div>
+          <div style="width:80px; text-align:right; font-size:13px; font-weight:500; color:var(--color-text-primary);">${fmt(perSlice)}</div>
+          <div style="width:90px; text-align:right;">${badge}</div>
+        </div>`;
+    }).join('');
+
+    document.getElementById('buyTiers').innerHTML = buyHTML;
+    const avgBuyBack = totalCoins > 0 ? weightedSum / totalCoins : 0;
+    document.getElementById('avgBuyBack').textContent = fmt(Math.round(avgBuyBack));
+
+    // --- SUMMARY ---
+    const net = totalSellProfit - budget;
+    document.getElementById('sumSell').textContent = '+' + fmt(totalSellProfit);
+    document.getElementById('sumBuy').textContent  = fmt(budget);
+    document.getElementById('sumNet').textContent  = (net >= 0 ? '+' : '') + fmt(net);
+    document.getElementById('sumNet').className    = net >= 0 ? 'positive' : 'negative';
+  }
+
+  update();
+</script>
