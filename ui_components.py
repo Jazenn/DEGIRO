@@ -1562,18 +1562,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     badge_w = 80 
     badge_h = 26
     
-    # Fill indicator background
-    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.12" rx="12"/>')
-    
-    # The Badge (Inside, placed below the line)
-    els.append(f"""
-    <g transform="translate({bar_mid - badge_w/2}, {y_cur + 5})">
-        <rect width="{badge_w}" height="{badge_h}" fill="{color_cur_brand}" rx="4" filter="url(#glow)"/>
-        <text x="{badge_w/2}" y="{badge_h/2 + 4}" font-size="9" font-weight="900" fill="#000" text-anchor="middle" font-family="sans-serif">
-            {fmt_k_custom(live_price)} ({unreal_pct:+.1f}%)
-        </text>
-    </g>
-    """)
+    # Fill indicator background (Slightly brighter progress fill)
+    els.append(f'<rect x="{bar_x}" y="{y_cur}" width="{bar_w}" height="{chart_h - (y_cur - pad_t)}" fill="{color_cur_brand}" opacity="0.3" rx="12"/>')
     
     # Sharp indicator lines ON TOP of the bar (Exact width, no overhang)
     els.append(f'<line x1="{bar_x}" y1="{y_cur}" x2="{bar_x+bar_w}" y2="{y_cur}" stroke="{color_cur_brand}" stroke-width="2.5" filter="url(#glow)"/>')
