@@ -1278,13 +1278,13 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     strategy = config_manager.get_trading_strategy(selected_product)
     
     # Data-driven Defaults
-    # User wants Yearly Max/Min to be the FINAL targets (T4/Dip4).
-    # Since T4_sell = T1 * 1.50, then T1_def = YearlyMax / 1.50
-    # Since T4_buy = T1 * 0.55, then T1_def = YearlyMin / 0.55
-    t1_sell_def = strategy.get("t1_sell", (yearly_max / 1.5) if yearly_max else round(avg_price * 1.15, 0))
-    t1_buy_def = strategy.get("t1_buy", (yearly_min / 0.55) if yearly_min else round(avg_price * 0.85, 0))
+    # User wants a symmetrical 30% range based on High/Low.
+    # Sell: T1 = 70% of High, T4 = 100% of High.
+    # Buy:  T1 = 130% of Low, T4 = 100% of Low.
+    t1_sell_def = strategy.get("t1_sell", (yearly_max * 0.7) if yearly_max else round(avg_price * 1.15, 0))
+    t1_buy_def = strategy.get("t1_buy", (yearly_min * 1.3) if yearly_min else round(avg_price * 0.85, 0))
     buy_budget_def = strategy.get("buy_budget", auto_budget)
-
+    
     # 4. Layout: Metrics Row
     unreal_profit = current_asset_val - (qty * avg_price)
     unreal_pct = (live_price / avg_price - 1) * 100 if avg_price > 0 else 0.0
@@ -1315,7 +1315,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     # 5. Interactive Inputs
     st.markdown("#### ⚙️ Strategie Instellingen")
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
-        # Show data hints (Simplified per user request)
+        # Show data hints (Symmetrical 30% span logic)
         st.caption(f"💡 **Data-check**: Jaarpiek (Doel 4): {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal (Dip 4): {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
 
         c1, c2, c3 = st.columns(3)
@@ -1323,7 +1323,6 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
         t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_def), step=500.0)
         buy_budget = c3.number_input("Handmatig budget (€)", value=float(buy_budget_def), step=100.0)
         
-        # Save logic
         if (t1_sell != t1_sell_def or t1_buy != t1_buy_def or buy_budget != buy_budget_def):
             config_manager.set_trading_strategy(selected_product, {
                 "t1_sell": t1_sell,
@@ -1332,14 +1331,13 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             })
             st.toast("Instellingen opgeslagen!", icon="💾")
             
-        # Reset Button to force data-driven values
         if st.button("🔄 Gebruik data-targets (Jaarpiek & Jaardal als NL4)"):
             config_manager.set_trading_strategy(selected_product, {
-                "t1_sell": (yearly_max / 1.5) if yearly_max else t1_sell,
-                "t1_buy": (yearly_min / 0.55) if yearly_min else t1_buy,
+                "t1_sell": (yearly_max * 0.7) if yearly_max else t1_sell,
+                "t1_buy": (yearly_min * 1.3) if yearly_min else t1_buy,
                 "buy_budget": auto_budget
             })
-            st.toast("Targets bijgewerkt! (Jaarpiek/dal ingesteld als einddoelen) ✅")
+            st.toast("Targets bijgewerkt naar 30% spanne! ✅")
             st.rerun()
 
     # 6. Sell Ladder
@@ -1348,15 +1346,14 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     
     sell_targets = [
         {"label": "Doel 1", "price": t1_sell},
-        {"label": "Doel 2", "price": t1_sell * 1.15},
-        {"label": "Doel 3", "price": t1_sell * 1.30},
-        {"label": "Doel 4", "price": t1_sell * 1.50}, # Final exit
+        {"label": "Doel 2", "price": t1_sell * (0.8/0.7)},
+        {"label": "Doel 3", "price": t1_sell * (0.9/0.7)},
+        {"label": "Doel 4", "price": t1_sell * (1.0/0.7)},
     ]
     
     total_potential_profit = 0
     
     with st.container(border=True):
-        # Header for clarity
         hcols = st.columns([1.5, 3.5, 1, 1.5, 1.5, 1.5])
         hcols[0].write("**Niveau**")
         hcols[1].write("**Voortgang**")
@@ -1392,9 +1389,9 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     
     buy_targets = [
         {"label": "Dip 1", "price": t1_buy},
-        {"label": "Dip 2", "price": t1_buy * 0.82},
-        {"label": "Dip 3", "price": t1_buy * 0.65},
-        {"label": "Dip 4", "price": t1_buy * 0.55},
+        {"label": "Dip 2", "price": t1_buy * (1.2/1.3)},
+        {"label": "Dip 3", "price": t1_buy * (1.1/1.3)},
+        {"label": "Dip 4", "price": t1_buy * (1.0/1.3)},
     ]
     
     slice_budget = buy_budget / 4
