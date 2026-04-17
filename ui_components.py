@@ -1240,17 +1240,23 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
         return float(h["High"].max()), float(h["Low"].min())
     
     yearly_max, yearly_min = _fetch_stats(ticker)
-    
-    # Rebalancing budget calculation
-    # Total Portfolio = Current Value of all assets + Cash
-    all_current_values = []
-    for _, prow in positions.iterrows():
-        pticker = prow.get("ticker")
+
+    # Calculate Total Portfolio BEFORE filtering positions
+    all_positions = build_positions(df)
+    total_assets_val = 0.0
+    for _, prow in all_positions.iterrows():
+        pticker = price_manager.resolve_ticker(prow.get("product"), prow.get("isin"))
         if pticker:
             lprice = price_manager.get_live_price(pticker)
-            all_current_values.append(prow["quantity"] * lprice)
+            if lprice > 0:
+                total_assets_val += prow["quantity"] * lprice
+                continue
+        
+        # Fallback: if no ticker or live price fails, use average buy price as a placeholder for total cap
+        # This ensures the total portfolio value remains realistic even for obscure assets.
+        p_avg = (prow["invested"] / prow["quantity"]) if prow["quantity"] > 0 else 0.0
+        total_assets_val += prow["quantity"] * p_avg
             
-    total_assets_val = sum(all_current_values)
     current_cash = df["amount"].sum()
     total_portfolio_val = total_assets_val + current_cash
     
@@ -1302,7 +1308,8 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     with st.expander("Pas targets en budget handmatig aan", expanded=False):
         # Show data hints
         st.caption(f"💡 **Data-check**: Jaarpiek: {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal: {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
-        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} | Doel: {target_pct}% ({format_eur(target_val)}) | Gap: {format_eur(auto_budget)}")
+        st.caption(f"💡 **Portfolio**: Totaal: {format_eur(total_portfolio_val)} (Cash: {format_eur(current_cash)} | Assets: {format_eur(total_assets_val)})")
+        st.caption(f"💡 **Doel**: {target_pct}% van portfolio = {format_eur(target_val)} | Huidig: {format_eur(current_asset_val)} | **Gap: {format_eur(auto_budget)}**")
 
         c1, c2, c3 = st.columns(3)
         t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
