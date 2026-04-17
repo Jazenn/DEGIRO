@@ -1391,13 +1391,13 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     min_p = min(all_prices) * 0.92
     p_range = max_p - min_p
     
-    W = 600
+    W = 480
     H = 700
     pad_t = 50
     pad_b = 50
     chart_h = H - pad_t - pad_b
-    bar_x = 260
-    bar_w = 80  
+    bar_x = 180
+    bar_w = 120  
     bar_mid = bar_x + (bar_w / 2)
     
     def py(price):
@@ -1462,8 +1462,8 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
         els.append(f'<circle cx="{bar_x if side=="left" else bar_x+bar_w}" cy="{y}" r="4" fill="{color}" {glow_attr}/>')
         
         # Label Text
-        els.append(f'<text x="{tx}" y="{y - 2}" font-size="13" font-weight="{"600" if is_bold else "500"}" fill="{color}" text-anchor="{anchor}" font-family="sans-serif">{html.escape(label)}</text>')
-        els.append(f'<text x="{tx}" y="{y + 12}" font-size="11" fill="rgba(255,255,255,0.4)" text-anchor="{anchor}" font-family="sans-serif">{html.escape(subtext)}</text>')
+        els.append(f'<text x="{tx}" y="{y - 2}" font-size="15" font-weight="{"600" if is_bold else "500"}" fill="{color}" text-anchor="{anchor}" font-family="sans-serif">{html.escape(label)}</text>')
+        els.append(f'<text x="{tx}" y="{y + 14}" font-size="13" fill="rgba(255,255,255,0.4)" text-anchor="{anchor}" font-family="sans-serif">{html.escape(subtext)}</text>')
 
     # 4. Sell Targets (Left Side)
     for t in sell_targets:
@@ -1489,7 +1489,7 @@ def render_trading_chart(live_price, avg_price, sell_targets, buy_targets, amoun
     
     # Floating Text (Above the line)
     els.append(f"""
-    <text x="{bar_mid}" y="{y_cur - 5}" font-size="9" font-weight="700" fill="{color_cur_brand}" text-anchor="middle" font-family="sans-serif" filter="url(#glow)">
+    <text x="{bar_mid}" y="{y_cur - 7}" font-size="11" font-weight="700" fill="{color_cur_brand}" text-anchor="middle" font-family="sans-serif" filter="url(#glow)">
         {fmt_k_custom(live_price)} ({unreal_pct:+.1f}%)
     </text>
     """)
