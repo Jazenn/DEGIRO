@@ -1280,21 +1280,21 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     m1, m2, m3, m4 = st.columns(4)
     with m1.container(border=True):
         st.write("**Huidige waarde**")
-        st.write(f"### {format_eur_smart(current_asset_val)}")
+        st.write(f"### {format_eur(current_asset_val)}")
         st.write(f"{qty:.4f} {selected_product}")
     with m2.container(border=True):
         st.write("**Ongerealiseerde winst**")
         color = "green" if unreal_profit >= 0 else "red"
-        st.markdown(f"<h3 style='color:{color}'>{format_eur_smart(unreal_profit)}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{color}'>{format_eur(unreal_profit)}</h3>", unsafe_allow_html=True)
         st.write(format_pct(unreal_pct))
     with m3.container(border=True):
         st.write("**Gerealiseerde winst**")
         color_r = "green" if total_realized_profit >= 0 else "red"
-        st.markdown(f"<h3 style='color:{color_r}'>{format_eur_smart(total_realized_profit)}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<h3 style='color:{color_r}'>{format_eur(total_realized_profit)}</h3>", unsafe_allow_html=True)
         st.write("incl. dividenden")
     with m4.container(border=True):
         st.write("**Break-even**")
-        st.write(f"### {format_eur_smart(avg_price)}")
+        st.write(f"### {format_eur(avg_price)}")
         st.write("gem. aankoopprijs")
 
     # 5. Interactive Inputs
@@ -1351,7 +1351,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             cols[1].progress(progress)
             cols[2].write("25%")
             cols[3].write(f"{sell_qty_lvl:.4f}")
-            cols[4].write(f"**{'+' if profit >= 0 else ''}{format_eur_smart(profit)}**")
+            cols[4].write(f"**{'+' if profit >= 0 else ''}{format_eur(profit)}**")
             if reached:
                 cols[5].markdown("<span style='background:#EAF3DE; color:#27500A; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
             else:
@@ -1405,7 +1405,7 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             cols[0].markdown(f"**{target['label']}**<br><span style='font-size:11px; color:#666;'>{format_eur_smart(price)}</span>", unsafe_allow_html=True)
             cols[1].progress(p_val)
             cols[2].write("25%")
-            cols[3].write(f"{format_eur_smart(slice_budget)}")
+            cols[3].write(f"{format_eur(slice_budget)}")
             cols[4].write(f"**{coins_back:.4f}**")
             if reached:
                 cols[5].markdown("<span style='background:#E6F1FB; color:#0C447C; padding:2px 8px; border-radius:4px; font-size:12px;'>Bereikt</span>", unsafe_allow_html=True)
