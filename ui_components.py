@@ -1277,13 +1277,16 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
     # 3. Strategy Data Persistence
     strategy = config_manager.get_trading_strategy(selected_product)
     
-    # Data-driven Defaults
-    # User wants a symmetrical 30% range based on High/Low.
-    # Sell: T1 = 70% of High, T4 = 100% of High.
-    # Buy:  T1 = 130% of Low, T4 = 100% of Low.
-    t1_sell_def = strategy.get("t1_sell", (yearly_max * 0.7) if yearly_max else round(avg_price * 1.15, 0))
-    t1_buy_def = strategy.get("t1_buy", (yearly_min * 1.3) if yearly_min else round(avg_price * 0.85, 0))
-    buy_budget_def = strategy.get("buy_budget", auto_budget)
+    # Check if we should use live data-driven defaults
+    # We use them if no strategy is saved OR if the user explicitly wants to follow the data
+    # For a smoother experience, we'll calculate the 'live' defaults here:
+    live_t1_sell = (yearly_max * 0.7) if yearly_max else round(avg_price * 1.15, 0)
+    live_t1_buy = (yearly_min * 1.3) if yearly_min else round(avg_price * 0.85, 0)
+
+    # Use saved strategy if available, otherwise use live defaults
+    t1_sell_val = strategy.get("t1_sell", live_t1_sell)
+    t1_buy_val = strategy.get("t1_buy", live_t1_buy)
+    buy_budget_val = strategy.get("buy_budget", auto_budget)
     
     # 4. Layout: Metrics Row
     unreal_profit = current_asset_val - (qty * avg_price)
@@ -1319,11 +1322,11 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
         st.caption(f"💡 **Data-check**: Jaarpiek (Doel 4): {format_eur(yearly_max) if yearly_max else 'Onbekend'} | Jaardal (Dip 4): {format_eur(yearly_min) if yearly_min else 'Onbekend'}")
 
         c1, c2, c3 = st.columns(3)
-        t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_def), step=500.0)
-        t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_def), step=500.0)
-        buy_budget = c3.number_input("Handmatig budget (€)", value=float(buy_budget_def), step=100.0)
+        t1_sell = c1.number_input("Eerste verkooptarget (€)", value=float(t1_sell_val), step=500.0)
+        t1_buy = c2.number_input("Eerste terugkoopniveau (€)", value=float(t1_buy_val), step=500.0)
+        buy_budget = c3.number_input("Handmatig budget (€)", value=float(buy_budget_val), step=100.0)
         
-        if (t1_sell != t1_sell_def or t1_buy != t1_buy_def or buy_budget != buy_budget_def):
+        if (t1_sell != t1_sell_val or t1_buy != t1_buy_val or buy_budget != buy_budget_val):
             config_manager.set_trading_strategy(selected_product, {
                 "t1_sell": t1_sell,
                 "t1_buy": t1_buy,
@@ -1333,11 +1336,11 @@ def render_short_term_trader(df: pd.DataFrame, config_manager, price_manager) ->
             
         if st.button("🔄 Gebruik data-targets (Jaarpiek & Jaardal als NL4)"):
             config_manager.set_trading_strategy(selected_product, {
-                "t1_sell": (yearly_max * 0.7) if yearly_max else t1_sell,
-                "t1_buy": (yearly_min * 1.3) if yearly_min else t1_buy,
+                "t1_sell": live_t1_sell,
+                "t1_buy": live_t1_buy,
                 "buy_budget": auto_budget
             })
-            st.toast("Targets bijgewerkt naar 30% spanne! ✅")
+            st.toast("Targets bijgewerkt naar 30% spanne op basis van live data! ✅")
             st.rerun()
 
     # 6. Sell Ladder
