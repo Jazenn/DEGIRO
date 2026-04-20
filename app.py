@@ -1,6 +1,7 @@
 import pandas as pd
 import streamlit as st
 import os
+import time
 from drive_utils import DriveStorage
 from managers import ConfigManager, PriceManager
 from data_processing import (
@@ -12,6 +13,9 @@ from data_processing import (
 from ui_components import render_metrics, render_charts
 
 def main() -> None:
+    if "app_startup_time" not in st.session_state:
+        st.session_state["app_startup_time"] = time.time()
+        
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
         layout="wide",

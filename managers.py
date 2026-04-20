@@ -274,6 +274,14 @@ class PriceManager:
         self._snapshot_mid = snapshot_prices.get("batch_mid", {})
         self._snapshot_open = snapshot_prices.get("batch_open", {})
         
+    def _should_use_snapshot(self):
+        import time
+        try:
+            startup_time = st.session_state.get("app_startup_time", time.time())
+            return (time.time() - startup_time) < 15
+        except:
+            return True
+        
     def resolve_ticker(self, product_str: str, isin: str = None) -> str | None:
         """Resolve a product to a yfinance ticker using Config and logic."""
         # 1. Check Config Mappings
@@ -461,7 +469,7 @@ class PriceManager:
         """Fetch live prices for multiple tickers in one optimized batch."""
         valid_tickers = [t for t in tickers if t]
         if not valid_tickers: return {}
-        if self._snapshot_live:
+        if self._snapshot_live and self._should_use_snapshot():
             return {t: self._snapshot_live.get(t, 0.0) for t in valid_tickers}
         return self._fetch_live_prices_batch_cached(tuple(set(valid_tickers)))
 
@@ -539,7 +547,7 @@ class PriceManager:
     def get_prev_closes_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if self._snapshot_prev:
+        if self._snapshot_prev and self._should_use_snapshot():
             return {t: self._snapshot_prev.get(t, 0.0) for t in valid}
         current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
         return self._fetch_prev_closes_batch_cached(tuple(set(valid)), current_date_str)
@@ -633,7 +641,7 @@ class PriceManager:
     def get_market_open_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if self._snapshot_open:
+        if self._snapshot_open and self._should_use_snapshot():
             return {t: self._snapshot_open.get(t, 0.0) for t in valid}
         return self._fetch_market_open_prices_batch_cached(tuple(set(valid)))
 
@@ -676,7 +684,7 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if self._snapshot_mid:
+        if self._snapshot_mid and self._should_use_snapshot():
             return {t: self._snapshot_mid.get(t, 0.0) for t in valid}
         # Use Amsterdam midnight for the cache key, but normalized to UTC base for YF logic
         amsterdam_now = pd.Timestamp.now(tz="Europe/Amsterdam")
