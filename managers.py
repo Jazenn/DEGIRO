@@ -275,12 +275,8 @@ class PriceManager:
         self._snapshot_open = snapshot_prices.get("batch_open", {})
         
     def _should_use_snapshot(self):
-        import time
-        try:
-            startup_time = st.session_state.get("app_startup_time", time.time())
-            return (time.time() - startup_time) < 15
-        except:
-            return True
+        # Use snapshot if the seamless background fetch hasn't completed yet
+        return not st.session_state.get("live_fetch_done", False)
         
     def resolve_ticker(self, product_str: str, isin: str = None) -> str | None:
         """Resolve a product to a yfinance ticker using Config and logic."""

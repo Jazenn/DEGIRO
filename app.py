@@ -13,9 +13,6 @@ from data_processing import (
 from ui_components import render_metrics, render_charts
 
 def main() -> None:
-    if "app_startup_time" not in st.session_state:
-        st.session_state["app_startup_time"] = time.time()
-        
     st.set_page_config(
         page_title="DeGiro Portfolio Dashboard",
         layout="wide",
@@ -28,6 +25,7 @@ def main() -> None:
 
     if sidebar.button("🔄 Ververs Koersen Nu", use_container_width=True, help="Forceer een vernieuwing van alle live koersen."):
         st.cache_data.clear()
+        st.session_state["live_fetch_done"] = False
         st.rerun()
 
     if "uploader_key" not in st.session_state:
@@ -213,5 +211,24 @@ def main() -> None:
     render_metrics(df, price_manager=price_manager, config_manager=config_manager)
     render_charts(df, history_df, trading_volume, drive=drive, config_manager=config_manager, price_manager=price_manager)
     
+    # Seamless background cache-warming
+    if not st.session_state.get("live_fetch_done", False):
+        @st.fragment
+        def background_swapper():
+            unique_tickers = list(set(product_map.values()))
+            if unique_tickers:
+                price_manager._fetch_live_prices_batch_cached(tuple(unique_tickers))
+                price_manager._fetch_prev_closes_batch_cached(tuple(unique_tickers), pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d"))
+                price_manager._fetch_market_open_prices_batch_cached(tuple(unique_tickers))
+                
+                midnight_ams = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
+                date_str = midnight_ams.strftime("%Y-%m-%d %H:%M:%S %Z")
+                price_manager._fetch_midnight_prices_batch_cached(tuple(unique_tickers), date_str)
+            
+            st.session_state["live_fetch_done"] = True
+            st.rerun()
+
+        background_swapper()
+        
 if __name__ == "__main__":
     main()
