@@ -161,25 +161,22 @@ def main() -> None:
                 return s
             
             cleaned = series[mask_fail].apply(clean_eu)
-            nums.update(pd.to_numeric(cleaned, errors='coerce'))
-            
-        return nums.fillna(0.0)
-
-    for col in ["amount", "balance", "fx"]:
-        if col in df_raw.columns:
-            df_raw[col] = smart_numeric_clean(df_raw[col])
+        st.warning("Upload een bestand om de data te analyseren.")
+        st.stop()
 
     df = enrich_transactions(df_raw)
     
-    # Generate product_map once to pass into cached history function
+    config_manager = ConfigManager(drive=drive)
+    price_manager = PriceManager(config_manager=config_manager)
+    
+    # Identify unique product mappings instantly
     product_map = {}
-    if not df.empty and "product" in df.columns:
+    if "product" in df.columns:
         for p in df["product"].unique():
             if not p: continue
             isin_series = df.loc[df["product"] == p, "isin"]
             isin_val = isin_series.iloc[0] if not isin_series.empty else None
             isin = str(isin_val).strip() if isin_val and pd.notna(isin_val) else None
-            
             ticker = price_manager.resolve_ticker(p, isin)
             if ticker:
                 product_map[p] = ticker
@@ -199,7 +196,7 @@ def main() -> None:
     if snap_prices:
         price_manager.load_snapshots(snap_prices)
         if "timestamp" in snap_prices:
-            st.sidebar.caption(f"⏱️ Live prices pre-fetched at: {snap_prices['timestamp'][:16]} UTC")
+            st.sidebar.caption(f"⏱️ Laatste Live Sync: {snap_prices['timestamp'][:16]} UTC")
 
     if snap_history is not None and not snap_history.empty:
         history_df = snap_history
@@ -212,20 +209,51 @@ def main() -> None:
     render_charts(df, history_df, trading_volume, drive=drive, config_manager=config_manager, price_manager=price_manager)
     
     # Seamless background cache-warming
-    if not st.session_state.get("live_fetch_done", False):
+    if not st.session_state.get("live_fetch_done", False) or st.session_state.get("force_refresh", False):
         @st.fragment
         def background_swapper():
             unique_tickers = list(set(product_map.values()))
             if unique_tickers:
-                price_manager._fetch_live_prices_batch_cached(tuple(unique_tickers))
-                price_manager._fetch_prev_closes_batch_cached(tuple(unique_tickers), pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d"))
-                price_manager._fetch_market_open_prices_batch_cached(tuple(unique_tickers))
+                if st.session_state.get("force_refresh", False):
+                    price_manager._fetch_live_prices_batch_cached.clear()
+                    price_manager._fetch_prev_closes_batch_cached.clear()
+                    price_manager._fetch_market_open_prices_batch_cached.clear()
+                    price_manager._fetch_midnight_prices_batch_cached.clear()
+                    
+                batch_live = price_manager._fetch_live_prices_batch_cached(tuple(unique_tickers))
+                
+                ams_today = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
+                batch_prev = price_manager._fetch_prev_closes_batch_cached(tuple(unique_tickers), ams_today)
+                
+                batch_open = price_manager._fetch_market_open_prices_batch_cached(tuple(unique_tickers))
                 
                 midnight_ams = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
                 date_str = midnight_ams.strftime("%Y-%m-%d %H:%M:%S %Z")
-                price_manager._fetch_midnight_prices_batch_cached(tuple(unique_tickers), date_str)
+                batch_mid = price_manager._fetch_midnight_prices_batch_cached(tuple(unique_tickers), date_str)
+                
+                # Push into shared memory buffer to prevent ANY grey UI loading blocks
+                st.session_state["mem_live_prices"] = batch_live
+                st.session_state["mem_prev_prices"] = batch_prev
+                st.session_state["mem_open_prices"] = batch_open
+                st.session_state["mem_mid_prices"] = batch_mid
+
+                # Push updated snapshot to Drive immediately for consistent UX
+                try:
+                    snapshot_prices = {
+                        "batch_live": batch_live,
+                        "batch_prev": batch_prev,
+                        "batch_mid": batch_mid,
+                        "batch_open": batch_open,
+                        "timestamp": str(pd.Timestamp.now(tz="UTC"))
+                    }
+                    if use_drive:
+                        drive.save_json("snapshot_prices.json", snapshot_prices)
+                        st.session_state["snapshot_prices"] = snapshot_prices
+                except Exception:
+                    pass
             
             st.session_state["live_fetch_done"] = True
+            st.session_state["force_refresh"] = False
             st.rerun()
 
         background_swapper()
