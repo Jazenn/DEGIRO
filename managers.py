@@ -261,16 +261,28 @@ class PriceManager:
         self._cache = {}
         self._watchlist = set()
         self._lock = threading.Lock()
+        self._snapshot_live = {}
+        self._snapshot_prev = {}
+        self._snapshot_mid = {}
+        self._snapshot_open = {}
+        
+    def load_snapshots(self, snapshot_prices: dict):
+        """Pre-populate caches with background fetched data."""
+        if not snapshot_prices: return
+        self._snapshot_live = snapshot_prices.get("batch_live", {})
+        self._snapshot_prev = snapshot_prices.get("batch_prev", {})
+        self._snapshot_mid = snapshot_prices.get("batch_mid", {})
+        self._snapshot_open = snapshot_prices.get("batch_open", {})
         
     def resolve_ticker(self, product_str: str, isin: str = None) -> str | None:
         """Resolve a product to a yfinance ticker using Config and logic."""
         # 1. Check Config Mappings
         mapped = self.config.get_ticker_for_product(product_str, isin)
-        # st.write(f"DEBUG: Resolving '{product_str}' / '{isin}' -> Mapped: {mapped}")
         if mapped:
-            resolved_mapped = self._resolve_input_string(mapped, strict=False)
-            if resolved_mapped:
-                return resolved_mapped
+            # If it's a legacy format "TICKER | ISIN", grab the ticker
+            if "|" in mapped:
+                return mapped.split("|")[0].strip()
+            return mapped
             
         # 2. Check if product_str itself is a valid ticker input
         resolved = self._resolve_input_string(product_str, strict=True)
@@ -449,6 +461,8 @@ class PriceManager:
         """Fetch live prices for multiple tickers in one optimized batch."""
         valid_tickers = [t for t in tickers if t]
         if not valid_tickers: return {}
+        if self._snapshot_live:
+            return {t: self._snapshot_live.get(t, 0.0) for t in valid_tickers}
         return self._fetch_live_prices_batch_cached(tuple(set(valid_tickers)))
 
     @st.cache_data(ttl=60)
@@ -525,6 +539,8 @@ class PriceManager:
     def get_prev_closes_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
+        if self._snapshot_prev:
+            return {t: self._snapshot_prev.get(t, 0.0) for t in valid}
         current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
         return self._fetch_prev_closes_batch_cached(tuple(set(valid)), current_date_str)
 
@@ -617,6 +633,8 @@ class PriceManager:
     def get_market_open_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
+        if self._snapshot_open:
+            return {t: self._snapshot_open.get(t, 0.0) for t in valid}
         return self._fetch_market_open_prices_batch_cached(tuple(set(valid)))
 
     @st.cache_data(ttl=3600)
@@ -658,6 +676,8 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
+        if self._snapshot_mid:
+            return {t: self._snapshot_mid.get(t, 0.0) for t in valid}
         # Use Amsterdam midnight for the cache key, but normalized to UTC base for YF logic
         amsterdam_now = pd.Timestamp.now(tz="Europe/Amsterdam")
         midnight_ams = amsterdam_now.normalize()

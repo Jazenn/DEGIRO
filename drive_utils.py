@@ -10,28 +10,28 @@ import json
 class DriveStorage:
     def __init__(self, folder_id):
         def get_secret(key, env_key=None):
-            # 1. Try nested streamlit structure: connections.gsheets.key
-            try:
-                if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-                    if key in st.secrets["connections"]["gsheets"]:
-                        return st.secrets["connections"]["gsheets"][key]
-            except Exception:
-                pass
-            
-            # 2. Try flat streamlit secrets: st.secrets["GCP_KEY"] or st.secrets["key"]
-            if env_key and env_key in st.secrets:
-                return st.secrets[env_key]
-            if key in st.secrets:
-                return st.secrets[key]
-                
-            # 3. Try environment variables: os.environ["GCP_KEY"] or os.environ["key"]
+            # 1. Try environment variables first
             if env_key and env_key in os.environ:
                 return os.environ[env_key]
             if key in os.environ:
                 return os.environ[key]
                 
+            # 2. Try nested streamlit structure: connections.gsheets.key
+            try:
+                if hasattr(st, "secrets"):
+                    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+                        if key in st.secrets["connections"]["gsheets"]:
+                            return st.secrets["connections"]["gsheets"][key]
+                    
+                    if env_key and env_key in st.secrets:
+                        return st.secrets[env_key]
+                    if key in st.secrets:
+                        return st.secrets[key]
+            except Exception:
+                pass
+                
             raise KeyError(f"Secret '{key}' (or '{env_key}') not found in any source.")
-
+            
         creds_dict = {
             "type": "service_account",
             "project_id": get_secret("project_id", "GCP_PROJECT_ID"),
@@ -138,6 +138,43 @@ class DriveStorage:
             self.service.files().update(fileId=file_id, media_body=media).execute()
         else:
             # Create new
+            file_metadata = {
+                "name": filename,
+                "parents": [self.folder_id]
+            }
+            self.service.files().create(body=file_metadata, media_body=media, fields="id").execute()
+
+    def load_csv(self, filename: str) -> pd.DataFrame:
+        """Download a CSV file and return as a DataFrame."""
+        file_id = self._find_file(filename)
+        if not file_id:
+            return pd.DataFrame()
+
+        request = self.service.files().get_media(fileId=file_id)
+        fh = io.BytesIO()
+        downloader = MediaIoBaseDownload(fh, request)
+        done = False
+        while not done:
+            status, done = downloader.next_chunk()
+        
+        fh.seek(0)
+        try:
+            return pd.read_csv(fh)
+        except Exception:
+            return pd.DataFrame()
+
+    def save_csv(self, filename: str, df: pd.DataFrame):
+        """Upload or update a CSV file from a DataFrame."""
+        fh = io.BytesIO()
+        df.to_csv(fh, index=False, encoding="utf-8")
+        
+        fh.seek(0)
+        media = MediaIoBaseUpload(fh, mimetype="text/csv", resumable=False)
+        
+        file_id = self._find_file(filename)
+        if file_id:
+            self.service.files().update(fileId=file_id, media_body=media).execute()
+        else:
             file_metadata = {
                 "name": filename,
                 "parents": [self.folder_id]

@@ -182,7 +182,28 @@ def main() -> None:
             if ticker:
                 product_map[p] = ticker
 
-    history_df = build_portfolio_history(df, product_map=product_map)
+    # Try to load snapshots
+    if "snapshot_prices" not in st.session_state and use_drive:
+        st.session_state["snapshot_prices"] = drive.load_json("snapshot_prices.json")
+    if "snapshot_history" not in st.session_state and use_drive:
+        hst = drive.load_csv("snapshot_history.csv")
+        if not hst.empty and "date" in hst.columns:
+            hst["date"] = pd.to_datetime(hst["date"])
+        st.session_state["snapshot_history"] = hst
+
+    snap_prices = st.session_state.get("snapshot_prices")
+    snap_history = st.session_state.get("snapshot_history")
+    
+    if snap_prices:
+        price_manager.load_snapshots(snap_prices)
+        if "timestamp" in snap_prices:
+            st.sidebar.caption(f"⏱️ Live prices pre-fetched at: {snap_prices['timestamp'][:16]} UTC")
+
+    if snap_history is not None and not snap_history.empty:
+        history_df = snap_history
+    else:
+        history_df = build_portfolio_history(df, product_map=product_map)
+
     trading_volume = build_trading_volume_by_month(df)
     
     render_metrics(df, price_manager=price_manager, config_manager=config_manager)
