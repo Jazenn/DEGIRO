@@ -20,6 +20,10 @@ def main():
             
         print("Loaded transactions from Drive. Enriching...")
         df_raw = df_drive.copy()
+        
+        if "product" in df_raw.columns:
+            df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
+            
         for col in ["date", "value_date"]:
             if col in df_raw.columns:
                 df_raw[col] = pd.to_datetime(df_raw[col], errors="coerce")
