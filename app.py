@@ -38,7 +38,11 @@ def main() -> None:
     
     try:
         drive = DriveStorage(DRIVE_FOLDER_ID)
-        df_drive = drive.load_data()
+        # Load Drive CSV through the same pipeline as uploaded files so that
+        # amount parsing, currency-column shifting, and Unnamed cleanup all apply.
+        drive_bytes = drive.load_data_bytes()
+        if drive_bytes and len(drive_bytes) > 10:
+            df_drive = load_degiro_csv(drive_bytes)
         use_drive = True
         sidebar.success("✅ Verbonden met Google Drive (CSV)")
     except Exception as e:
@@ -80,13 +84,10 @@ def main() -> None:
             df_new = pd.concat(df_list, ignore_index=True)
 
     df_raw = pd.DataFrame()
-    
+
     if not df_drive.empty:
-        for col in ["date", "value_date"]:
-            if col in df_drive.columns:
-                df_drive[col] = pd.to_datetime(df_drive[col], errors="coerce")
         df_raw = pd.concat([df_raw, df_drive], ignore_index=True)
-        
+
     if not df_new.empty:
         df_raw = pd.concat([df_raw, df_new], ignore_index=True)
 
@@ -178,24 +179,6 @@ def main() -> None:
         # not real investable positions (cash sweep counterparty accounts).
         df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
         df_raw = df_raw[~df_raw["isin"].astype(str).str.contains("NLFLATEXACNT", case=False, na=False)]
-
-    def smart_numeric_clean(series):
-        if pd.api.types.is_numeric_dtype(series):
-            return series.fillna(0.0)
-        nums = pd.to_numeric(series, errors='coerce')
-        mask_fail = nums.isna() & series.notna()
-        if mask_fail.any():
-            def clean_eu(x):
-                s = str(x).replace("EUR", "").replace("USD", "").strip()
-                s = s.replace(".", "").replace(",", ".")
-                return s
-            cleaned = series[mask_fail].apply(clean_eu)
-            nums.update(pd.to_numeric(cleaned, errors='coerce'))
-        return nums.fillna(0.0)
-
-    for col in ["amount", "balance", "fx"]:
-        if col in df_raw.columns:
-            df_raw[col] = smart_numeric_clean(df_raw[col])
 
     df = enrich_transactions(df_raw)
     

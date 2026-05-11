@@ -62,11 +62,12 @@ class DriveStorage:
         files = results.get("files", [])
         return files[0]["id"] if files else None
 
-    def load_data(self) -> pd.DataFrame:
-        """Download the CSV file and return as a DataFrame."""
+    def load_data_bytes(self) -> bytes | None:
+        """Download the transactions CSV and return as raw bytes.
+        Returns None if the file does not exist on Drive."""
         file_id = self._find_file()
         if not file_id:
-            return pd.DataFrame()
+            return None
 
         request = self.service.files().get_media(fileId=file_id)
         fh = io.BytesIO()
@@ -74,13 +75,18 @@ class DriveStorage:
         done = False
         while not done:
             status, done = downloader.next_chunk()
-        
-        fh.seek(0)
-        # Read as CSV
+
+        return fh.getvalue()
+
+    def load_data(self) -> pd.DataFrame:
+        """Download the CSV file and return as a DataFrame.
+        NOTE: prefer load_data_bytes() + load_degiro_csv() for correct amount parsing."""
+        raw = self.load_data_bytes()
+        if raw is None:
+            return pd.DataFrame()
         try:
-            return pd.read_csv(fh)
+            return pd.read_csv(io.BytesIO(raw))
         except Exception:
-            # If file is empty, return empty DF
             return pd.DataFrame()
 
     def save_data(self, df: pd.DataFrame):

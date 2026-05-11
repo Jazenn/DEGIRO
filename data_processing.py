@@ -38,10 +38,9 @@ def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
     def _shift_if_currency(main_col: str) -> None:
         if main_col not in df.columns:
             return
-        # Expliciet naar str converteren en NaN-achtige waarden uitsluiten
         series = df[main_col].astype(str).str.strip()
-        # Filter lege strings én "nan" (pandas NaN → str)
-        non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None")]
+        # Filter lege strings en "nan" (pandas NaN -> str) en "0.0" (al-numerieke placeholder)
+        non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None", "0.0")]
         if (
             len(non_empty) > 0
             and len(non_empty) <= 3
@@ -51,35 +50,38 @@ def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
                 idx = df.columns.get_loc(main_col)
             except KeyError:
                 return
-            replacement = None
             for j in range(idx + 1, len(df.columns)):
                 colname = df.columns[j]
                 if isinstance(colname, str) and colname.startswith("Unnamed"):
-                    replacement = colname
+                    df[main_col] = df[colname]
                     break
-            if replacement is not None:
-                df[main_col] = df[replacement]
 
     _shift_if_currency("amount")
     _shift_if_currency("balance")
 
+    # Drop the Unnamed helper columns — they are noise and should never be saved to Drive
+    unnamed_cols = [c for c in df.columns if isinstance(c, str) and c.startswith("Unnamed")]
+    if unnamed_cols:
+        df = df.drop(columns=unnamed_cols)
+
     # Clean and convert numeric columns (EU format: 1.234,56 -> 1234.56)
+    def clean_num(x):
+        import math
+        if isinstance(x, float):
+            return None if math.isnan(x) else x
+        if isinstance(x, int):
+            return float(x)
+        if not isinstance(x, str):
+            return None
+        x = x.replace("EUR", "").replace("USD", "").strip()
+        if not x or x.lower() in ("nan", "none", "-"):
+            return None
+        # EU format: remove thousands dot, replace decimal comma
+        x = x.replace(".", "").replace(",", ".")
+        return x
+
     for col in ["amount", "balance", "fx"]:
         if col in df.columns:
-            def clean_num(x):
-                # Pass through numerics (int/float) directly
-                if isinstance(x, (int, float)):
-                    return x
-                if not isinstance(x, str):
-                    return None
-                # Remove currency labels and whitespace
-                x = x.replace("EUR", "").replace("USD", "").strip()
-                if not x or x.lower() in ("nan", "none", "-"):
-                    return None
-                # EU format: 1.234,56 -> 1234.56
-                x = x.replace(".", "").replace(",", ".")
-                return x
-
             df[col] = df[col].apply(clean_num)
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
@@ -87,12 +89,13 @@ def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
     for col in ["date", "value_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
-            
+
     # Preserve the original row order to break ties for identical timestamps
     if "csv_row_id" not in df.columns:
         df["csv_row_id"] = df.index
-        
+
     return df
+
 
 def classify_row(description: str) -> str:
     """Zet de omschrijving om in een transaction type."""
