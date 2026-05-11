@@ -773,7 +773,7 @@ def render_rebalancing(df: pd.DataFrame, config_manager, price_manager) -> None:
     else:
         st.caption("Geen open posities gevonden op basis van de transacties.")
 
-def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None) -> None:
+def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd.DataFrame, drive=None, config_manager=None, price_manager=None, db=None) -> None:
     st.markdown("---")
     tab_overview, tab_rebalance, tab_balance, tab_history, tab_pnl, tab_trader = st.tabs(
         ["📈 Overzicht", "⚖️ Rebalancing", "💰 Saldo & Cashflow", " Historie", "📊 Historische P/L", "🚀 Short Term Trader"]

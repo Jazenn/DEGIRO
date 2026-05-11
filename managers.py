@@ -9,16 +9,16 @@ import threading
 
 # --- CONFIGURATION MANAGER ---
 class ConfigManager:
-    """Centralized management for application configuration and persistence (Unified)."""
-    
+    """Centralized management for application configuration and persistence."""
+
     CONFIG_FILE = "target_config.json"
     # Legacy files for migration
-    LEGACY_SETTINGS_FILE = "target_config_settings.json" 
-    LEGACY_MAPPING_FILE = "target_config_mapping.json"
-    LEGACY_NAMES_FILE = "target_config_names.json"
-    
-    def __init__(self, drive=None):
-        self.drive = drive
+    LEGACY_SETTINGS_FILE = "target_config_settings.json"
+    LEGACY_MAPPING_FILE  = "target_config_mapping.json"
+    LEGACY_NAMES_FILE    = "target_config_names.json"
+
+    def __init__(self, db=None):
+        self.db = db   # DBStorage instance (or None for local dev)
         self._config = {
             "assets": {},
             "settings": {
@@ -82,33 +82,38 @@ class ConfigManager:
             self._save_config()
 
     def _load_json(self, filename):
-        if self.drive:
+        # 1. Try database
+        if self.db and filename == self.CONFIG_FILE:
             try:
-                data = self.drive.load_json(filename)
-                if data is not None: return data
-            except: pass
-        
+                data = self.db.load_config()
+                if data:
+                    return data
+            except Exception:
+                pass
+        # 2. Fallback: local file (useful during local development)
         if Path(filename).exists():
             try:
                 with open(filename, "r") as f:
                     return json.load(f)
-            except: pass
+            except Exception:
+                pass
         return None
 
     def _save_config(self):
-        filename = self.CONFIG_FILE
         data = self._config
-        
-        if self.drive:
+        # 1. Try database
+        if self.db:
             try:
-                self.drive.save_json(filename, data)
-            except: pass
-        else:
-            try:
-                with open(filename, "w") as f:
-                    json.dump(data, f, indent=4)
-            except Exception as e:
-                st.error(f"Failed to save {filename}: {e}")
+                self.db.save_config(data)
+                return
+            except Exception:
+                pass
+        # 2. Fallback: local file
+        try:
+            with open(self.CONFIG_FILE, "w") as f:
+                json.dump(data, f, indent=4)
+        except Exception as e:
+            st.error(f"Config opslaan mislukt: {e}")
 
     def _save_json(self, filename, data):
         # Helper mainly for legacy or direct calls if needed, 
