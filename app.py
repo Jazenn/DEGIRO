@@ -112,8 +112,17 @@ def main() -> None:
     
     def _make_dedup_key(df_in: pd.DataFrame) -> pd.Series:
         d = pd.to_datetime(df_in["date"], errors='coerce').dt.strftime("%Y%m%d").fillna("00000000")
-        t = df_in["time"].astype(str).str.strip().fillna("00:00")
-        p_val = df_in["isin"].fillna(df_in["product"]).astype(str).str.strip().str.lower().replace("nan", "")
+        # time column may be missing in some exports
+        if "time" in df_in.columns:
+            t = df_in["time"].astype(str).str.strip().replace("nan", "00:00").fillna("00:00")
+        else:
+            t = pd.Series("00:00", index=df_in.index)
+        # Use ISIN if available, fall back to product, strip NaN representations
+        p_val = (
+            df_in["isin"].fillna(df_in["product"])
+            .astype(str).str.strip().str.lower()
+            .str.replace(r"^nan$", "", regex=True)
+        )
         
         def _clean_desc(s):
             s = str(s).strip().lower()
@@ -123,7 +132,10 @@ def main() -> None:
         
         desc = df_in["description"].apply(_clean_desc)
         v = pd.to_numeric(df_in["amount"], errors="coerce").fillna(0.0).round(2).astype(str)
-        oid = df_in["order_id"].astype(str).str.strip().fillna("")
+        if "order_id" in df_in.columns:
+            oid = df_in["order_id"].astype(str).str.strip().replace("nan", "").fillna("")
+        else:
+            oid = pd.Series("", index=df_in.index)
         
         return d + "|" + t + "|" + p_val + "|" + desc + "|" + v + "|" + oid
 
@@ -145,29 +157,30 @@ def main() -> None:
             st.error(f"Fout bij opslaan naar Drive: {e}")
     
     if "product" in df_raw.columns:
+        # Filter internal DEGIRO/Flatex accounts that appear as "products" but are
+        # not real investable positions (cash sweep counterparty accounts).
         df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
+        df_raw = df_raw[~df_raw["isin"].astype(str).str.contains("NLFLATEXACNT", case=False, na=False)]
 
     def smart_numeric_clean(series):
         if pd.api.types.is_numeric_dtype(series):
-             return series.fillna(0.0)
-             
+            return series.fillna(0.0)
         nums = pd.to_numeric(series, errors='coerce')
         mask_fail = nums.isna() & series.notna()
-        
         if mask_fail.any():
             def clean_eu(x):
                 s = str(x).replace("EUR", "").replace("USD", "").strip()
                 s = s.replace(".", "").replace(",", ".")
                 return s
-            
             cleaned = series[mask_fail].apply(clean_eu)
-        st.warning("Upload een bestand om de data te analyseren.")
-        st.stop()
+            nums.update(pd.to_numeric(cleaned, errors='coerce'))
+        return nums.fillna(0.0)
+
+    for col in ["amount", "balance", "fx"]:
+        if col in df_raw.columns:
+            df_raw[col] = smart_numeric_clean(df_raw[col])
 
     df = enrich_transactions(df_raw)
-    
-    config_manager = ConfigManager(drive=drive)
-    price_manager = PriceManager(config_manager=config_manager)
     
     # Identify unique product mappings instantly
     product_map = {}
@@ -192,6 +205,23 @@ def main() -> None:
 
     snap_prices = st.session_state.get("snapshot_prices")
     snap_history = st.session_state.get("snapshot_history")
+
+    # --- Stale snapshot guard ---
+    # If the snapshot is older than 6 hours, discard it so live prices are
+    # fetched fresh. Crypto trades 24/7, so a stale midnight price from the
+    # previous day causes the daily P/L to appear as €0.
+    _SNAPSHOT_MAX_AGE_HOURS = 6
+    if snap_prices and "timestamp" in snap_prices:
+        try:
+            snap_ts = pd.Timestamp(snap_prices["timestamp"])
+            age_hours = (pd.Timestamp.now(tz="UTC") - snap_ts).total_seconds() / 3600
+            if age_hours > _SNAPSHOT_MAX_AGE_HOURS:
+                snap_prices = None
+                st.session_state["snapshot_prices"] = None
+                st.session_state["live_fetch_done"] = False  # force re-fetch
+                st.sidebar.warning(f"⚠️ Koersen snapshot verlopen ({age_hours:.1f}u oud). Live data wordt opgehaald...")
+        except Exception:
+            pass
     
     if snap_prices:
         price_manager.load_snapshots(snap_prices)

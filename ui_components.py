@@ -62,8 +62,8 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
             qty = r.get("quantity")
             if pd.isna(lp) or pd.isna(qty): return pd.NA
             
-            # Hide non-crypto Daily P/L when market is closed
-            is_crypto = str(r.get("isin", "")).startswith("XFC")
+            # Use the same crypto-detection logic as calc_daily_base for consistency
+            is_crypto = str(r.get("isin", "")).startswith("XFC") or any(x in str(r.get("product", "")).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
             if not is_crypto and not is_tradegate_open():
                 return 0.0
             
@@ -662,9 +662,7 @@ def render_rebalancing(df: pd.DataFrame, config_manager, price_manager) -> None:
                             action_item["Kosten (Fee)"] = 0.0
                             action_item["Actie"] = "-"
                         else:
-                            check_str = str(action_item["Productnaam"]) + str(action_item["Ticker/ISIN"])
-                            is_core = "Vanguard" in check_str or action_item["isin"] == "IE00BK5BQT80"
-                            action_item["Kosten (Fee)"] = 1.0 if is_core else 3.0
+                            action_item["Kosten (Fee)"] = float(rb_settings.get("stock_fee_eur", 1.0))
                         
                         current_net = calc_net(raw_actions)
                         if current_net <= extra_budget + tolerance:
@@ -1056,10 +1054,7 @@ def render_charts(df: pd.DataFrame, history_df: pd.DataFrame, trading_volume: pd
                             return r["quantity"] * (lp - pp)
                             
                         _today_pl = float(_pos.apply(_safe_today_pl, axis=1).sum())
-                        if today not in _daily_pl.index:
-                            _daily_pl[today] = _today_pl
-                        else:
-                            _daily_pl[today] = _today_pl
+                        _daily_pl[today] = _today_pl
                         _daily_pl = _daily_pl.sort_index()
                 except Exception:
                     pass

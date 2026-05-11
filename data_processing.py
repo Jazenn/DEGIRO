@@ -37,12 +37,14 @@ def load_degiro_csv(file) -> pd.DataFrame:
     def _shift_if_currency(main_col: str) -> None:
         if main_col not in df.columns:
             return
+        # Expliciet naar str converteren en NaN-achtige waarden uitsluiten
         series = df[main_col].astype(str).str.strip()
-        non_empty = series[series != ""].unique()
+        # Filter lege strings én "nan" (pandas NaN → str)
+        non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None")]
         if (
             len(non_empty) > 0
             and len(non_empty) <= 3
-            and all(len(v) <= 3 and v.isalpha() for v in non_empty)
+            and all(isinstance(v, str) and len(v) <= 3 and v.isalpha() for v in non_empty)
         ):
             try:
                 idx = df.columns.get_loc(main_col)
@@ -63,12 +65,18 @@ def load_degiro_csv(file) -> pd.DataFrame:
     # Clean and convert numeric columns (EU format: 1.234,56 -> 1234.56)
     for col in ["amount", "balance", "fx"]:
         if col in df.columns:
-            # Handle string conversion robustly
             def clean_num(x):
-                if isinstance(x, str):
-                    # Remove thousands separator (.), replace decimal (,)
-                    x = x.replace("EUR", "").replace("USD", "").strip()
-                    x = x.replace(".", "").replace(",", ".")
+                # Pass through numerics (int/float) directly
+                if isinstance(x, (int, float)):
+                    return x
+                if not isinstance(x, str):
+                    return None
+                # Remove currency labels and whitespace
+                x = x.replace("EUR", "").replace("USD", "").strip()
+                if not x or x.lower() in ("nan", "none", "-"):
+                    return None
+                # EU format: 1.234,56 -> 1234.56
+                x = x.replace(".", "").replace(",", ".")
                 return x
 
             df[col] = df[col].apply(clean_num)
@@ -282,7 +290,10 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
     if relevant_tx.empty:
         return pd.DataFrame()
 
-    start_date = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
+    five_years_ago = (pd.Timestamp.now() - pd.DateOffset(years=5)).normalize()
+    # Use the actual first transaction date to avoid downloading years of empty data
+    first_tx_date = relevant_tx["value_date"].min().normalize()
+    start_date = max(five_years_ago, first_tx_date - pd.Timedelta(days=30))
     start_date_str = start_date.strftime("%Y-%m-%d")
 
     unique_tickers = list(set(product_map.values()))

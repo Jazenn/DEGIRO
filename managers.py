@@ -115,20 +115,10 @@ class ConfigManager:
         # but _save_config handles the main file.
         pass
 
-    # --- Targets ---
-    def get_targets(self): 
-        return {k: v.get("target_pct", 0.0) for k, v in self._config.get("assets", {}).items()}
-    
-    def set_target(self, product, percentage):
-        if product not in self._config["assets"]: 
-            self._config["assets"][product] = {}
-        self._config["assets"][product]["target_pct"] = percentage
-        self._save_config()
-        
-    def remove_target(self, product):
-        if product in self._config["assets"]:
-            del self._config["assets"][product]
-            self._save_config()
+    # get_targets / set_target / remove_target are defined below as the
+    # canonical implementations (lines 208+). These early stubs are kept
+    # only as a placeholder so the indented class block stays valid.
+    # The methods below with the same names will override these at class load.
             
     # --- Settings ---
     def get_settings(self): return self._config.get("settings", {})

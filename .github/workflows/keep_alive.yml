@@ -47,7 +47,7 @@ jobs:
               const awakeMarkers = [
                 page.locator('[data-testid=\"stAppViewContainer\"]'),
                 page.locator('text=DeGiro Portfolio Dashboard'),
-                page.locator('text=Open posities (afgeleid uit transacties)')
+                page.locator('text=Dashboard Overzicht')
               ];
 
               console.log('Detecting app state (waiting up to 45s)...');

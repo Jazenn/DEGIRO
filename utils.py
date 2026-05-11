@@ -52,7 +52,7 @@ def format_pct(value: float) -> str:
     if pd.isna(value):
         return ""
     s = f"{value:+.2f}"
-    s = s.replace(",", "X").replace(".", ",").replace("X", ",")
+    s = s.replace(",", "X").replace(".", ",").replace("X", ".")
     return f"{s}%"
 
 def is_tradegate_open() -> bool:

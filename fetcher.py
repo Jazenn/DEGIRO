@@ -23,6 +23,8 @@ def main():
         
         if "product" in df_raw.columns:
             df_raw = df_raw[~df_raw["product"].astype(str).str.contains("Aegon", case=False, na=False)]
+        if "isin" in df_raw.columns:
+            df_raw = df_raw[~df_raw["isin"].astype(str).str.contains("NLFLATEXACNT", case=False, na=False)]
             
         for col in ["date", "value_date"]:
             if col in df_raw.columns:
