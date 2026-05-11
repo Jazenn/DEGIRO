@@ -97,14 +97,31 @@ def main() -> None:
     if use_drive:
         st.sidebar.markdown("---")
         with st.sidebar.expander("🗑️ Data Beheer"):
-            if st.button("🔴 Wis ALLE data", help="Verwijdert alle data uit Drive en leegt de uploader."):
+            st.caption("Snapshots bevatten gecachede koersen en historische data. Reset ze als de dashboard verkeerde waarden toont.")
+            if st.button("🔄 Reset Snapshots", help="Wist snapshot_history.csv en snapshot_prices.json. Transacties en configuratie blijven bewaard.", use_container_width=True):
+                try:
+                    # Save empty CSVs/JSONs to overwrite the corrupt snapshots
+                    drive.save_json("snapshot_prices.json", {})
+                    drive.save_csv("snapshot_history.csv", pd.DataFrame())
+                    # Clear all session state snapshot keys
+                    for key in ["snapshot_prices", "snapshot_history", "live_fetch_done",
+                                "mem_live_prices", "mem_prev_prices", "mem_open_prices", "mem_mid_prices"]:
+                        st.session_state.pop(key, None)
+                    st.cache_data.clear()
+                    st.toast("Snapshots gereset! Koersen worden opnieuw opgehaald.", icon="🔄")
+                    time.sleep(1)
+                    st.rerun()
+                except Exception as e:
+                    st.sidebar.error(f"Kon snapshots niet resetten: {e}")
+
+            st.markdown("---")
+            if st.button("🔴 Wis ALLE transactiedata", help="Verwijdert transactions_master.csv uit Drive en leegt de uploader. Configuratie en targets blijven bewaard.", use_container_width=True):
                 try:
                     empty_df = pd.DataFrame(columns=df_raw.columns)
                     drive.save_data(empty_df)
                     st.cache_data.clear()
                     st.session_state["uploader_key"] += 1
-                    st.toast("Alle data is gewist!", icon="🗑️")
-                    import time
+                    st.toast("Transactiedata gewist!", icon="🗑️")
                     time.sleep(1)
                     st.rerun()
                 except Exception as e:
