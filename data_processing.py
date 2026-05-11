@@ -6,91 +6,155 @@ from utils import _shorten_name
 
 @st.cache_data(show_spinner=False)
 def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
-    """Load a DeGiro CSV file (passed as raw bytes) into a cleaned DataFrame."""
+    """Load a DeGiro CSV file (Account or Transactions) into a cleaned DataFrame."""
     import io
+    import math
+    
     df = pd.read_csv(io.BytesIO(file_bytes))
+    df.columns = [str(c).strip().lower() for c in df.columns]
 
-    # Normalise column names (strip whitespace, consistent casing)
-    df.columns = [c.strip() for c in df.columns]
+    # Detect if it's a Transactions export (has 'aantal' or 'quantity')
+    if 'aantal' in df.columns or 'quantity' in df.columns:
+        return _parse_transactions_csv(df)
+    return _parse_account_csv(df)
 
-    # Map Dutch export columns to easier internal names
+def _clean_num(x):
+    import math
+    if pd.isna(x): return None
+    if isinstance(x, (float, int)): return float(x) if not math.isnan(x) else None
+    if not isinstance(x, str): return None
+    x = x.replace("EUR", "").replace("USD", "").replace("GBP", "").strip()
+    if not x or x.lower() in ("nan", "none", "-"): return None
+    last_comma = x.rfind(',')
+    last_dot = x.rfind('.')
+    if last_comma > last_dot:
+        x = x.replace(".", "").replace(",", ".")
+    elif last_dot > last_comma:
+        x = x.replace(",", "")
+    elif last_comma != -1: # Only a comma exists
+        x = x.replace(",", ".")
+    try:
+        return float(x)
+    except:
+        return None
+
+def _parse_transactions_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse a Transactions.csv and convert its rows to match the Account.csv schema."""
+    cols = df.columns.tolist()
+    def get_col(candidates):
+        for c in candidates:
+            if c in cols: return c
+        return None
+        
+    c_date = get_col(['datum', 'date'])
+    c_time = get_col(['tijd', 'time'])
+    c_prod = get_col(['product'])
+    c_isin = get_col(['isin'])
+    c_qty = get_col(['aantal', 'quantity'])
+    c_price = get_col(['koers', 'price'])
+    c_waarde = get_col(['waarde eur', 'lokale waarde', 'value eur', 'value'])
+    c_fx = get_col(['autofx kosten', 'autofx fee'])
+    c_fee = get_col(['transactiekosten en/of kosten van derden eur', 'transaction costs', 'fee'])
+    c_order = get_col(['order_id', 'order id'])
+    
+    records = []
+    for idx, row in df.iterrows():
+        d = str(row[c_date]) if c_date and pd.notna(row[c_date]) else ""
+        t = str(row[c_time]) if c_time and pd.notna(row[c_time]) else ""
+        prod = str(row[c_prod]) if c_prod and pd.notna(row[c_prod]) else ""
+        isin = str(row[c_isin]) if c_isin and pd.notna(row[c_isin]) else ""
+        
+        uuid = ""
+        if c_order and pd.notna(row[c_order]):
+            uuid = str(row[c_order]).strip()
+        elif 'unnamed: 17' in cols and pd.notna(row['unnamed: 17']):
+            uuid = str(row['unnamed: 17']).strip()
+            
+        qty = _clean_num(row[c_qty]) if c_qty else 0.0
+        price = _clean_num(row[c_price]) if c_price else 0.0
+        waarde = _clean_num(row[c_waarde]) if c_waarde else 0.0
+        fx_fee = _clean_num(row[c_fx]) if c_fx else 0.0
+        tx_fee = _clean_num(row[c_fee]) if c_fee else 0.0
+        
+        base_rec = {
+            "date": d, "time": t, "value_date": d,
+            "product": _shorten_name(prod), "isin": isin,
+            "balance": 0.0, "fx": 0.0, "order_id": uuid, "csv_row_id": idx
+        }
+        
+        # 1. Main Trade Row
+        if qty and qty != 0:
+            action = "Koop" if qty > 0 else "Verkoop"
+            desc = f"{action} {abs(qty):g} @ {price}"
+            rec = base_rec.copy()
+            rec["description"] = desc
+            rec["amount"] = waarde
+            records.append(rec)
+            
+        # 2. FX Fee Row
+        if fx_fee and fx_fee != 0:
+            rec = base_rec.copy()
+            rec["description"] = "Valutakosten"
+            rec["amount"] = fx_fee
+            records.append(rec)
+            
+        # 3. Transaction Fee Row
+        if tx_fee and tx_fee != 0:
+            rec = base_rec.copy()
+            rec["description"] = "DEGIRO Transactiekosten"
+            rec["amount"] = tx_fee
+            records.append(rec)
+
+    out = pd.DataFrame(records)
+    if not out.empty:
+        out["date"] = pd.to_datetime(out["date"], dayfirst=True, errors="coerce")
+        out["value_date"] = pd.to_datetime(out["value_date"], dayfirst=True, errors="coerce")
+    return out
+
+def _parse_account_csv(df: pd.DataFrame) -> pd.DataFrame:
+    """Parse standard Account.csv (cash flows)."""
     rename_map = {
-        "Datum": "date",
-        "Tijd": "time",
-        "Valutadatum": "value_date",
-        "Product": "product",
-        "ISIN": "isin",
-        "Omschrijving": "description",
-        "Mutatie": "amount",
-        "Saldo": "balance",
-        "FX": "fx",
-        "Order Id": "order_id",
+        "datum": "date", "date": "date",
+        "tijd": "time", "time": "time",
+        "valutadatum": "value_date", "value date": "value_date",
+        "product": "product", "isin": "isin",
+        "omschrijving": "description", "description": "description",
+        "mutatie": "amount", "change": "amount", "value": "amount",
+        "saldo": "balance", "balance": "balance",
+        "fx": "fx", "order id": "order_id"
     }
     df = df.rename(columns={k: v for k, v in rename_map.items() if k in df.columns})
 
-    # Apply global renaming rules directly to product column so history & tables match perfectly
     if "product" in df.columns:
         df["product"] = df["product"].apply(lambda x: _shorten_name(x) if pd.notna(x) and isinstance(x, str) else x)
 
-    # In de DeGiro-export staat in de kolom 'Mutatie' / 'Saldo' meestal de valuta (EUR)
-    # en staat het echte bedrag in de naastliggende 'Unnamed: x' kolom.
-    # Herken dat patroon en verschuif de waarden naar 'amount' / 'balance'.
-    def _shift_if_currency(main_col: str) -> None:
-        if main_col not in df.columns:
-            return
+    def _shift_if_currency(main_col: str):
+        if main_col not in df.columns: return
         series = df[main_col].astype(str).str.strip()
-        # Filter lege strings en "nan" (pandas NaN -> str) en "0.0" (al-numerieke placeholder)
         non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None", "0.0")]
-        if (
-            len(non_empty) > 0
-            and len(non_empty) <= 3
-            and all(isinstance(v, str) and len(v) <= 3 and v.isalpha() for v in non_empty)
-        ):
-            try:
-                idx = df.columns.get_loc(main_col)
-            except KeyError:
-                return
+        if len(non_empty) > 0 and len(non_empty) <= 3 and all(isinstance(v, str) and len(v) <= 3 and v.isalpha() for v in non_empty):
+            try: idx = df.columns.get_loc(main_col)
+            except KeyError: return
             for j in range(idx + 1, len(df.columns)):
-                colname = df.columns[j]
-                if isinstance(colname, str) and colname.startswith("Unnamed"):
-                    df[main_col] = df[colname]
+                if isinstance(df.columns[j], str) and df.columns[j].startswith("unnamed"):
+                    df[main_col] = df[df.columns[j]]
                     break
 
     _shift_if_currency("amount")
     _shift_if_currency("balance")
 
-    # Drop the Unnamed helper columns — they are noise and should never be saved to Drive
-    unnamed_cols = [c for c in df.columns if isinstance(c, str) and c.startswith("Unnamed")]
-    if unnamed_cols:
-        df = df.drop(columns=unnamed_cols)
-
-    # Clean and convert numeric columns (EU format: 1.234,56 -> 1234.56)
-    def clean_num(x):
-        import math
-        if isinstance(x, float):
-            return None if math.isnan(x) else x
-        if isinstance(x, int):
-            return float(x)
-        if not isinstance(x, str):
-            return None
-        x = x.replace("EUR", "").replace("USD", "").strip()
-        if not x or x.lower() in ("nan", "none", "-"):
-            return None
-        # EU format: remove thousands dot, replace decimal comma
-        x = x.replace(".", "").replace(",", ".")
-        return x
+    unnamed = [c for c in df.columns if isinstance(c, str) and c.startswith("unnamed")]
+    if unnamed: df = df.drop(columns=unnamed)
 
     for col in ["amount", "balance", "fx"]:
         if col in df.columns:
-            df[col] = df[col].apply(clean_num)
+            df[col] = df[col].apply(_clean_num)
             df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
 
-    # Parse dates flexibly (European %d-%m-%Y OR ISO %Y-%m-%d)
     for col in ["date", "value_date"]:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
 
-    # Preserve the original row order to break ties for identical timestamps
     if "csv_row_id" not in df.columns:
         df["csv_row_id"] = df.index
 
@@ -101,33 +165,33 @@ def classify_row(description: str) -> str:
     """Zet de omschrijving om in een transaction type."""
     desc = str(description or "").strip()
 
-    if "Koop " in desc:
+    if "Koop " in desc or desc.startswith("Buy "):
         return "Buy"
-    if "Verkoop " in desc:
+    if "Verkoop " in desc or desc.startswith("Sell "):
         return "Sell"
 
-    if "DEGIRO Transactiekosten" in desc or "Brokerskosten" in desc:
+    if "DEGIRO Transactiekosten" in desc or "Brokerskosten" in desc or "Transaction Fee" in desc:
         return "Fee"
-    if "Kosten van derden" in desc:
+    if "Kosten van derden" in desc or "Third party" in desc:
         return "Fee"
     if "Aansluitingskosten" in desc or "Connectivity Fee" in desc:
         return "Fee"
     if "Valutakosten" in desc or "Auto FX" in desc:
         return "Fee"
             
-    if "Dividendbelasting" in desc:
+    if "Dividendbelasting" in desc or "Withholding Tax" in desc:
         return "Dividend Tax"
     if "Dividend" in desc:
         return "Dividend"
-    if "Flatex Interest" in desc or "Rente" in desc:
+    if "Flatex Interest" in desc or "Rente" in desc or "Interest" in desc:
         return "Interest"
-    if "iDEAL Deposit" in desc:
+    if "iDEAL Deposit" in desc or desc == "Deposit":
         return "Deposit"
     if "Reservation iDEAL" in desc:
         return "Reservation"
-    if "Overboeking van uw geldrekening" in desc or "Storting" in desc:
+    if "Overboeking van uw geldrekening" in desc or "Storting" in desc or "Deposit" in desc:
         return "Deposit"
-    if "Overboeking naar uw geldrekening" in desc or "Terugstorting" in desc:
+    if "Overboeking naar uw geldrekening" in desc or "Terugstorting" in desc or "Withdrawal" in desc:
         return "Withdrawal"
     if "Degiro Cash Sweep Transfer" in desc:
         return "Cash Sweep"
@@ -138,22 +202,24 @@ def parse_quantity(description: str) -> float:
     """
     Parseer het aantal stuks uit een omschrijving zoals:
     'Koop 6 @ 146,92 EUR' of 'Verkoop 1 @ 6,75 EUR'.
+    English: 'Buy 6 @ 146.92 EUR' or 'Sell 1 @ 6.75 EUR'
     """
     if not isinstance(description, str):
         return 0.0
 
-    match = re.search(r"(Koop|Verkoop)\s+([0-9.,]+)\s+@", description)
+    match = re.search(r"(Koop|Verkoop|Buy|Sell)\s+([0-9.,]+)\s+@", description)
     if not match:
         return 0.0
 
     action = match.group(1)
     qty_str = match.group(2).replace(".", "").replace(",", ".")
+
     try:
         qty = float(qty_str)
     except ValueError:
         return 0.0
 
-    if action == "Verkoop":
+    if action in ("Verkoop", "Sell"):
         qty = -qty
     return qty
 
