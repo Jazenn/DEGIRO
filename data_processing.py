@@ -92,7 +92,8 @@ def _parse_transactions_csv(df: pd.DataFrame) -> pd.DataFrame:
         # 1. Main Trade Row
         if qty and qty != 0:
             action = "Koop" if qty > 0 else "Verkoop"
-            desc = f"{action} {abs(qty):g} @ {price}"
+            # Format to 8 decimals to prevent scientific notation string bugs
+            desc = f"{action} {abs(qty):.8f} @ {price:.4f}"
             rec = base_rec.copy()
             rec["description"] = desc
             rec["amount"] = waarde
@@ -165,6 +166,24 @@ def _parse_account_csv(df: pd.DataFrame) -> pd.DataFrame:
     if "csv_row_id" not in df.columns:
         df["csv_row_id"] = df.index
 
+    # --- CRITICAL FIX: Filter out historical trades from Account.csv ---
+    # Because Transactions.csv perfectly handles all trades and fees, we 
+    # strictly use Account.csv ONLY for cash flows (deposits, interest, dividends).
+    # This mathematically guarantees zero duplicates across files.
+    if "description" in df.columns:
+        def is_trade_related(desc):
+            d = str(desc).lower()
+            if d.startswith("koop ") or d.startswith("buy ") or "verkoop " in d or "sell " in d:
+                return True
+            if "transactiekosten" in d or "transaction fee" in d or "brokerskosten" in d:
+                if "aansluiting" not in d and "connectivity" not in d: # Keep connectivity fees
+                    return True
+            if "valutakosten" in d or "auto fx" in d:
+                return True
+            return False
+        
+        df = df[~df["description"].apply(is_trade_related)]
+
     return df
 
 
@@ -209,21 +228,19 @@ def parse_quantity(description: str) -> float:
     """
     Parseer het aantal stuks uit een omschrijving zoals:
     'Koop 6 @ 146,92 EUR' of 'Verkoop 1 @ 6,75 EUR'.
-    English: 'Buy 6 @ 146.92 EUR' or 'Sell 1 @ 6.75 EUR'
     """
     if not isinstance(description, str):
         return 0.0
 
-    match = re.search(r"(Koop|Verkoop|Buy|Sell)\s+([0-9.,]+)\s+@", description)
+    match = re.search(r"(Koop|Verkoop|Buy|Sell)\s+([0-9.,eE+-]+)\s+@", description)
     if not match:
         return 0.0
 
     action = match.group(1)
-    qty_str = match.group(2).replace(".", "").replace(",", ".")
+    qty_str = match.group(2)
 
-    try:
-        qty = float(qty_str)
-    except ValueError:
+    qty = _clean_num(qty_str)
+    if qty is None:
         return 0.0
 
     if action in ("Verkoop", "Sell"):
