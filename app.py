@@ -69,8 +69,8 @@ def main() -> None:
             if not f.name.lower().endswith(".csv"):
                 continue
             try:
-                f.seek(0)
-                df_part = load_degiro_csv(f)
+                file_bytes = f.getvalue()  # read once as bytes — safe for @st.cache_data
+                df_part = load_degiro_csv(file_bytes)
                 if not df_part.empty:
                     df_list.append(df_part)
             except Exception as e:

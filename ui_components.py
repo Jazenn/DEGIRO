@@ -39,17 +39,17 @@ def render_metrics(df: pd.DataFrame, price_manager, config_manager) -> None:
         def calc_daily_base(r):
             qty = r.get("quantity")
             if pd.isna(qty): return pd.NA
-            
-            is_crypto = str(r.get("isin", "")).startswith("XFC") or any(x in str(r.get("product", "")).upper() for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"])
-            
-            if is_crypto:
+
+            # All assets (including crypto) use prev_close to match DEGIRO's
+            # "dagresultaat" which is always based on the previous day's closing
+            # price. midnight_price diverges by 1-2h and causes sign mismatches.
+            base = r.get("prev_close")
+            if pd.isna(base) or base == 0:
+                # Fallback: midnight price for crypto when prev_close unavailable
                 base = r.get("midnight_price")
-            else:
-                base = r.get("prev_close")
-                
             if pd.isna(base) or base == 0:
                 base = r.get("market_open")
-            
+
             if pd.notna(base) and base > 0:
                 return qty * base
             return pd.NA
@@ -216,18 +216,23 @@ def render_overview(df: pd.DataFrame, config_manager, price_manager) -> None:
                     lp = row.get("last_price")
                     qty = row.get("quantity")
                     if pd.isna(lp) or pd.isna(qty): return pd.NA, pd.NA
-                    
-                    if cat == "Crypto":
+
+                    # Use prev_close for all assets to match DEGIRO's daily P/L
+                    base = row.get("prev_close")
+                    if pd.isna(base) or base == 0:
                         base = row.get("midnight_price")
-                    else:
-                        base = row.get("prev_close")
-                        # Hide non-crypto Daily P/L when market is closed
-                        if not is_tradegate_open():
-                            return 0.0, 0.0
-                        
+
+                    # Hide non-crypto daily P/L when market is closed
+                    is_crypto = str(row.get("isin", "")).startswith("XFC") or any(
+                        x in str(row.get("product", "")).upper()
+                        for x in ["BTC", "ETH", "COIN", "CRYPTO", "BITCOIN", "ETHEREUM"]
+                    )
+                    if not is_crypto and not is_tradegate_open():
+                        return 0.0, 0.0
+
                     if pd.isna(base) or base == 0:
                         base = row.get("market_open")
-                        
+
                     if pd.notna(base) and base > 0 and pd.notna(lp) and lp > 0:
                         pl_eur = qty * (lp - base)
                         base_val = qty * base

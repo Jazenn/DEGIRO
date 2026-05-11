@@ -4,10 +4,11 @@ import streamlit as st
 import yfinance as yf
 from utils import _shorten_name
 
-@st.cache_data
-def load_degiro_csv(file) -> pd.DataFrame:
-    """Load a DeGiro CSV file into a cleaned DataFrame."""
-    df = pd.read_csv(file)
+@st.cache_data(show_spinner=False)
+def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
+    """Load a DeGiro CSV file (passed as raw bytes) into a cleaned DataFrame."""
+    import io
+    df = pd.read_csv(io.BytesIO(file_bytes))
 
     # Normalise column names (strip whitespace, consistent casing)
     df.columns = [c.strip() for c in df.columns]
