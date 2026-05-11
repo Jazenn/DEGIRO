@@ -36,8 +36,25 @@ def _get_secret(key: str) -> str:
 
 def _compute_row_hash(row: dict) -> str:
     """Deterministisch MD5-hash voor deduplicatie op DB niveau."""
-    key_fields = ["date", "time", "isin", "description", "amount", "balance", "order_id"]
-    key_data = {k: str(row.get(k, "") or "").strip() for k in key_fields}
+    order_id = str(row.get("order_id", "")).strip()
+    amount = str(row.get("amount", "")).strip()
+    
+    if order_id and order_id.lower() not in ("nan", "none", ""):
+        # Trades and transaction fees have an order_id.
+        # They exist in both Account.csv and Transactions.csv.
+        # By using ONLY order_id + amount + isin, we ensure perfectly identical hashes
+        # across both files, preventing the doubling of positions.
+        isin = str(row.get("isin", "")).strip()
+        key_data = {"order_id": order_id, "amount": amount, "isin": isin}
+    else:
+        # Cash flows (deposits, dividends, interest) only exist in Account.csv.
+        # We hash their full details to prevent intra-file duplication.
+        desc = str(row.get("description", "")).strip()
+        date = str(row.get("date", "")).strip()
+        time = str(row.get("time", "")).strip()
+        isin = str(row.get("isin", "")).strip()
+        key_data = {"date": date, "time": time, "isin": isin, "description": desc, "amount": amount}
+        
     return hashlib.md5(json.dumps(key_data, sort_keys=True).encode()).hexdigest()
 
 

@@ -73,6 +73,13 @@ def _parse_transactions_csv(df: pd.DataFrame) -> pd.DataFrame:
         qty = _clean_num(row[c_qty]) if c_qty else 0.0
         price = _clean_num(row[c_price]) if c_price else 0.0
         waarde = _clean_num(row[c_waarde]) if c_waarde else 0.0
+        
+        # Crypto trades in DEGIRO often export with empty 'Aantal'. Calculate it:
+        if (qty is None or qty == 0.0) and price and price > 0 and waarde and waarde != 0:
+            calculated_qty = abs(waarde) / price
+            # In DEGIRO, Buy = negative waarde, Sell = positive waarde
+            qty = calculated_qty if waarde < 0 else -calculated_qty
+
         fx_fee = _clean_num(row[c_fx]) if c_fx else 0.0
         tx_fee = _clean_num(row[c_fee]) if c_fee else 0.0
         
