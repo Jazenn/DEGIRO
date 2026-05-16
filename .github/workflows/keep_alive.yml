@@ -2,7 +2,7 @@ name: Keep App Alive
 
 on:
   schedule:
-    - cron: '0 */4 * * *' # Runs 6 times a day (every 4 hours)
+    - cron: '12 */4 * * *' # Runs 6 times a day at minute 12
   workflow_dispatch: # Allows manual trigger for testing
 
 jobs:

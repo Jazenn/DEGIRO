@@ -16,7 +16,7 @@ def main():
         df_raw = db.load_transactions()
         if df_raw.empty:
             print("Geen transacties gevonden in de database. Stoppen.")
-            sys.exit(0)
+            return
 
         print(f"Geladen: {len(df_raw)} transacties. Verrijken...")
 
@@ -82,3 +82,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+ry:
+        main()
+    except Exception:
+        sys.exit(1)
