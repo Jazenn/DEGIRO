@@ -9,50 +9,52 @@ import json
 
 class DriveStorage:
     def __init__(self, folder_id):
+        self.scopes = ["https://www.googleapis.com/auth/drive"]
+        self.folder_id = folder_id
+        self.filename = "transactions_master.csv"
+        
+        # 1. Try to use Google Application Default Credentials (works on Cloud Run/Functions automatically)
+        try:
+            import google.auth
+            self.creds, _ = google.auth.default(scopes=self.scopes)
+            self.service = build("drive", "v3", credentials=self.creds)
+            # Test if it works by doing a simple call (optional but helps for fallback)
+            # self.service.about().get(fields="user").execute()
+            print("Successfully authenticated using Google Default Credentials.")
+            return
+        except Exception as e:
+            print(f"Default Credentials not available or failed: {e}. Falling back to manual secrets...")
+
+        # 2. Fallback: Manual secrets (required for local dev or Streamlit Cloud)
         def get_secret(key, env_key=None):
             # 1. Try environment variables first
             if env_key and env_key in os.environ:
                 return os.environ[env_key]
-            if key in os.environ:
-                return os.environ[key]
-                
-            # 2. Try nested streamlit structure: connections.gsheets.key
-            try:
-                if hasattr(st, "secrets"):
-                    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
-                        if key in st.secrets["connections"]["gsheets"]:
-                            return st.secrets["connections"]["gsheets"][key]
-                    
-                    if env_key and env_key in st.secrets:
-                        return st.secrets[env_key]
-                    if key in st.secrets:
-                        return st.secrets[key]
-            except Exception:
-                pass
-                
+...
             raise KeyError(f"Secret '{key}' (or '{env_key}') not found in any source.")
             
-        creds_dict = {
-            "type": "service_account",
-            "project_id": get_secret("project_id", "GCP_PROJECT_ID"),
-            "private_key_id": get_secret("private_key_id", "GCP_PRIVATE_KEY_ID"),
-            "private_key": get_secret("private_key", "GCP_PRIVATE_KEY").replace("\\n", "\n"),
-            "client_email": get_secret("client_email", "GCP_CLIENT_EMAIL"),
-            "client_id": get_secret("client_id", "GCP_CLIENT_ID"),
-            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
-            "token_uri": "https://oauth2.googleapis.com/token",
-            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
-            "client_x509_cert_url": get_secret("client_x509_cert_url", "GCP_CLIENT_X509_CERT_URL"),
-            "universe_domain": "googleapis.com"
-        }
-        
-        self.scopes = ["https://www.googleapis.com/auth/drive"]
-        self.creds = service_account.Credentials.from_service_account_info(
-            creds_dict, scopes=self.scopes
-        )
-        self.service = build("drive", "v3", credentials=self.creds)
-        self.folder_id = folder_id
-        self.filename = "transactions_master.csv"
+        try:
+            creds_dict = {
+                "type": "service_account",
+                "project_id": get_secret("project_id", "GCP_PROJECT_ID"),
+                "private_key_id": get_secret("private_key_id", "GCP_PRIVATE_KEY_ID"),
+                "private_key": get_secret("private_key", "GCP_PRIVATE_KEY").replace("\\n", "\n"),
+                "client_email": get_secret("client_email", "GCP_CLIENT_EMAIL"),
+                "client_id": get_secret("client_id", "GCP_CLIENT_ID"),
+                "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+                "token_uri": "https://oauth2.googleapis.com/token",
+                "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+                "client_x509_cert_url": get_secret("client_x509_cert_url", "GCP_CLIENT_X509_CERT_URL"),
+                "universe_domain": "googleapis.com"
+            }
+            
+            self.creds = service_account.Credentials.from_service_account_info(
+                creds_dict, scopes=self.scopes
+            )
+            self.service = build("drive", "v3", credentials=self.creds)
+        except Exception as e:
+            print(f"Manual secrets authentication also failed: {e}")
+            raise e
 
     def _find_file(self, filename=None):
         """Find the file in the target folder."""
