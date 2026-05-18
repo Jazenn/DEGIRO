@@ -74,15 +74,14 @@ def main():
 
         print("Fetcher succesvol afgerond.")
 
-    except Exception:
+    except Exception as e:
         print("Fout tijdens fetcher:")
         traceback.print_exc()
-        sys.exit(1)
+        raise e
 
 
 if __name__ == "__main__":
-    main()
-ry:
+    try:
         main()
     except Exception:
         sys.exit(1)

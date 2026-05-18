@@ -18,8 +18,6 @@ class DriveStorage:
             import google.auth
             self.creds, _ = google.auth.default(scopes=self.scopes)
             self.service = build("drive", "v3", credentials=self.creds)
-            # Test if it works by doing a simple call (optional but helps for fallback)
-            # self.service.about().get(fields="user").execute()
             print("Successfully authenticated using Google Default Credentials.")
             return
         except Exception as e:
@@ -30,7 +28,23 @@ class DriveStorage:
             # 1. Try environment variables first
             if env_key and env_key in os.environ:
                 return os.environ[env_key]
-...
+            if key in os.environ:
+                return os.environ[key]
+                
+            # 2. Try nested streamlit structure: connections.gsheets.key
+            try:
+                if hasattr(st, "secrets"):
+                    if "connections" in st.secrets and "gsheets" in st.secrets["connections"]:
+                        if key in st.secrets["connections"]["gsheets"]:
+                            return st.secrets["connections"]["gsheets"][key]
+                    
+                    if env_key and env_key in st.secrets:
+                        return st.secrets[env_key]
+                    if key in st.secrets:
+                        return st.secrets[key]
+            except Exception:
+                pass
+                
             raise KeyError(f"Secret '{key}' (or '{env_key}') not found in any source.")
             
         try:
