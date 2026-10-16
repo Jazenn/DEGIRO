@@ -1,0 +1,838 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEGIRO Portfolio Dashboard - UI Prototype</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Font: Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#0284c7',
+              600: '#0369a1',
+              700: '#075985',
+            },
+            degiro: {
+              blue: '#0070ba',
+              dark: '#0f172a',
+              card: '#1e293b',
+              accent: '#10b981',
+              warning: '#f59e0b',
+              danger: '#ef4444',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.3); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.5); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-sky-500 selection:text-white pb-24">
+
+  <!-- ========================================================================= -->
+  <!-- TOP BANNER (COMMON TO ALL VARIANTS) -->
+  <!-- ========================================================================= -->
+  <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-lg bg-sky-600 flex items-center justify-center font-bold text-white shadow-lg shadow-sky-600/30">
+          D
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold tracking-tight text-white text-base">DEGIRO</span>
+            <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-sky-950 border border-sky-800 text-sky-400">Overhaul Prototype</span>
+          </div>
+          <p class="text-xs text-slate-400">Personal Portfolio Tracker</p>
+        </div>
+      </div>
+
+      <!-- Quick Ticker Ribbon -->
+      <div class="hidden md:flex items-center gap-4 text-xs font-mono">
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700/60">
+          <span class="text-slate-400">VWCE</span>
+          <span class="text-white font-medium">€124.80</span>
+          <span class="text-emerald-400 font-semibold">+0.6%</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700/60">
+          <span class="text-slate-400">IMAE</span>
+          <span class="text-white font-medium">€78.45</span>
+          <span class="text-emerald-400 font-semibold">+0.3%</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700/60">
+          <span class="text-slate-400">BTC</span>
+          <span class="text-white font-medium">€64,320</span>
+          <span class="text-emerald-400 font-semibold">+2.1%</span>
+        </div>
+        <div class="flex items-center gap-1.5 px-2.5 py-1 rounded bg-slate-800/80 border border-slate-700/60">
+          <span class="text-slate-400">ETH</span>
+          <span class="text-white font-medium">€3,210</span>
+          <span class="text-rose-400 font-semibold">-0.4%</span>
+        </div>
+      </div>
+
+      <!-- Right sync / status badge -->
+      <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2 text-xs text-slate-400 bg-slate-800/60 px-3 py-1.5 rounded-md border border-slate-800">
+          <span class="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <span>Live 24/7 (0ms Edge)</span>
+        </div>
+        <button class="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700 flex items-center gap-1.5 transition">
+          <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>
+          <span>Refresh</span>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN CONTAINER (MOUNTING VARIANTS) -->
+  <!-- ========================================================================= -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
+    <!-- VARIANT A: Command Center / Financial Terminal -->
+    <div id="variant-a" class="variant-view space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4 pb-2 border-b border-slate-800/80">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            Terminal Overview
+            <span class="text-xs font-normal text-slate-400 bg-slate-800 px-2 py-0.5 rounded border border-slate-700">Variant A: Dense & Quantitative</span>
+          </h1>
+          <p class="text-sm text-slate-400">Multi-column high-density layout designed for instant monitoring of equity, allocation drift, and profit tiers.</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <span class="text-xs text-slate-400 font-mono">Last Calc: Today 11:42 UTC</span>
+        </div>
+      </div>
+
+      <!-- Top Metric Cards -->
+      <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Total Portfolio Value</p>
+          <div class="flex items-baseline justify-between mt-2">
+            <span class="text-2xl font-bold font-mono text-white">€48,250.75</span>
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 flex items-center gap-0.5">
+              <i data-lucide="trending-up" class="w-3 h-3"></i> +14.2%
+            </span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1 font-mono">All-time profit: +€6,012.30</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Net Invested Capital</p>
+          <div class="flex items-baseline justify-between mt-2">
+            <span class="text-2xl font-bold font-mono text-slate-200">€42,238.45</span>
+            <span class="text-xs text-slate-400 font-mono">92 Deposits</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Average monthly inflow: €650</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Free Cash (Flatex)</p>
+          <div class="flex items-baseline justify-between mt-2">
+            <span class="text-2xl font-bold font-mono text-white">€1,420.50</span>
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-sky-500/10 text-sky-400">2.9% of Port</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1">Available for rebalancing</p>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition">
+          <p class="text-xs font-medium text-slate-400 uppercase tracking-wider">Allocation Health</p>
+          <div class="flex items-baseline justify-between mt-2">
+            <span class="text-2xl font-bold font-mono text-emerald-400">96.4%</span>
+            <span class="text-xs font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400">Optimal</span>
+          </div>
+          <p class="text-xs text-slate-500 mt-1 font-mono">Max Drift: +1.8% (BTC)</p>
+        </div>
+      </div>
+
+      <!-- Main Two Column Grid -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- Left: Equity Curve Chart & History (7 cols) -->
+        <div class="lg:col-span-7 bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="text-base font-semibold text-white">Portfolio Valuation History</h2>
+              <p class="text-xs text-slate-400">Pre-aggregated daily equity curve vs invested deposits</p>
+            </div>
+            <!-- Timeframe toggles -->
+            <div class="flex items-center gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700 text-xs font-medium">
+              <button class="px-2.5 py-1 rounded bg-sky-600 text-white" onclick="updateTimeframe('1M')">1M</button>
+              <button class="px-2.5 py-1 rounded hover:bg-slate-700 text-slate-300" onclick="updateTimeframe('3M')">3M</button>
+              <button class="px-2.5 py-1 rounded hover:bg-slate-700 text-slate-300" onclick="updateTimeframe('1Y')">1Y</button>
+              <button class="px-2.5 py-1 rounded hover:bg-slate-700 text-slate-300" onclick="updateTimeframe('ALL')">ALL</button>
+            </div>
+          </div>
+
+          <div class="h-72 w-full">
+            <canvas id="chart-terminal"></canvas>
+          </div>
+
+          <div class="grid grid-cols-3 gap-2 pt-2 border-t border-slate-800 text-center font-mono">
+            <div class="p-2 rounded bg-slate-950/50">
+              <span class="text-xs text-slate-500 block">Annualized IRR</span>
+              <span class="text-sm font-semibold text-emerald-400">+11.8%</span>
+            </div>
+            <div class="p-2 rounded bg-slate-950/50">
+              <span class="text-xs text-slate-500 block">Max Drawdown</span>
+              <span class="text-sm font-semibold text-rose-400">-14.2%</span>
+            </div>
+            <div class="p-2 rounded bg-slate-950/50">
+              <span class="text-xs text-slate-500 block">Total Fees Paid</span>
+              <span class="text-sm font-semibold text-slate-300">€48.50</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right: Asset Allocation & Rebalancing Matrix (5 cols) -->
+        <div class="lg:col-span-5 space-y-6">
+          <!-- Allocation Drift Table -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+            <div class="flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                <i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>
+                Target Allocation Drift
+              </h2>
+              <span class="text-xs font-mono text-slate-400">Target % vs Actual %</span>
+            </div>
+
+            <div class="space-y-3">
+              <!-- Asset 1: All-World -->
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1">
+                  <span class="text-slate-200 font-semibold">All-World (VWCE)</span>
+                  <span class="text-slate-400">54.2% / <span class="text-sky-400">55.5% tgt</span></span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                  <div class="bg-sky-500 h-full rounded-full" style="width: 54.2%"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-slate-500 mt-0.5 font-mono">
+                  <span>€26,150.00</span>
+                  <span class="text-amber-400 font-medium">Buy +€625 to balance</span>
+                </div>
+              </div>
+
+              <!-- Asset 2: Ex-USA -->
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1">
+                  <span class="text-slate-200 font-semibold">Ex-USA (EXUS)</span>
+                  <span class="text-slate-400">21.5% / <span class="text-sky-400">21.0% tgt</span></span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                  <div class="bg-emerald-500 h-full rounded-full" style="width: 21.5%"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-slate-500 mt-0.5 font-mono">
+                  <span>€10,370.00</span>
+                  <span class="text-slate-400 font-medium">+0.5% (Balanced)</span>
+                </div>
+              </div>
+
+              <!-- Asset 3: Bitcoin -->
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1">
+                  <span class="text-slate-200 font-semibold">Bitcoin (BTC)</span>
+                  <span class="text-slate-400">9.8% / <span class="text-sky-400">8.0% tgt</span></span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                  <div class="bg-amber-500 h-full rounded-full" style="width: 9.8%"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-slate-500 mt-0.5 font-mono">
+                  <span>€4,728.50</span>
+                  <span class="text-amber-400 font-medium">Overweight (+1.8%)</span>
+                </div>
+              </div>
+
+              <!-- Asset 4: Europe Small -->
+              <div>
+                <div class="flex justify-between text-xs font-mono mb-1">
+                  <span class="text-slate-200 font-semibold">Europe (IMAE)</span>
+                  <span class="text-slate-400">8.1% / <span class="text-sky-400">8.5% tgt</span></span>
+                </div>
+                <div class="w-full bg-slate-800 h-2 rounded-full overflow-hidden flex">
+                  <div class="bg-indigo-500 h-full rounded-full" style="width: 8.1%"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-slate-500 mt-0.5 font-mono">
+                  <span>€3,908.00</span>
+                  <span class="text-sky-400 font-medium">Buy +€190</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Crypto Scale Matrix -->
+          <div class="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <h2 class="text-base font-semibold text-white flex items-center gap-2">
+                <i data-lucide="layers" class="w-4 h-4 text-amber-400"></i>
+                Crypto Scaling Tiers
+              </h2>
+              <span class="text-xs px-2 py-0.5 rounded bg-amber-500/10 text-amber-400 border border-amber-500/20 font-mono">BTC @ €64,320</span>
+            </div>
+            
+            <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+              <div class="p-2.5 rounded bg-slate-950 border border-slate-800">
+                <span class="text-slate-500 block text-[10px] uppercase">Next Buy Trigger</span>
+                <span class="text-emerald-400 font-bold text-sm">€58,500</span>
+                <span class="text-[11px] text-slate-400 block mt-0.5">Budget: €350</span>
+              </div>
+              <div class="p-2.5 rounded bg-slate-950 border border-slate-800">
+                <span class="text-slate-500 block text-[10px] uppercase">Tier 1 Profit Target</span>
+                <span class="text-rose-400 font-bold text-sm">€75,420</span>
+                <span class="text-[11px] text-slate-400 block mt-0.5">Take 15% Profit</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VARIANT B: Executive Modern FinTech (Apple Card / Revolut Clean Aesthetic) -->
+    <!-- ========================================================================= -->
+    <div id="variant-b" class="variant-view hidden space-y-8">
+      <div class="flex flex-col md:flex-row md:items-end justify-between gap-4 pb-2">
+        <div>
+          <span class="text-xs font-semibold uppercase tracking-wider text-sky-400">Executive View</span>
+          <h1 class="text-3xl font-extrabold tracking-tight text-white mt-1">Portfolio Summary</h1>
+          <p class="text-sm text-slate-400 mt-1">Variant B: Spacious, human-friendly storytelling with high aesthetic finish and clear action items.</p>
+        </div>
+        <div class="flex items-center gap-3">
+          <button class="px-4 py-2 rounded-xl bg-sky-600 hover:bg-sky-500 text-white font-medium text-sm shadow-lg shadow-sky-600/20 transition flex items-center gap-2">
+            <i data-lucide="plus-circle" class="w-4 h-4"></i>
+            Upload DEGIRO CSV
+          </button>
+        </div>
+      </div>
+
+      <!-- Hero Valuation Strip -->
+      <div class="bg-gradient-to-br from-slate-900 via-slate-900 to-slate-800/80 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xl">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 items-center">
+          <div>
+            <p class="text-sm font-medium text-slate-400">Total Net Worth</p>
+            <h2 class="text-4xl font-extrabold text-white mt-1 tracking-tight font-mono">€48,250.75</h2>
+            <div class="flex items-center gap-2 mt-2">
+              <span class="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-400 flex items-center gap-1">
+                <i data-lucide="arrow-up-right" class="w-3.5 h-3.5"></i> +€6,012 (+14.2%)
+              </span>
+              <span class="text-xs text-slate-400">Unrealized Gain</span>
+            </div>
+          </div>
+
+          <div class="border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6 space-y-2">
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-400">Total Deposits:</span>
+              <span class="font-mono text-slate-200 font-semibold">€42,238.45</span>
+            </div>
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-400">Cash on Hand:</span>
+              <span class="font-mono text-slate-200 font-semibold">€1,420.50</span>
+            </div>
+            <div class="flex justify-between text-xs">
+              <span class="text-slate-400">Total Holdings:</span>
+              <span class="font-mono text-slate-200 font-semibold">6 Instruments</span>
+            </div>
+          </div>
+
+          <div class="border-t md:border-t-0 md:border-l border-slate-800 pt-4 md:pt-0 md:pl-6">
+            <p class="text-xs text-slate-400 font-medium mb-1.5">Action Recommendation</p>
+            <div class="p-3 rounded-xl bg-sky-950/40 border border-sky-800/50 flex items-start gap-3">
+              <div class="p-1.5 rounded-lg bg-sky-600/20 text-sky-400 mt-0.5">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>
+              </div>
+              <p class="text-xs text-sky-200 leading-relaxed">
+                Deposit <strong>€625</strong> into <strong>VWCE</strong> to restore your 55.5% global equity target without selling any assets.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Two Big Cards: Donut Breakdown + Growth Graph -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-8">
+        <!-- Asset Donut Card (5 cols) -->
+        <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-2xl p-6 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between mb-4">
+              <h3 class="text-lg font-bold text-white">Asset Allocation</h3>
+              <span class="text-xs px-2.5 py-1 rounded-full bg-slate-800 text-slate-300 font-mono">6 Assets</span>
+            </div>
+            <div class="h-64 flex items-center justify-center relative">
+              <canvas id="chart-fintech-donut"></canvas>
+            </div>
+          </div>
+
+          <div class="mt-6 space-y-2.5 border-t border-slate-800 pt-4">
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-sky-500"></span>
+                <span class="text-slate-200">Global Equities (VWCE)</span>
+              </div>
+              <span class="font-mono text-slate-300 font-semibold">54.2%</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-emerald-500"></span>
+                <span class="text-slate-200">Ex-US Equities (EXUS)</span>
+              </div>
+              <span class="font-mono text-slate-300 font-semibold">21.5%</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-amber-500"></span>
+                <span class="text-slate-200">Bitcoin (BTC)</span>
+              </div>
+              <span class="font-mono text-slate-300 font-semibold">9.8%</span>
+            </div>
+            <div class="flex items-center justify-between text-xs">
+              <div class="flex items-center gap-2">
+                <span class="w-3 h-3 rounded-full bg-indigo-500"></span>
+                <span class="text-slate-200">Europe Small/Mid (IMAE)</span>
+              </div>
+              <span class="font-mono text-slate-300 font-semibold">8.1%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Growth Graph + Action List (7 cols) -->
+        <div class="lg:col-span-7 space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-lg font-bold text-white">Cumulative Performance</h3>
+                <p class="text-xs text-slate-400">Total value growth compared to base investment</p>
+              </div>
+              <span class="text-xs font-semibold text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-lg">
+                +14.2% Total Return
+              </span>
+            </div>
+            <div class="h-64">
+              <canvas id="chart-fintech-line"></canvas>
+            </div>
+          </div>
+
+          <!-- Step-by-Step Action Plan -->
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3">Rebalance Checklist</h3>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                <div class="flex items-center gap-3">
+                  <div class="h-8 w-8 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold text-xs">1</div>
+                  <div>
+                    <p class="text-xs font-semibold text-white">Buy All-World ETF (VWCE)</p>
+                    <p class="text-[11px] text-slate-400">Deploy €625 to recover 55.5% target weight</p>
+                  </div>
+                </div>
+                <span class="text-xs font-mono font-semibold text-sky-400">+5.0 shares</span>
+              </div>
+
+              <div class="flex items-center justify-between p-3 rounded-xl bg-slate-950/60 border border-slate-800/80">
+                <div class="flex items-center gap-3">
+                  <div class="h-8 w-8 rounded-lg bg-emerald-500/10 text-emerald-400 flex items-center justify-center font-bold text-xs">2</div>
+                  <div>
+                    <p class="text-xs font-semibold text-white">Buy Europe ETF (IMAE)</p>
+                    <p class="text-[11px] text-slate-400">Deploy €190 to recover 8.5% target weight</p>
+                  </div>
+                </div>
+                <span class="text-xs font-mono font-semibold text-emerald-400">+2.4 shares</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ========================================================================= -->
+    <!-- VARIANT C: Action-Oriented Rebalancing Cockpit (Interactive Simulator) -->
+    <!-- ========================================================================= -->
+    <div id="variant-c" class="variant-view hidden space-y-6">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-2 border-b border-slate-800">
+        <div>
+          <h1 class="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            Rebalancing Cockpit
+            <span class="text-xs font-normal text-emerald-400 bg-emerald-950/80 border border-emerald-800 px-2 py-0.5 rounded">Variant C: Interactive Tool</span>
+          </h1>
+          <p class="text-sm text-slate-400">Built around the monthly investment workflow: enter a deposit amount to simulate instant optimal distribution.</p>
+        </div>
+      </div>
+
+      <!-- Interactive Calculator Card -->
+      <div class="bg-gradient-to-r from-sky-950/40 via-slate-900 to-slate-900 border border-sky-800/40 rounded-2xl p-6 shadow-xl">
+        <div class="max-w-3xl">
+          <div class="flex items-center gap-2 text-sky-400 text-xs font-bold uppercase tracking-wider mb-2">
+            <i data-lucide="calculator" class="w-4 h-4"></i>
+            Monthly Inflow Rebalancing Simulator
+          </div>
+          <h2 class="text-xl font-bold text-white">How much are you investing this month?</h2>
+          <p class="text-xs text-slate-400 mt-1">Move the slider or type an amount. The engine dynamically calculates the exact buy quantities to bring each asset back to its target percentage without incurring sell fees.</p>
+
+          <div class="flex flex-col sm:flex-row sm:items-center gap-4 mt-6">
+            <div class="relative flex-1">
+              <input type="range" id="deposit-slider" min="100" max="2500" step="50" value="800" 
+                     class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                     oninput="syncDeposit(this.value)">
+            </div>
+            <div class="flex items-center gap-2">
+              <span class="text-sm text-slate-400 font-mono">€</span>
+              <input type="number" id="deposit-input" value="800" 
+                     class="w-28 px-3 py-1.5 rounded-lg bg-slate-950 border border-slate-700 text-white font-mono font-bold text-base focus:outline-none focus:border-sky-500"
+                     oninput="syncDeposit(this.value)">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Calculated Distribution Cards -->
+      <div>
+        <h3 class="text-sm font-bold uppercase tracking-wider text-slate-400 mb-3 flex items-center justify-between">
+          <span>Target Distribution for <span id="current-deposit-label" class="text-white font-mono">€800</span></span>
+          <span class="text-xs font-normal text-emerald-400 font-mono">Post-rebalance Drift: 0.2%</span>
+        </h3>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4" id="distribution-cards">
+          <!-- Dynamic cards populated by script -->
+        </div>
+      </div>
+
+      <!-- Asset Deep-Dive Grid -->
+      <div class="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <h3 class="text-base font-semibold text-white mb-4">Current Asset Details & Target Weights</h3>
+        <div class="overflow-x-auto">
+          <table class="w-full text-left text-xs font-mono">
+            <thead class="text-slate-500 uppercase border-b border-slate-800">
+              <tr>
+                <th class="py-2.5 px-3">Asset</th>
+                <th class="py-2.5 px-3">ISIN / Ticker</th>
+                <th class="py-2.5 px-3">Current Value</th>
+                <th class="py-2.5 px-3">Target %</th>
+                <th class="py-2.5 px-3">Actual %</th>
+                <th class="py-2.5 px-3">Drift</th>
+                <th class="py-2.5 px-3 text-right">Action Needed</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60 text-slate-300">
+              <tr class="hover:bg-slate-850/50">
+                <td class="py-3 px-3 font-semibold text-white">All-World (Vanguard)</td>
+                <td class="py-3 px-3 text-slate-400">IE00BK5BQT80 / VWCE.DE</td>
+                <td class="py-3 px-3">€26,150.00</td>
+                <td class="py-3 px-3 text-sky-400">55.5%</td>
+                <td class="py-3 px-3">54.2%</td>
+                <td class="py-3 px-3 text-amber-400 font-semibold">-1.3%</td>
+                <td class="py-3 px-3 text-right"><span class="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-semibold">BUY €625</span></td>
+              </tr>
+              <tr class="hover:bg-slate-850/50">
+                <td class="py-3 px-3 font-semibold text-white">Ex-USA World (Xtrackers)</td>
+                <td class="py-3 px-3 text-slate-400">IE0006WW1TQ4 / EXUS.DE</td>
+                <td class="py-3 px-3">€10,370.00</td>
+                <td class="py-3 px-3 text-sky-400">21.0%</td>
+                <td class="py-3 px-3">21.5%</td>
+                <td class="py-3 px-3 text-emerald-400 font-semibold">+0.5%</td>
+                <td class="py-3 px-3 text-right"><span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">HOLD</span></td>
+              </tr>
+              <tr class="hover:bg-slate-850/50">
+                <td class="py-3 px-3 font-semibold text-white">Bitcoin</td>
+                <td class="py-3 px-3 text-slate-400">BTC-EUR</td>
+                <td class="py-3 px-3">€4,728.50</td>
+                <td class="py-3 px-3 text-sky-400">8.0%</td>
+                <td class="py-3 px-3">9.8%</td>
+                <td class="py-3 px-3 text-amber-400 font-semibold">+1.8%</td>
+                <td class="py-3 px-3 text-right"><span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400">HOLD (Scale Target)</span></td>
+              </tr>
+              <tr class="hover:bg-slate-850/50">
+                <td class="py-3 px-3 font-semibold text-white">Europe Small (iShares)</td>
+                <td class="py-3 px-3 text-slate-400">IE00B4K48X80 / IMAE.AS</td>
+                <td class="py-3 px-3">€3,908.00</td>
+                <td class="py-3 px-3 text-sky-400">8.5%</td>
+                <td class="py-3 px-3">8.1%</td>
+                <td class="py-3 px-3 text-amber-400 font-semibold">-0.4%</td>
+                <td class="py-3 px-3 text-right"><span class="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-semibold">BUY €175</span></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- FLOATING PROTOTYPE SWITCHER (MANDATORY REQUIREMENT) -->
+  <!-- ========================================================================= -->
+  <aside aria-label="Prototype Switcher" class="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+    <div class="bg-slate-900/95 backdrop-blur-md border border-sky-500/40 rounded-full px-5 py-2.5 shadow-2xl flex items-center gap-4 text-xs">
+      <div class="flex items-center gap-1.5 text-slate-400 font-mono text-[11px] uppercase tracking-wider pr-2 border-r border-slate-700">
+        <i data-lucide="layers" class="w-3.5 h-3.5 text-sky-400"></i>
+        <span>Prototype</span>
+      </div>
+
+      <!-- Left Button -->
+      <button onclick="prevVariant()" title="Previous Variant (or press Left Arrow)" class="h-7 w-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition border border-slate-700">
+        <i data-lucide="chevron-left" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Current Variant Label -->
+      <div class="flex items-center gap-2 font-mono">
+        <span id="variant-badge" class="px-2 py-0.5 rounded font-bold bg-sky-500 text-white">A</span>
+        <span id="variant-title" class="font-semibold text-slate-200 text-xs sm:text-sm">Financial Terminal</span>
+      </div>
+
+      <!-- Right Button -->
+      <button onclick="nextVariant()" title="Next Variant (or press Right Arrow)" class="h-7 w-7 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-200 flex items-center justify-center transition border border-slate-700">
+        <i data-lucide="chevron-right" class="w-4 h-4"></i>
+      </button>
+
+      <!-- Keyboard Tip -->
+      <span class="hidden sm:inline-block text-[10px] text-slate-500 font-mono pl-2 border-l border-slate-800">
+        Use &larr; &rarr; keys
+      </span>
+    </div>
+  </aside>
+
+  <!-- ========================================================================= -->
+  <!-- SCRIPTS: CHARTS & SWITCHER LOGIC -->
+  <!-- ========================================================================= -->
+  <script>
+    const VARIANTS = [
+      { id: 'A', name: 'Financial Terminal (Dense & Quantitative)' },
+      { id: 'B', name: 'Executive FinTech (Minimalist & Narrative)' },
+      { id: 'C', name: 'Rebalancing Cockpit (Action & Simulation)' }
+    ];
+
+    let currentIdx = 0;
+
+    function getVariantFromUrl() {
+      const params = new URLSearchParams(window.location.search);
+      const v = (params.get('variant') || 'A').toUpperCase();
+      const idx = VARIANTS.findIndex(item => item.id === v);
+      return idx >= 0 ? idx : 0;
+    }
+
+    function renderVariant(idx) {
+      currentIdx = idx;
+      const v = VARIANTS[currentIdx];
+
+      // Update URL
+      const url = new URL(window.location);
+      url.searchParams.set('variant', v.id);
+      window.history.replaceState({}, '', url);
+
+      // Hide all variants
+      document.querySelectorAll('.variant-view').forEach(el => el.classList.add('hidden'));
+
+      // Show selected
+      const activeEl = document.getElementById(`variant-${v.id.toLowerCase()}`);
+      if (activeEl) activeEl.classList.remove('hidden');
+
+      // Update switcher pill
+      document.getElementById('variant-badge').textContent = v.id;
+      document.getElementById('variant-title').textContent = v.name;
+
+      // Re-trigger icon rendering
+      lucide.createIcons();
+    }
+
+    function prevVariant() {
+      const nextIdx = (currentIdx - 1 + VARIANTS.length) % VARIANTS.length;
+      renderVariant(nextIdx);
+    }
+
+    function nextVariant() {
+      const nextIdx = (currentIdx + 1) % VARIANTS.length;
+      renderVariant(nextIdx);
+    }
+
+    // Keyboard navigation
+    window.addEventListener('keydown', (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
+      if (e.key === 'ArrowLeft') prevVariant();
+      if (e.key === 'ArrowRight') nextVariant();
+    });
+
+    // Rebalancing Simulator logic for Variant C
+    function syncDeposit(val) {
+      const amount = parseFloat(val) || 0;
+      document.getElementById('deposit-slider').value = amount;
+      document.getElementById('deposit-input').value = amount;
+      document.getElementById('current-deposit-label').textContent = '€' + amount.toLocaleString('en-US');
+
+      // Allocation ratios for rebalance
+      // Target: VWCE needs 75%, IMAE needs 25% of new capital to align
+      const vwceBuy = (amount * 0.78).toFixed(0);
+      const imaeBuy = (amount * 0.22).toFixed(0);
+
+      const container = document.getElementById('distribution-cards');
+      container.innerHTML = `
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">VWCE.DE</p>
+              <h4 class="font-bold text-white text-base">All-World ETF</h4>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-sky-500/10 text-sky-400 font-mono text-xs font-semibold">Primary Fill</span>
+          </div>
+          <div class="mt-4">
+            <span class="text-2xl font-bold font-mono text-sky-400">€${vwceBuy}</span>
+            <p class="text-[11px] text-slate-400 mt-1">Approx. ${(vwceBuy / 124.80).toFixed(1)} shares @ €124.80</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">IMAE.AS</p>
+              <h4 class="font-bold text-white text-base">Europe Small ETF</h4>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-indigo-500/10 text-indigo-400 font-mono text-xs font-semibold">Secondary</span>
+          </div>
+          <div class="mt-4">
+            <span class="text-2xl font-bold font-mono text-indigo-400">€${imaeBuy}</span>
+            <p class="text-[11px] text-slate-400 mt-1">Approx. ${(imaeBuy / 78.45).toFixed(1)} shares @ €78.45</p>
+          </div>
+        </div>
+
+        <div class="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div class="flex justify-between items-start">
+            <div>
+              <p class="text-xs text-slate-400 font-mono">BTC / EXUS</p>
+              <h4 class="font-bold text-white text-base">Other Holdings</h4>
+            </div>
+            <span class="px-2 py-0.5 rounded bg-slate-800 text-slate-400 font-mono text-xs">On Target</span>
+          </div>
+          <div class="mt-4">
+            <span class="text-2xl font-bold font-mono text-slate-500">€0</span>
+            <p class="text-[11px] text-slate-400 mt-1">Overweight/Balanced: no purchase needed</p>
+          </div>
+        </div>
+      `;
+    }
+
+    // Initialize Charts on DOM load
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderVariant(getVariantFromUrl());
+      syncDeposit(800);
+
+      // --- Chart 1: Terminal Area Chart ---
+      const ctxTerminal = document.getElementById('chart-terminal').getContext('2d');
+      new Chart(ctxTerminal, {
+        type: 'line',
+        data: {
+          labels: ['Oct 25', 'Nov 25', 'Dec 25', 'Jan 26', 'Feb 26', 'Mar 26', 'Apr 26', 'May 26', 'Jun 26', 'Jul 26', 'Aug 26', 'Sep 26', 'Oct 26'],
+          datasets: [
+            {
+              label: 'Portfolio Value (€)',
+              data: [36200, 37500, 39100, 38400, 40200, 41800, 43100, 42900, 44500, 46100, 45800, 47300, 48250],
+              borderColor: '#0284c7',
+              backgroundColor: 'rgba(2, 132, 199, 0.1)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.35,
+              pointRadius: 0,
+            },
+            {
+              label: 'Invested Capital (€)',
+              data: [34000, 34700, 35400, 36100, 36800, 37500, 38200, 38900, 39600, 40300, 41000, 41600, 42238],
+              borderColor: '#64748b',
+              borderWidth: 1.5,
+              borderDash: [4, 4],
+              pointRadius: 0,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: { position: 'top', labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 10 } } }
+          },
+          scales: {
+            x: { grid: { color: 'rgba(51, 65, 85, 0.3)' }, ticks: { color: '#64748b', font: { size: 10 } } },
+            y: { grid: { color: 'rgba(51, 65, 85, 0.3)' }, ticks: { color: '#64748b', font: { size: 10 } } }
+          }
+        }
+      });
+
+      // --- Chart 2: FinTech Donut Chart ---
+      const ctxDonut = document.getElementById('chart-fintech-donut').getContext('2d');
+      new Chart(ctxDonut, {
+        type: 'doughnut',
+        data: {
+          labels: ['VWCE (All-World)', 'EXUS (Ex-USA)', 'BTC (Bitcoin)', 'IMAE (Europe)', 'Cash'],
+          datasets: [{
+            data: [54.2, 21.5, 9.8, 8.1, 6.4],
+            backgroundColor: ['#0284c7', '#10b981', '#f59e0b', '#6366f1', '#64748b'],
+            borderWidth: 0,
+            hoverOffset: 4
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '72%',
+          plugins: { legend: { display: false } }
+        }
+      });
+
+      // --- Chart 3: FinTech Performance Line ---
+      const ctxFintechLine = document.getElementById('chart-fintech-line').getContext('2d');
+      new Chart(ctxFintechLine, {
+        type: 'line',
+        data: {
+          labels: ['Nov', 'Jan', 'Mar', 'May', 'Jul', 'Sep', 'Oct'],
+          datasets: [{
+            label: 'Total Net Worth',
+            data: [37500, 38400, 41800, 42900, 46100, 47300, 48250],
+            borderColor: '#10b981',
+            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+            borderWidth: 2.5,
+            fill: true,
+            tension: 0.4,
+            pointRadius: 3,
+            pointBackgroundColor: '#10b981'
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: { legend: { display: false } },
+          scales: {
+            x: { grid: { display: false }, ticks: { color: '#64748b' } },
+            y: { grid: { color: 'rgba(51, 65, 85, 0.2)' }, ticks: { color: '#64748b' } }
+          }
+        }
+      });
+    });
+
+    function updateTimeframe(tf) {
+      console.log('Switched timeframe:', tf);
+    }
+  </script>
+</body>
+</html>
