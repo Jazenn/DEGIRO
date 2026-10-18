@@ -154,7 +154,8 @@ class DBStorage:
 
         keep_cols = [
             "date", "time", "value_date", "product", "isin",
-            "description", "fx", "amount", "balance", "order_id", "csv_row_id"
+            "description", "fx", "amount", "balance", "order_id", "csv_row_id",
+            "row_hash",
         ]
         df_save = df[[c for c in keep_cols if c in df.columns]].copy()
 
@@ -169,7 +170,8 @@ class DBStorage:
         records = []
         for _, row in df_save.iterrows():
             rec = {k: _safe_val(v) for k, v in row.items()}
-            rec["row_hash"] = _compute_row_hash(rec)
+            if not rec.get("row_hash"):
+                rec["row_hash"] = _compute_row_hash(rec)
             records.append(rec)
 
         if not records:
@@ -186,14 +188,11 @@ class DBStorage:
         """
 
         inserted = 0
-        try:
-            with self._conn() as conn:
-                with conn.cursor() as cur:
-                    for rec in records:
-                        cur.execute(sql, rec)
-                        inserted += cur.rowcount
-        except Exception as e:
-            st.error(f"DB: kan transacties niet opslaan: {e}")
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                for rec in records:
+                    cur.execute(sql, rec)
+                    inserted += cur.rowcount
 
         return inserted
 

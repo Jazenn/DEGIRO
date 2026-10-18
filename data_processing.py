@@ -10,7 +10,7 @@ def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
     import io
     import math
     
-    df = pd.read_csv(io.BytesIO(file_bytes))
+    df = pd.read_csv(io.BytesIO(file_bytes), sep=None, engine="python")
     df.columns = [str(c).strip().lower() for c in df.columns]
 
     # Detect if it's a Transactions export (has 'aantal' or 'quantity')
@@ -52,7 +52,10 @@ def _parse_transactions_csv(df: pd.DataFrame) -> pd.DataFrame:
     c_isin = get_col(['isin'])
     c_qty = get_col(['aantal', 'quantity'])
     c_price = get_col(['koers', 'price'])
-    c_waarde = get_col(['waarde eur', 'lokale waarde', 'value eur', 'value'])
+    c_waarde = get_col([
+        'waarde eur', 'lokale waarde', 'value eur', 'value',
+        'waarde in lokale valuta', 'local value', 'value in local currency'
+    ])
     c_fx = get_col(['autofx kosten', 'autofx fee'])
     c_fee = get_col(['transactiekosten en/of kosten van derden eur', 'transaction costs', 'fee'])
     c_order = get_col(['order_id', 'order id'])
@@ -165,24 +168,6 @@ def _parse_account_csv(df: pd.DataFrame) -> pd.DataFrame:
 
     if "csv_row_id" not in df.columns:
         df["csv_row_id"] = df.index
-
-    # --- CRITICAL FIX: Filter out historical trades from Account.csv ---
-    # Because Transactions.csv perfectly handles all trades and fees, we 
-    # strictly use Account.csv ONLY for cash flows (deposits, interest, dividends).
-    # This mathematically guarantees zero duplicates across files.
-    if "description" in df.columns:
-        def is_trade_related(desc):
-            d = str(desc).lower()
-            if d.startswith("koop ") or d.startswith("buy ") or "verkoop " in d or "sell " in d:
-                return True
-            if "transactiekosten" in d or "transaction fee" in d or "brokerskosten" in d:
-                if "aansluiting" not in d and "connectivity" not in d: # Keep connectivity fees
-                    return True
-            if "valutakosten" in d or "auto fx" in d:
-                return True
-            return False
-        
-        df = df[~df["description"].apply(is_trade_related)]
 
     return df
 

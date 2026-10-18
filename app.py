@@ -1,21 +1,24 @@
 import pandas as pd
+import psycopg2
 import streamlit as st
 import time
 
 from db_utils import DBStorage
 from managers import ConfigManager, PriceManager
 from data_processing import (
-    load_degiro_csv,
     enrich_transactions,
     build_trading_volume_by_month,
     build_portfolio_history,
 )
 from ui_components import render_metrics, render_charts
+from transaction_ingestion import TransactionIngestionService
 
 
 def main() -> None:
     st.set_page_config(page_title="DeGiro Portfolio Dashboard", layout="wide")
     st.title("DeGiro Portfolio Dashboard")
+    if "ingestion_summary" in st.session_state:
+        st.success(st.session_state.pop("ingestion_summary"))
 
     sidebar = st.sidebar
     sidebar.header("Instellingen")
@@ -59,39 +62,45 @@ def main() -> None:
     )
 
     df_new = pd.DataFrame()
+    rows_processed = 0
+    duplicates_skipped = 0
     if uploaded_files:
         df_list = []
+        ingestion_service = TransactionIngestionService()
         for f in uploaded_files:
             if not f.name.lower().endswith(".csv"):
+                st.error(f"'{f.name}' is not a CSV file.")
                 continue
             try:
-                df_part = load_degiro_csv(f.getvalue())
-                if not df_part.empty:
-                    df_list.append(df_part)
-            except Exception as e:
+                result = ingestion_service.ingest_csv(f.getvalue())
+                rows_processed += result.rows_processed
+                duplicates_skipped += result.duplicates_skipped
+                if not result.transactions.empty:
+                    df_list.append(result.transactions)
+            except (ValueError, pd.errors.ParserError) as e:
                 st.error(f"Fout bij inlezen van '{f.name}': {e}")
         if df_list:
             df_new = pd.concat(df_list, ignore_index=True)
 
-    # ------------------------------------------------------------------
-    # 3. Samenvoegen: DB + nieuwe uploads
-    #    Deduplicatie gebeurt in de DB via row_hash (ON CONFLICT DO NOTHING)
-    # ------------------------------------------------------------------
-    if db_ok and not df_new.empty:
-        try:
-            inserted = db.save_transactions(df_new)
-            if inserted > 0:
-                st.toast(f"✅ {inserted} nieuwe transacties opgeslagen!", icon="💾")
-                st.cache_data.clear()
-                # Herlaad vanuit DB zodat df_db de volledige dataset heeft
-                df_db = db.load_transactions()
-                # Reset uploader zodat de gebruiker weet dat de upload klaar is
-                st.session_state["uploader_key"] += 1
-                st.rerun()
-            else:
-                st.toast("Geen nieuwe transacties gevonden (alles al aanwezig).", icon="🧹")
-        except Exception as e:
-            st.error(f"Opslaan naar database mislukt: {e}")
+        if db_ok:
+            try:
+                inserted = db.save_transactions(df_new) if not df_new.empty else 0
+                duplicates_skipped += len(df_new) - inserted
+                summary = (
+                    f"Upload verwerkt: {rows_processed} CSV-rijen, "
+                    f"{inserted} nieuwe transacties opgeslagen, "
+                    f"{duplicates_skipped} duplicaten overgeslagen."
+                )
+                if inserted:
+                    st.session_state["ingestion_summary"] = summary
+                    st.cache_data.clear()
+                    st.session_state["uploader_key"] += 1
+                    st.rerun()
+                st.success(summary)
+            except psycopg2.Error as e:
+                st.error(f"Opslaan naar database mislukt: {e}")
+        else:
+            st.error("CSV is gelezen, maar niet opgeslagen omdat de database niet beschikbaar is.")
 
     # df_raw is de gecombineerde dataset
     df_raw = df_db.copy() if not df_db.empty else df_new.copy()
