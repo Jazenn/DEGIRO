@@ -2,9 +2,9 @@ name: Price Fetcher
 
 on:
   schedule:
-    # Run at minutes 17 and 47 of every hour to avoid peak traffic delays
-    - cron: '17,47 * * * *'
-  workflow_dispatch: # Allow manual trigger
+    # 08:00-22:00 CET (UTC+1 in winter) on weekdays.
+    - cron: '0 7-21 * * 1-5'
+  workflow_dispatch:
 
 jobs:
   fetch:
@@ -27,11 +27,5 @@ jobs:
       - name: Run Fetcher
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-          GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
-          GCP_PRIVATE_KEY_ID: ${{ secrets.GCP_PRIVATE_KEY_ID }}
-          GCP_PRIVATE_KEY: ${{ secrets.GCP_PRIVATE_KEY }}
-          GCP_CLIENT_EMAIL: ${{ secrets.GCP_CLIENT_EMAIL }}
-          GCP_CLIENT_ID: ${{ secrets.GCP_CLIENT_ID }}
-          GCP_CLIENT_X509_CERT_URL: ${{ secrets.GCP_CLIENT_X509_CERT_URL }}
         run: |
           python fetcher.py

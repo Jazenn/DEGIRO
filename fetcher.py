@@ -6,6 +6,7 @@ import traceback
 from db_utils import DBStorage
 from managers import ConfigManager, PriceManager
 from data_processing import enrich_transactions, build_portfolio_history
+from snapshot_worker import refresh_portfolio_snapshots
 
 
 def main():
@@ -71,6 +72,14 @@ def main():
             print(f"snapshot_history opgeslagen ({len(history_df)} rijen).")
         else:
             print("Waarschuwing: history_df is leeg — niet opgeslagen.")
+
+        refreshed = refresh_portfolio_snapshots(db, price_manager, config_manager)
+        print(
+            "Portfolio snapshots opgeslagen: "
+            f"{refreshed.history_rows} dagen, "
+            f"{refreshed.holding_rows} holdings, "
+            f"{refreshed.quotes_requested} quotes."
+        )
 
         print("Fetcher succesvol afgerond.")
 

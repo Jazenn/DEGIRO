@@ -50,6 +50,32 @@ CREATE TABLE IF NOT EXISTS degiro_history_snapshots (
     updated_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
+CREATE TABLE IF NOT EXISTS portfolio_daily_history (
+    date                    DATE PRIMARY KEY,
+    total_equity_eur         DOUBLE PRECISION NOT NULL,
+    invested_capital_eur     DOUBLE PRECISION NOT NULL,
+    cash_balance_eur         DOUBLE PRECISION NOT NULL,
+    unrealized_pnl_eur       DOUBLE PRECISION NOT NULL,
+    unrealized_pnl_pct       DOUBLE PRECISION NOT NULL,
+    updated_at               TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS current_asset_holdings (
+    symbol                  TEXT PRIMARY KEY,
+    name                    TEXT NOT NULL,
+    isin                    TEXT,
+    shares_held             DOUBLE PRECISION NOT NULL,
+    current_price_eur       DOUBLE PRECISION NOT NULL,
+    total_value_eur         DOUBLE PRECISION NOT NULL,
+    total_cost_eur          DOUBLE PRECISION NOT NULL,
+    unrealized_pnl_eur      DOUBLE PRECISION NOT NULL,
+    actual_pct              DOUBLE PRECISION NOT NULL,
+    target_pct              DOUBLE PRECISION NOT NULL,
+    drift_pct               DOUBLE PRECISION NOT NULL,
+    recommended_action_eur  DOUBLE PRECISION NOT NULL,
+    updated_at              TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- --------------------------------------------------------------------------
 -- 3. Configuratie (portfolio targets, instellingen, ticker mappings)
 -- --------------------------------------------------------------------------

@@ -465,6 +465,47 @@ class PriceManager:
             return {t: self._snapshot_live.get(t, 0.0) for t in valid_tickers}
         return self._fetch_live_prices_batch_cached(tuple(set(valid_tickers)))
 
+    def get_historical_prices_batch(self, tickers: list[str], start_date: str) -> dict:
+        """Fetch daily closing prices keyed by ticker and ISO date."""
+        valid_tickers = sorted(set(ticker for ticker in tickers if ticker))
+        if not valid_tickers:
+            return {}
+
+        data = yf.download(
+            valid_tickers,
+            start=start_date,
+            interval="1d",
+            group_by="ticker",
+            auto_adjust=False,
+            progress=False,
+            threads=True,
+        )
+        if data.empty:
+            return {ticker: {} for ticker in valid_tickers}
+
+        result = {}
+        for ticker in valid_tickers:
+            if isinstance(data.columns, pd.MultiIndex):
+                if ticker not in data.columns.get_level_values(0):
+                    result[ticker] = {}
+                    continue
+                close = data[ticker]["Close"]
+            elif "Close" in data.columns:
+                close = data["Close"]
+            else:
+                result[ticker] = {}
+                continue
+
+            close = pd.to_numeric(close, errors="coerce").dropna()
+            if close.index.tz is not None:
+                close.index = close.index.tz_localize(None)
+            result[ticker] = {
+                date.strftime("%Y-%m-%d"): float(price)
+                for date, price in close.items()
+                if price > 0
+            }
+        return result
+
     @st.cache_data(ttl=60)
     def _fetch_live_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
@@ -803,4 +844,3 @@ class PriceManager:
                     return float(before_midnight["Close"].iloc[-1])
         except: pass
         return 0.0
-
