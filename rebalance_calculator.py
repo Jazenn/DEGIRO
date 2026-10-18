@@ -8,7 +8,7 @@ class RebalanceCalculator:
         self,
         deposit_amount: float,
         portfolio_value: float,
-        target_weights: dict,
+        rebalancing_targets: dict,
         current_values: dict,
         prices: dict | None = None,
     ) -> dict:
@@ -21,7 +21,7 @@ class RebalanceCalculator:
                 "underweight_assets": [],
             }
 
-        normalized = self._normalize_weights(target_weights)
+        normalized = self._normalize_weights(rebalancing_targets)
         total_target = sum(normalized.values())
         if total_target <= 0:
             return {

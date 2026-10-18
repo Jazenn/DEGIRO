@@ -188,9 +188,24 @@ class DBStorage:
         """
 
         inserted = 0
+        legacy_hash_by_row_hash = {
+            rec["row_hash"]: legacy_hash
+            for rec in records
+            if (legacy_hash := _compute_row_hash(rec)) != rec["row_hash"]
+        }
         with self._conn() as conn:
             with conn.cursor() as cur:
+                existing_legacy_hashes = set()
+                if legacy_hash_by_row_hash:
+                    cur.execute(
+                        "SELECT row_hash FROM degiro_transactions WHERE row_hash = ANY(%s)",
+                        (list(legacy_hash_by_row_hash.values()),),
+                    )
+                    existing_legacy_hashes = {row[0] for row in cur.fetchall()}
+
                 for rec in records:
+                    if legacy_hash_by_row_hash.get(rec["row_hash"]) in existing_legacy_hashes:
+                        continue
                     cur.execute(sql, rec)
                     inserted += cur.rowcount
 

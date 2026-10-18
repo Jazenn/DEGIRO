@@ -1,4 +1,6 @@
 ﻿import io
+import hashlib
+import json
 from contextlib import contextmanager
 from unittest.mock import patch
 
@@ -94,6 +96,7 @@ def test_database_storage_uses_ingestion_hashes_to_skip_reuploads():
 
     class Cursor:
         rowcount = 0
+        results = []
 
         def __enter__(self):
             return self
@@ -101,10 +104,16 @@ def test_database_storage_uses_ingestion_hashes_to_skip_reuploads():
         def __exit__(self, *_):
             return False
 
-        def execute(self, _sql, record):
+        def execute(self, sql, record):
+            if sql.lstrip().startswith("SELECT"):
+                self.results = [(value,) for value in record[0] if value in stored_hashes]
+                return
             row_hash = record["row_hash"]
             self.rowcount = 0 if row_hash in stored_hashes else 1
             stored_hashes.add(row_hash)
+
+        def fetchall(self):
+            return self.results
 
     class Connection:
         def cursor(self):
@@ -121,16 +130,63 @@ def test_database_storage_uses_ingestion_hashes_to_skip_reuploads():
         assert storage.save_transactions(transactions) == 0
 
 
+def test_database_storage_skips_rows_with_legacy_hashes():
+    csv_content = (
+        "Date;Time;Product;ISIN;Quantity;Price;Value;Order ID\n"
+        "03-01-2024;09:30;Example ETF;IE00TEST1234;2;50;100;order-1\n"
+    ).encode("utf-8")
+    transactions = TransactionIngestionService().ingest_csv(csv_content).transactions
+    legacy_payload = {"order_id": "order-1", "amount": "100.0", "isin": "IE00TEST1234"}
+    legacy_hash = hashlib.md5(
+        json.dumps(legacy_payload, sort_keys=True).encode("utf-8")
+    ).hexdigest()
+    stored_hashes = {legacy_hash}
+
+    class Cursor:
+        rowcount = 0
+        results = []
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_):
+            return False
+
+        def execute(self, sql, record):
+            if sql.lstrip().startswith("SELECT"):
+                self.results = [(value,) for value in record[0] if value in stored_hashes]
+                return
+            row_hash = record["row_hash"]
+            self.rowcount = 0 if row_hash in stored_hashes else 1
+            stored_hashes.add(row_hash)
+
+        def fetchall(self):
+            return self.results
+
+    class Connection:
+        def cursor(self):
+            return Cursor()
+
+    @contextmanager
+    def connection():
+        yield Connection()
+
+    storage = DBStorage.__new__(DBStorage)
+    with patch.object(storage, "_conn", side_effect=connection):
+        assert storage.save_transactions(transactions) == 0
+    assert stored_hashes == {legacy_hash}
+
+
 def test_rebalance_calculator_only_buys_underweight_assets():
     calculator = RebalanceCalculator()
-    target_weights = {"All-World": 0.60, "Bitcoin": 0.20, "Europe": 0.20}
+    rebalancing_targets = {"All-World": 0.60, "Bitcoin": 0.20, "Europe": 0.20}
     current_values = {"All-World": 200.0, "Bitcoin": 600.0, "Europe": 200.0}
     deposit = 500.0
 
     plan = calculator.calculate_deposit_plan(
         deposit_amount=deposit,
         portfolio_value=sum(current_values.values()),
-        target_weights=target_weights,
+        rebalancing_targets=rebalancing_targets,
         current_values=current_values,
         prices={"All-World": 100.0, "Bitcoin": 50000.0, "Europe": 50.0},
     )
