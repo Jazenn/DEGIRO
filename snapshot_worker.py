@@ -47,7 +47,7 @@ def refresh_portfolio_snapshots(
     historical_ticker_prices = (
         price_provider.get_historical_prices_batch(
             sorted(tickers),
-            dates.min().strftime("%Y-%m-%d"),
+            (dates.min() - pd.Timedelta(days=7)).strftime("%Y-%m-%d"),
         )
         if len(dates) and tickers
         else {}

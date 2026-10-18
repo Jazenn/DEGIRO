@@ -136,6 +136,7 @@ class PortfolioCalculationEngine:
         df = df.sort_values(["date", "time"], kind="stable")
 
         prices = prices or {}
+        require_historical = historical_prices is not None
         historical_prices = historical_prices or {}
         cash_is_reported = "balance" in df and pd.to_numeric(
             df["balance"], errors="coerce"
@@ -149,6 +150,8 @@ class PortfolioCalculationEngine:
         for symbol, values in historical_prices.items():
             series = values if isinstance(values, pd.Series) else pd.Series(values)
             series.index = pd.to_datetime(series.index, errors="coerce")
+            if series.index.tz is not None:
+                series.index = series.index.tz_localize(None)
             series = pd.to_numeric(series, errors="coerce").dropna()
             series = series[series.index.notna() & (series > 0)]
             series.index = series.index.normalize()
@@ -201,6 +204,7 @@ class PortfolioCalculationEngine:
                     day,
                     prices,
                     carried_prices,
+                    require_historical,
                 )
                 for symbol, asset_lots in lots.items()
             )
@@ -227,13 +231,19 @@ class PortfolioCalculationEngine:
         return pd.DataFrame(rows, columns=HISTORY_COLUMNS)
 
     @staticmethod
-    def _price_for_day(symbol, product, day, prices, historical_prices) -> float:
+    def _price_for_day(
+        symbol, product, day, prices, historical_prices, require_historical
+    ) -> float:
         for key in (symbol, product):
             series = historical_prices.get(key)
             if series is not None:
                 price = series.get(day)
                 if pd.notna(price) and price > 0:
                     return float(price)
+        if require_historical:
+            raise ValueError(
+                f"Missing historical market price for {symbol} on {day:%Y-%m-%d}."
+            )
         return _number(prices.get(symbol, prices.get(product, 0.0)))
 
     def compute_current_holdings(

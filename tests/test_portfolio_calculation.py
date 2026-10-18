@@ -203,6 +203,27 @@ def test_daily_history_reports_unrealized_gain_after_fifo_sale():
     assert history.iloc[-1]["unrealized_pnl_eur"] == pytest.approx(0.0)
 
 
+def test_daily_history_does_not_fill_missing_historical_prices_with_live_quotes():
+    transactions = pd.DataFrame(
+        [
+            {
+                "date": "2024-01-01",
+                "product": "Example ETF",
+                "isin": "IE00TEST1234",
+                "description": "Koop 5 @ 100",
+                "amount": -500.0,
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="Missing historical market price"):
+        PortfolioCalculationEngine().compute_daily_history(
+            transactions,
+            prices={"IE00TEST1234": 150.0},
+            historical_prices={"IE00TEST1234": {}},
+        )
+
+
 def test_database_storage_persists_history_and_current_holdings_snapshots():
     executed = []
 
@@ -312,7 +333,7 @@ def test_snapshot_refresh_fetches_quotes_and_persists_calculated_read_models():
 
         def get_historical_prices_batch(self, tickers, start_date):
             assert tickers == ["EXAMPLE"]
-            assert start_date == "2024-01-01"
+            assert start_date == "2023-12-25"
             return {
                 "EXAMPLE": {
                     "2024-01-01": 100.0,
