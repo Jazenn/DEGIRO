@@ -4,13 +4,21 @@ import {
   Database,
   ShieldCheck,
   Activity,
+  Settings,
 } from 'lucide-react';
-import { DashboardData, Timeframe } from '../types/portfolio';
+import { DashboardData, Timeframe, PortfolioAssetSetting } from '../types/portfolio';
 import { MetricCards } from './MetricCards';
 import { PortfolioChart } from './PortfolioChart';
 import { AllocationDonut } from './AllocationDonut';
 import { RebalanceCockpit } from './RebalanceCockpit';
+import { CryptoScaleCard } from './CryptoScaleCard';
+import { SettingsModal } from './SettingsModal';
 import { filterPortfolioHistory } from '../utils/timeframe';
+import {
+  saveAssetSettings,
+  applySettingsToDashboardData,
+  getDefaultAssetSettings,
+} from '../services/portfolioData';
 
 interface DashboardProps {
   initialData: DashboardData;
@@ -23,15 +31,31 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onRefresh,
   isRefreshing = false,
 }) => {
-  const [data, setData] = useState<DashboardData>(initialData);
+  const [data, setData] = useState<DashboardData>(() => ({
+    ...initialData,
+    assetSettings: initialData.assetSettings || getDefaultAssetSettings(),
+  }));
   const [timeframe, setTimeframe] = useState<Timeframe>('ALL');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
   // Keep internal state synced if initialData changes
   React.useEffect(() => {
-    setData(initialData);
+    setData({
+      ...initialData,
+      assetSettings: initialData.assetSettings || getDefaultAssetSettings(),
+    });
   }, [initialData]);
 
   const filteredHistory = filterPortfolioHistory(data.history, timeframe);
+
+  const handleSaveSettings = async (updatedSettings: PortfolioAssetSetting[]) => {
+    // Persist settings (to Neon Serverless DB or localStorage)
+    await saveAssetSettings(updatedSettings);
+
+    // Apply updated settings in-memory to immediately refresh rebalancing & crypto views
+    const nextData = applySettingsToDashboardData(data, updatedSettings);
+    setData(nextData);
+  };
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-6 sm:py-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto space-y-6 sm:space-y-8">
@@ -71,6 +95,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </span>
             </div>
           )}
+
+          {/* Settings Button */}
+          <button
+            onClick={() => setIsSettingsOpen(true)}
+            aria-label="Strategy and Crypto Settings"
+            title="Configure Strategy & Crypto Scale Settings"
+            className="px-3.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-200 border border-slate-800 hover:border-slate-700 text-xs font-medium font-mono transition flex items-center gap-2 shadow-sm"
+          >
+            <Settings className="w-3.5 h-3.5 text-slate-400" />
+            <span className="hidden sm:inline">Settings</span>
+          </button>
 
           {onRefresh && (
             <button
@@ -114,6 +149,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
           totalPortfolioValue={data.metrics.totalPortfolioValue}
         />
       </section>
+
+      {/* Crypto Scale Visualizer Card */}
+      {data.assetSettings && data.assetSettings.some((s) => s.is_crypto) && (
+        <section aria-label="Crypto Scale">
+          <CryptoScaleCard
+            cryptoSettings={data.assetSettings}
+            holdings={data.holdings}
+            onOpenSettings={() => setIsSettingsOpen(true)}
+          />
+        </section>
+      )}
+
+      {/* Settings Modal */}
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={data.assetSettings || []}
+        onSave={handleSaveSettings}
+      />
     </div>
   );
 };

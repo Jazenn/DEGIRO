@@ -341,3 +341,20 @@ def test_portfolio_calculation_engine_generates_daily_history_and_current_holdin
     assert holdings.iloc[0]["symbol"] == "IE00BK5BQT80"
     assert holdings.iloc[0]["shares_held"] == pytest.approx(10.0)
     assert holdings.iloc[0]["total_value_eur"] == pytest.approx(1100.0)
+
+
+def test_database_schema_includes_portfolio_asset_settings_and_compatibility():
+    with open("setup_db.sql", "r", encoding="utf-8") as f:
+        schema_sql = f.read()
+
+    assert "CREATE TABLE IF NOT EXISTS portfolio_asset_settings" in schema_sql
+    assert "symbol" in schema_sql
+    assert "display_name" in schema_sql
+    assert "target_pct" in schema_sql
+    assert "buy_dip_trigger" in schema_sql
+    assert "sell_profit_trigger" in schema_sql
+    assert "is_crypto" in schema_sql
+    assert "buy_budget" in schema_sql
+    assert "updated_at" in schema_sql
+    assert "degiro_assets" in schema_sql
+

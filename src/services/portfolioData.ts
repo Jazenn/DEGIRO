@@ -3,6 +3,7 @@ import {
   PortfolioDailyHistoryRecord,
   CurrentAssetHoldingRecord,
   DashboardData,
+  PortfolioAssetSetting,
 } from '../types/portfolio';
 import { calculatePortfolioMetrics } from '../utils/metrics';
 
@@ -11,6 +12,98 @@ import { calculatePortfolioMetrics } from '../utils/metrics';
  */
 export function createNeonClient(databaseUrl: string) {
   return neon(databaseUrl);
+}
+
+/**
+ * Default asset configuration settings matching the DEGIRO portfolio specification.
+ */
+export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
+  return [
+    {
+      symbol: 'VWCE.DE',
+      display_name: 'Vanguard FTSE All-World UCITS ETF',
+      target_pct: 55.5,
+      buy_dip_trigger: null,
+      sell_profit_trigger: null,
+      is_crypto: false,
+      buy_budget: null,
+    },
+    {
+      symbol: 'EXUS.DE',
+      display_name: 'iShares MSCI World ex-USA UCITS ETF',
+      target_pct: 21.0,
+      buy_dip_trigger: null,
+      sell_profit_trigger: null,
+      is_crypto: false,
+      buy_budget: null,
+    },
+    {
+      symbol: 'BTC-EUR',
+      display_name: 'Bitcoin',
+      target_pct: 8.0,
+      buy_dip_trigger: 58500,
+      sell_profit_trigger: 75420,
+      is_crypto: true,
+      buy_budget: 350,
+    },
+    {
+      symbol: 'IMAE.AS',
+      display_name: 'iShares European Property Yield / Small ETF',
+      target_pct: 8.5,
+      buy_dip_trigger: null,
+      sell_profit_trigger: null,
+      is_crypto: false,
+      buy_budget: null,
+    },
+    {
+      symbol: 'ASWC.DE',
+      display_name: 'Clean Energy & Technology ETF',
+      target_pct: 5.0,
+      buy_dip_trigger: null,
+      sell_profit_trigger: null,
+      is_crypto: false,
+      buy_budget: null,
+    },
+    {
+      symbol: 'ETH-EUR',
+      display_name: 'Ethereum',
+      target_pct: 2.0,
+      buy_dip_trigger: 2800,
+      sell_profit_trigger: 3800,
+      is_crypto: true,
+      buy_budget: 150,
+    },
+  ];
+}
+
+const LOCAL_STORAGE_SETTINGS_KEY = 'degiro_asset_settings';
+
+export function loadLocalAssetSettings(): PortfolioAssetSetting[] | null {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_SETTINGS_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.length > 0) {
+      return parsed;
+    }
+  } catch {
+    // Ignore local storage parse error
+  }
+  return null;
+}
+
+export function saveLocalAssetSettings(settings: PortfolioAssetSetting[]): void {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(LOCAL_STORAGE_SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Ignore storage quota or access errors
+  }
 }
 
 /**
@@ -124,6 +217,8 @@ export function getDemoDashboardData(): DashboardData {
     },
   ];
 
+  const assetSettings = loadLocalAssetSettings() || getDefaultAssetSettings();
+
   const holdings: CurrentAssetHoldingRecord[] = [
     {
       symbol: 'VWCE.DE',
@@ -191,18 +286,34 @@ export function getDemoDashboardData(): DashboardData {
       total_cost_eur: 2698.45,
       unrealized_pnl_eur: 397.55,
       actual_pct: 6.4,
-      target_pct: 7.0,
-      drift_pct: -0.6,
-      recommended_action_eur: 75.0,
+      target_pct: 5.0,
+      drift_pct: 1.4,
+      recommended_action_eur: 0.0,
     },
   ];
 
-  const metrics = calculatePortfolioMetrics(history, holdings);
+  // Sync holdings target_pct with assetSettings if available
+  const syncedHoldings = holdings.map((h) => {
+    const s = assetSettings.find(
+      (item) => item.symbol === h.symbol || item.display_name === h.name
+    );
+    if (!s) return h;
+    const target_pct = s.target_pct;
+    const drift_pct = h.actual_pct - target_pct;
+    return {
+      ...h,
+      target_pct,
+      drift_pct,
+    };
+  });
+
+  const metrics = calculatePortfolioMetrics(history, syncedHoldings);
 
   return {
     metrics,
     history,
-    holdings,
+    holdings: syncedHoldings,
+    assetSettings,
     isDemo: true,
     lastUpdated: new Date().toISOString(),
   };
@@ -214,7 +325,7 @@ export function getDemoDashboardData(): DashboardData {
  */
 export async function fetchDashboardData(
   databaseUrl?: string,
-  customSql?: (query: TemplateStringsArray) => Promise<any[]>
+  customSql?: (query: TemplateStringsArray, ...args: any[]) => Promise<any[]>
 ): Promise<DashboardData> {
   const resolvedUrl =
     databaseUrl ||
@@ -229,8 +340,8 @@ export async function fetchDashboardData(
   try {
     const sql = customSql || createNeonClient(resolvedUrl!);
 
-    // Query both snapshot tables in parallel for sub-50ms read latency
-    const [historyRows, holdingsRows] = await Promise.all([
+    // Query snapshot tables in parallel for sub-50ms read latency
+    const [historyRows, holdingsRows, settingsRows] = await Promise.all([
       sql`
         SELECT 
           date::text as date, 
@@ -259,6 +370,34 @@ export async function fetchDashboardData(
         FROM current_asset_holdings 
         ORDER BY total_value_eur DESC
       `,
+      sql`
+        SELECT 
+          symbol,
+          display_name,
+          target_pct,
+          buy_dip_trigger,
+          sell_profit_trigger,
+          is_crypto,
+          buy_budget,
+          updated_at::text as updated_at
+        FROM portfolio_asset_settings
+        ORDER BY target_pct DESC
+      `.catch(async () => {
+        // Fallback to degiro_assets if portfolio_asset_settings doesn't exist yet
+        return sql`
+          SELECT 
+            product_key as symbol,
+            display_name,
+            target_pct,
+            t1_buy as buy_dip_trigger,
+            t1_sell as sell_profit_trigger,
+            (product_key ILIKE '%BTC%' OR product_key ILIKE '%ETH%' OR product_key ILIKE '%BITCOIN%' OR product_key ILIKE '%ETHEREUM%') as is_crypto,
+            buy_budget,
+            updated_at::text as updated_at
+          FROM degiro_assets
+          ORDER BY target_pct DESC
+        `;
+      }).catch(() => []),
     ]);
 
     if (!historyRows || historyRows.length === 0) {
@@ -290,12 +429,27 @@ export async function fetchDashboardData(
       recommended_action_eur: Number(r.recommended_action_eur) || 0,
     }));
 
+    const assetSettings: PortfolioAssetSetting[] =
+      settingsRows && settingsRows.length > 0
+        ? settingsRows.map((r: any) => ({
+            symbol: String(r.symbol),
+            display_name: r.display_name ? String(r.display_name) : String(r.symbol),
+            target_pct: Number(r.target_pct) || 0,
+            buy_dip_trigger: r.buy_dip_trigger !== null && r.buy_dip_trigger !== undefined ? Number(r.buy_dip_trigger) : null,
+            sell_profit_trigger: r.sell_profit_trigger !== null && r.sell_profit_trigger !== undefined ? Number(r.sell_profit_trigger) : null,
+            is_crypto: Boolean(r.is_crypto),
+            buy_budget: r.buy_budget !== null && r.buy_budget !== undefined ? Number(r.buy_budget) : null,
+            updated_at: r.updated_at ? String(r.updated_at) : undefined,
+          }))
+        : getDefaultAssetSettings();
+
     const metrics = calculatePortfolioMetrics(history, holdings);
 
     return {
       metrics,
       history,
       holdings,
+      assetSettings,
       isDemo: false,
       lastUpdated: new Date().toISOString(),
     };
@@ -306,4 +460,96 @@ export async function fetchDashboardData(
     );
     return getDemoDashboardData();
   }
+}
+
+/**
+ * Persists updated portfolio asset settings to the database and/or local cache.
+ */
+export async function saveAssetSettings(
+  settings: PortfolioAssetSetting[],
+  databaseUrl?: string,
+  customSql?: (query: TemplateStringsArray, ...args: any[]) => Promise<any[]>
+): Promise<boolean> {
+  saveLocalAssetSettings(settings);
+
+  const resolvedUrl =
+    databaseUrl ||
+    (typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_DATABASE_URL || import.meta.env.DATABASE_URL
+      : undefined);
+
+  if (!resolvedUrl && !customSql) {
+    return true;
+  }
+
+  try {
+    const sql = customSql || createNeonClient(resolvedUrl!);
+    for (const setting of settings) {
+      // Upsert into portfolio_asset_settings
+      await sql`
+        INSERT INTO portfolio_asset_settings (
+          symbol, display_name, target_pct, buy_dip_trigger, sell_profit_trigger, is_crypto, buy_budget, updated_at
+        ) VALUES (
+          ${setting.symbol}, ${setting.display_name}, ${setting.target_pct}, ${setting.buy_dip_trigger}, ${setting.sell_profit_trigger}, ${setting.is_crypto}, ${setting.buy_budget}, NOW()
+        )
+        ON CONFLICT (symbol) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          target_pct = EXCLUDED.target_pct,
+          buy_dip_trigger = EXCLUDED.buy_dip_trigger,
+          sell_profit_trigger = EXCLUDED.sell_profit_trigger,
+          is_crypto = EXCLUDED.is_crypto,
+          buy_budget = EXCLUDED.buy_budget,
+          updated_at = NOW()
+      `;
+
+      // Upsert into degiro_assets for backward compatibility
+      await sql`
+        INSERT INTO degiro_assets (
+          product_key, display_name, target_pct, t1_buy, t1_sell, buy_budget, updated_at
+        ) VALUES (
+          ${setting.symbol}, ${setting.display_name}, ${setting.target_pct}, ${setting.buy_dip_trigger}, ${setting.sell_profit_trigger}, ${setting.buy_budget}, NOW()
+        )
+        ON CONFLICT (product_key) DO UPDATE SET
+          display_name = EXCLUDED.display_name,
+          target_pct = EXCLUDED.target_pct,
+          t1_buy = EXCLUDED.t1_buy,
+          t1_sell = EXCLUDED.t1_sell,
+          buy_budget = EXCLUDED.buy_budget,
+          updated_at = NOW()
+      `;
+    }
+    return true;
+  } catch (err) {
+    console.warn('Failed to persist asset settings to database:', err);
+    return false;
+  }
+}
+
+/**
+ * Updates in-memory DashboardData with new asset settings without requiring a page reload.
+ * Recalculates holding targets and drift.
+ */
+export function applySettingsToDashboardData(
+  data: DashboardData,
+  settings: PortfolioAssetSetting[]
+): DashboardData {
+  const updatedHoldings = data.holdings.map((h) => {
+    const s = settings.find(
+      (item) => item.symbol === h.symbol || item.display_name === h.name
+    );
+    if (!s) return h;
+    const target_pct = s.target_pct;
+    const drift_pct = h.actual_pct - target_pct;
+    return {
+      ...h,
+      target_pct,
+      drift_pct,
+    };
+  });
+
+  return {
+    ...data,
+    holdings: updatedHoldings,
+    assetSettings: settings,
+  };
 }

@@ -33,10 +33,23 @@ export interface PortfolioMetrics {
 
 export type Timeframe = '1M' | '3M' | '1Y' | 'ALL';
 
+export interface PortfolioAssetSetting {
+  symbol: string;
+  display_name: string;
+  target_pct: number;
+  buy_dip_trigger: number | null;
+  sell_profit_trigger: number | null;
+  is_crypto: boolean;
+  buy_budget: number | null;
+  updated_at?: string;
+}
+
 export interface DashboardData {
   metrics: PortfolioMetrics;
   history: PortfolioDailyHistoryRecord[];
   holdings: CurrentAssetHoldingRecord[];
+  assetSettings?: PortfolioAssetSetting[];
   isDemo: boolean;
   lastUpdated: string | null;
 }
+

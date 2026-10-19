@@ -1,4 +1,4 @@
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { describe, it, expect } from 'vitest';
 import Dashboard from './Dashboard';
 import { getDemoDashboardData } from '../services/portfolioData';
@@ -86,4 +86,50 @@ describe('Dashboard Component', () => {
     expect(screen.getByTestId('current-deposit-label')).toBeInTheDocument();
     expect(screen.getByTestId('post-rebalance-drift')).toBeInTheDocument();
   });
+
+  it('renders Crypto Scale card and displays current market price relative to triggers', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    expect(screen.getByText(/Crypto Scale/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Accumulation Buy Zone/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Tier 1 Profit Target/i).length).toBeGreaterThan(0);
+  });
+
+  it('renders settings gear button in header and opens settings modal on click', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    const settingsBtn = screen.getByRole('button', { name: /Strategy and Crypto Settings|Settings/i });
+    expect(settingsBtn).toBeInTheDocument();
+
+    fireEvent.click(settingsBtn);
+
+    expect(screen.getByText(/Portfolio Strategy & Crypto Scale Settings/i)).toBeInTheDocument();
+  });
+
+  it('immediately updates target percentages and recalculates drift when saved from settings modal', async () => {
+    render(<Dashboard initialData={demoData} />);
+
+    // Open settings modal
+    const settingsBtn = screen.getByRole('button', { name: /Strategy and Crypto Settings|Settings/i });
+    fireEvent.click(settingsBtn);
+
+    // Change VWCE target from 55.5 to 60.0
+    const vwceInput = screen.getByLabelText(/Vanguard FTSE All-World|VWCE/i);
+    fireEvent.change(vwceInput, { target: { value: '60.0' } });
+
+    // Change Clean Energy target from 5.0 to 0.5 (so total remains 100%)
+    const cleanEnergyInput = screen.getByLabelText(/Clean Energy/i);
+    fireEvent.change(cleanEnergyInput, { target: { value: '0.5' } });
+
+    // Save
+    const saveBtn = screen.getByRole('button', { name: /save settings/i });
+    fireEvent.click(saveBtn);
+
+    // Modal should close and VWCE drift in donut breakdown should update to reflect 60.0% target
+    // VWCE actual_pct is 54.2%, new target is 60.0% -> drift is -5.8% Underweight
+    await waitFor(() => {
+      expect(screen.getByText('-5.8% Underweight')).toBeInTheDocument();
+    });
+  });
 });
+

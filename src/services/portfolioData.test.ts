@@ -1,10 +1,15 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   fetchDashboardData,
   getDemoDashboardData,
 } from './portfolioData';
 
 describe('Neon Data Query Adapter', () => {
+  beforeEach(() => {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.clear();
+    }
+  });
   it('returns demo dashboard data with isDemo: true when no database URL is set', async () => {
     const data = await fetchDashboardData(undefined);
 
@@ -93,4 +98,74 @@ describe('Neon Data Query Adapter', () => {
     expect(consoleWarnSpy).toHaveBeenCalled();
     consoleWarnSpy.mockRestore();
   });
+
+  it('provides default asset settings with crypto price triggers', () => {
+    const demo = getDemoDashboardData();
+    expect(demo.assetSettings).toBeDefined();
+    expect(demo.assetSettings!.length).toBeGreaterThan(0);
+
+    const btcSetting = demo.assetSettings!.find((s) => s.symbol === 'BTC-EUR');
+    expect(btcSetting).toBeDefined();
+    expect(btcSetting!.is_crypto).toBe(true);
+    expect(btcSetting!.buy_dip_trigger).toBe(58500);
+    expect(btcSetting!.sell_profit_trigger).toBe(75420);
+    expect(btcSetting!.buy_budget).toBe(350);
+  });
+
+  it('persists asset settings via SQL upsert when Neon client is provided', async () => {
+    const mockSql = vi.fn().mockImplementation(async () => []);
+
+    const updatedSettings = [
+      {
+        symbol: 'VWCE.DE',
+        display_name: 'Vanguard FTSE All-World',
+        target_pct: 60.0,
+        buy_dip_trigger: null,
+        sell_profit_trigger: null,
+        is_crypto: false,
+        buy_budget: null,
+      },
+      {
+        symbol: 'BTC-EUR',
+        display_name: 'Bitcoin',
+        target_pct: 10.0,
+        buy_dip_trigger: 60000,
+        sell_profit_trigger: 80000,
+        is_crypto: true,
+        buy_budget: 500,
+      },
+    ];
+
+    const { saveAssetSettings } = await import('./portfolioData');
+    const success = await saveAssetSettings(
+      updatedSettings,
+      'postgres://fake:secret@ep-cool.neon.tech/neondb',
+      mockSql as any
+    );
+
+    expect(success).toBe(true);
+    expect(mockSql).toHaveBeenCalled();
+    const calls = mockSql.mock.calls.map((c) => c[0].join(''));
+    expect(calls.some((sql) => sql.includes('portfolio_asset_settings') || sql.includes('degiro_assets'))).toBe(true);
+  });
+
+  it('applies updated settings to dashboard data in-memory and recalculates drift', async () => {
+    const { applySettingsToDashboardData } = await import('./portfolioData');
+    const demo = getDemoDashboardData();
+
+    const originalVwce = demo.holdings.find((h) => h.symbol === 'VWCE.DE')!;
+    expect(originalVwce.target_pct).toBe(55.5);
+
+    const newSettings = demo.assetSettings!.map((s) =>
+      s.symbol === 'VWCE.DE' ? { ...s, target_pct: 60.0 } : s
+    );
+
+    const updated = applySettingsToDashboardData(demo, newSettings);
+
+    const updatedVwce = updated.holdings.find((h) => h.symbol === 'VWCE.DE')!;
+    expect(updatedVwce.target_pct).toBe(60.0);
+    expect(updatedVwce.drift_pct).toBeCloseTo(updatedVwce.actual_pct - 60.0, 2);
+    expect(updated.assetSettings?.find((s) => s.symbol === 'VWCE.DE')?.target_pct).toBe(60.0);
+  });
 });
+
