@@ -14,6 +14,7 @@ export interface ParsedTransaction {
   balance: number | null;
   orderId: string;
   rowHash: string;
+  csvRowId?: number;
 }
 
 export type IngestedTransaction = ParsedTransaction;
@@ -307,16 +308,20 @@ export function generateRowHash(row: {
   orderId: string;
   amount: number | null;
   value: number | null;
+  description?: string;
 }): string {
-  const payload = JSON.stringify({
+  const payload: Record<string, string> = {
     amount: stableValue(row.amount),
     date: stableValue(row.date),
     isin: stableValue(row.isin),
     order_id: stableValue(row.orderId),
     time: stableValue(row.time),
     value: stableValue(row.value),
-  });
-  return computeMd5Hash(payload);
+  };
+  if (row.description) {
+    payload.description = stableValue(row.description);
+  }
+  return computeMd5Hash(JSON.stringify(payload));
 }
 
 /**
@@ -599,6 +604,7 @@ export function parseDegiroCsv(
       orderId,
       amount: amount !== null ? amount : value,
       value: value !== null ? value : amount,
+      description,
     });
 
     if (seenHashes.has(rowHash)) {
@@ -620,6 +626,7 @@ export function parseDegiroCsv(
       balance,
       orderId,
       rowHash,
+      csvRowId: i - 1,
     });
   }
 

@@ -451,8 +451,32 @@ export async function fetchDashboardData(
           }))
         : getDefaultAssetSettings();
 
-    // If pre-aggregated snapshot tables have records, return them directly
-    if (historyRows && historyRows.length > 0 && holdingsRows && holdingsRows.length > 0) {
+    // Extract live market prices from Neon holdings if available
+    const neonPrices: Record<string, number> = {};
+    if (holdingsRows && holdingsRows.length > 0) {
+      for (const r of holdingsRows) {
+        const p = Number(r.current_price_eur);
+        if (p > 0) {
+          if (r.symbol) neonPrices[String(r.symbol)] = p;
+          if (r.isin) neonPrices[String(r.isin)] = p;
+        }
+      }
+    }
+
+    const localTxs = loadLocalTransactions();
+    const localCalculated =
+      localTxs && localTxs.length > 0
+        ? calculateDashboardFromTransactions(localTxs, assetSettings, neonPrices)
+        : null;
+
+    // If pre-aggregated snapshot tables have records AND are complete (at least as many holdings as local calculation)
+    if (
+      historyRows &&
+      historyRows.length > 0 &&
+      holdingsRows &&
+      holdingsRows.length > 0 &&
+      (!localCalculated || holdingsRows.length >= localCalculated.holdings.length)
+    ) {
       const history: PortfolioDailyHistoryRecord[] = historyRows.map((r: any) => ({
         date: typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10),
         total_equity_eur: Number(r.total_equity_eur) || 0,
@@ -486,6 +510,13 @@ export async function fetchDashboardData(
         assetSettings,
         isDemo: false,
         lastUpdated: new Date().toISOString(),
+      };
+    }
+
+    if (localCalculated) {
+      return {
+        ...localCalculated,
+        isDemo: false,
       };
     }
 
@@ -530,14 +561,7 @@ export async function fetchDashboardData(
       }
     }
 
-    // If Neon is completely empty, check if any transactions were uploaded locally
-    const localTxs = loadLocalTransactions();
-    if (localTxs && localTxs.length > 0) {
-      const calculated = calculateDashboardFromTransactions(localTxs, assetSettings);
-      if (calculated) {
-        return calculated;
-      }
-    }
+
 
     return getDemoDashboardData();
   } catch (err) {

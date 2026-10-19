@@ -134,7 +134,10 @@ class PortfolioCalculationEngine:
             return pd.DataFrame(columns=HISTORY_COLUMNS)
         if "time" not in df:
             df["time"] = ""
-        df = df.sort_values(["date", "time"], kind="stable")
+        if "csv_row_id" in df.columns:
+            df = df.sort_values(["date", "time", "csv_row_id"], ascending=[True, True, False], kind="stable")
+        else:
+            df = df.sort_values(["date", "time"], kind="stable")
 
         prices = prices or {}
         require_historical = historical_prices is not None
@@ -288,6 +291,12 @@ class PortfolioCalculationEngine:
             product = products[symbol]
             price = _number(prices.get(symbol, prices.get(product, 0.0)))
             total_cost = sum(quantity * lot_price for quantity, lot_price in asset_lots)
+            if price <= 0 and asset_lots:
+                price = (
+                    asset_lots[-1][1]
+                    if asset_lots[-1][1] > 0
+                    else (total_cost / shares_held if shares_held > 0 else 0.0)
+                )
             total_value = shares_held * price
             target_pct = _number(targets.get(symbol, targets.get(product, 0.0)))
             values.append(

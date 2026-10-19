@@ -41,36 +41,46 @@ function isInternalCashTransaction(tx: IngestedTransaction): boolean {
 }
 
 /**
- * Checks if a transaction is a deposit or cash inflow.
+ * Checks if a transaction is an external deposit (money transferred into DEGIRO from external bank).
+ * Excludes internal cash sweeps and Flatex bank transfers.
  */
 function isDepositTransaction(tx: IngestedTransaction): boolean {
   const desc = normalizeString(tx.description);
-  const prod = normalizeString(tx.product);
+  if (
+    desc.includes('flatexdegiro bank') ||
+    desc.includes('cash sweep') ||
+    desc.includes('reservation') ||
+    isInternalCashTransaction(tx)
+  ) {
+    return false;
+  }
   return (
-    desc.includes('storting') ||
-    desc.includes('ideal') ||
-    desc.includes('deposit') ||
-    desc.includes('overboeking van') ||
-    prod.includes('storting') ||
-    (desc.includes('geldrekening') && (tx.amount || 0) > 0) ||
-    (isInternalCashTransaction(tx) && (tx.amount || 0) > 0)
+    desc === 'ideal deposit' ||
+    desc.startsWith('ideal deposit') ||
+    desc === 'storting' ||
+    (desc.includes('storting') && !desc.includes('terugstorting') && !desc.includes('overboeking')) ||
+    (desc.includes('deposit') && !desc.includes('reservation'))
   );
 }
 
 /**
- * Checks if a transaction is a withdrawal or cash outflow.
+ * Checks if a transaction is an external withdrawal (money transferred out to external bank).
+ * Excludes internal cash sweeps.
  */
 function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
   const desc = normalizeString(tx.description);
-  const prod = normalizeString(tx.product);
+  if (
+    desc.includes('flatexdegiro bank') ||
+    desc.includes('cash sweep') ||
+    isInternalCashTransaction(tx)
+  ) {
+    return false;
+  }
   return (
-    desc.includes('terugstorting') ||
-    desc.includes('onttrekking') ||
-    desc.includes('withdrawal') ||
-    desc.includes('overboeking naar') ||
-    prod.includes('terugstorting') ||
-    (desc.includes('geldrekening') && (tx.amount || 0) < 0) ||
-    (isInternalCashTransaction(tx) && (tx.amount || 0) < 0)
+    desc === 'terugstorting' ||
+    desc.startsWith('terugstorting') ||
+    (desc.includes('onttrekking') && !desc.includes('flatex')) ||
+    (desc.includes('withdrawal') && !desc.includes('flatex'))
   );
 }
 
@@ -80,19 +90,28 @@ function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
  */
 export function calculateDashboardFromTransactions(
   transactions: IngestedTransaction[],
-  assetSettings: PortfolioAssetSetting[] = []
+  assetSettings: PortfolioAssetSetting[] = [],
+  currentPrices?: Record<string, number>
 ): DashboardData | null {
   if (!transactions || transactions.length === 0) {
     return null;
   }
 
-  // 1. Sort transactions chronologically
+  // 1. Sort transactions chronologically:
+  // DEGIRO exports transactions newest first (line 2 of CSV is newest, line 173 is oldest).
+  // When sorting chronologically (oldest to newest):
+  // Date asc, Time asc.
+  // For ties, higher csvRowId comes first (older in time, since CSV is exported newest-first).
   const sorted = [...transactions].sort((a, b) => {
     const da = normalizeDate(a.date || '');
     const db = normalizeDate(b.date || '');
     const dateComp = da.localeCompare(db);
     if (dateComp !== 0) return dateComp;
-    return (a.time || '').localeCompare(b.time || '');
+    const timeComp = (a.time || '').localeCompare(b.time || '');
+    if (timeComp !== 0) return timeComp;
+    const rowA = a.csvRowId ?? 0;
+    const rowB = b.csvRowId ?? 0;
+    return rowB - rowA;
   });
 
   // 2. Compute Cash Balance
@@ -231,8 +250,13 @@ export function calculateDashboardFromTransactions(
 
   for (const group of assetGroups.values()) {
     if (group.shares > 0.0001) {
+      const livePrice =
+        currentPrices?.[group.symbol] ||
+        (group.isin ? currentPrices?.[group.isin] : undefined);
       const price =
-        group.latestPrice > 0
+        livePrice && livePrice > 0
+          ? livePrice
+          : group.latestPrice > 0
           ? group.latestPrice
           : group.shares > 0
           ? group.totalCost / group.shares

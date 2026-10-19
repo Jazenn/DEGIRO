@@ -214,4 +214,18 @@ describe('calculateDashboardFromTransactions', () => {
     // Total gain = 4300 - 4100 = 200
     expect(result.metrics.totalGainLossEur).toBe(200);
   });
+
+  it('correctly parses and aggregates real user Account.csv file', async () => {
+    const fs = await import('fs');
+    const { parseDegiroCsv } = await import('./csvParser');
+    if (!fs.existsSync('Account.csv')) return;
+    const content = fs.readFileSync('Account.csv', 'utf-8');
+    const parseResult = parseDegiroCsv(content);
+    const dashboard = calculateDashboardFromTransactions(parseResult.transactions, mockSettings);
+    expect(parseResult.transactions.length).toBe(172);
+    expect(dashboard).not.toBeNull();
+    expect(dashboard?.metrics.netInvestedCapital).toBe(3728);
+    expect(dashboard?.metrics.freeCashBalance).toBe(5.96);
+    expect(dashboard?.holdings.length).toBe(6);
+  });
 });

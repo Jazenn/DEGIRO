@@ -141,8 +141,8 @@ def _parse_account_csv(df: pd.DataFrame) -> pd.DataFrame:
 
     def _shift_if_currency(main_col: str):
         if main_col not in df.columns: return
-        series = df[main_col].astype(str).str.strip()
-        non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None", "0.0")]
+        series = df[main_col].dropna().astype(str).str.strip()
+        non_empty = [v for v in series.unique() if v not in ("", "nan", "NaN", "None", "0.0", "<NA>") and pd.notna(v)]
         if len(non_empty) > 0 and len(non_empty) <= 3 and all(isinstance(v, str) and len(v) <= 3 and v.isalpha() for v in non_empty):
             try: idx = df.columns.get_loc(main_col)
             except KeyError: return
@@ -196,16 +196,17 @@ def classify_row(description: str) -> str:
         return "Dividend"
     if "Flatex Interest" in desc or "Rente" in desc or "Interest" in desc:
         return "Interest"
-    if "iDEAL Deposit" in desc or desc == "Deposit":
-        return "Deposit"
+
+    if "Degiro Cash Sweep Transfer" in desc or "Overboeking van uw geldrekening bij flatexDEGIRO Bank" in desc or "Overboeking naar uw geldrekening bij flatexDEGIRO Bank" in desc:
+        return "Cash Sweep"
     if "Reservation iDEAL" in desc:
         return "Reservation"
-    if "Overboeking van uw geldrekening" in desc or "Storting" in desc or "Deposit" in desc:
+    if "iDEAL Deposit" in desc or desc == "Deposit":
+        return "Deposit"
+    if "Overboeking van uw geldrekening" in desc or "Storting" in desc:
         return "Deposit"
     if "Overboeking naar uw geldrekening" in desc or "Terugstorting" in desc or "Withdrawal" in desc:
         return "Withdrawal"
-    if "Degiro Cash Sweep Transfer" in desc:
-        return "Cash Sweep"
 
     return "Other"
 
