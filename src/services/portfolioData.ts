@@ -7,6 +7,26 @@ import {
 } from '../types/portfolio';
 import { IngestedTransaction } from '../utils/csvParser';
 import { calculatePortfolioMetrics } from '../utils/metrics';
+import { calculateDashboardFromTransactions } from '../utils/transactionAggregator';
+
+export const LOCAL_STORAGE_DATABASE_URL_KEY = 'degiro_database_url';
+
+export function loadLocalDatabaseUrl(): string | null {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    return window.localStorage.getItem(LOCAL_STORAGE_DATABASE_URL_KEY);
+  }
+  return null;
+}
+
+export function saveLocalDatabaseUrl(url: string | null): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    if (url && url.trim()) {
+      window.localStorage.setItem(LOCAL_STORAGE_DATABASE_URL_KEY, url.trim());
+    } else {
+      window.localStorage.removeItem(LOCAL_STORAGE_DATABASE_URL_KEY);
+    }
+  }
+}
 
 /**
  * Creates a Neon Serverless HTTP SQL client.
@@ -332,11 +352,22 @@ export async function fetchDashboardData(
 ): Promise<DashboardData> {
   const resolvedUrl =
     databaseUrl ||
+    loadLocalDatabaseUrl() ||
     (typeof import.meta !== 'undefined' && import.meta.env
       ? import.meta.env.VITE_DATABASE_URL || import.meta.env.DATABASE_URL
       : undefined);
 
   if (!resolvedUrl && !customSql) {
+    const localTxs = loadLocalTransactions();
+    if (localTxs && localTxs.length > 0) {
+      const calculated = calculateDashboardFromTransactions(
+        localTxs,
+        loadLocalAssetSettings() || getDefaultAssetSettings()
+      );
+      if (calculated) {
+        return calculated;
+      }
+    }
     return getDemoDashboardData();
   }
 
@@ -405,35 +436,6 @@ export async function fetchDashboardData(
       }).catch(() => []),
     ]);
 
-    if (!historyRows || historyRows.length === 0) {
-      console.warn('Neon database snapshot tables are empty, using demo fallback.');
-      return getDemoDashboardData();
-    }
-
-    const history: PortfolioDailyHistoryRecord[] = historyRows.map((r: any) => ({
-      date: typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10),
-      total_equity_eur: Number(r.total_equity_eur) || 0,
-      invested_capital_eur: Number(r.invested_capital_eur) || 0,
-      cash_balance_eur: Number(r.cash_balance_eur) || 0,
-      unrealized_pnl_eur: Number(r.unrealized_pnl_eur) || 0,
-      unrealized_pnl_pct: Number(r.unrealized_pnl_pct) || 0,
-    }));
-
-    const holdings: CurrentAssetHoldingRecord[] = (holdingsRows || []).map((r: any) => ({
-      symbol: String(r.symbol),
-      name: String(r.name),
-      isin: r.isin ? String(r.isin) : null,
-      shares_held: Number(r.shares_held) || 0,
-      current_price_eur: Number(r.current_price_eur) || 0,
-      total_value_eur: Number(r.total_value_eur) || 0,
-      total_cost_eur: Number(r.total_cost_eur) || 0,
-      unrealized_pnl_eur: Number(r.unrealized_pnl_eur) || 0,
-      actual_pct: Number(r.actual_pct) || 0,
-      target_pct: Number(r.target_pct) || 0,
-      drift_pct: Number(r.drift_pct) || 0,
-      recommended_action_eur: Number(r.recommended_action_eur) || 0,
-    }));
-
     const assetSettings: PortfolioAssetSetting[] =
       settingsRows && settingsRows.length > 0
         ? settingsRows.map((r: any) => ({
@@ -449,21 +451,110 @@ export async function fetchDashboardData(
           }))
         : getDefaultAssetSettings();
 
-    const metrics = calculatePortfolioMetrics(history, holdings);
+    // If pre-aggregated snapshot tables have records, return them directly
+    if (historyRows && historyRows.length > 0 && holdingsRows && holdingsRows.length > 0) {
+      const history: PortfolioDailyHistoryRecord[] = historyRows.map((r: any) => ({
+        date: typeof r.date === 'string' ? r.date.slice(0, 10) : new Date(r.date).toISOString().slice(0, 10),
+        total_equity_eur: Number(r.total_equity_eur) || 0,
+        invested_capital_eur: Number(r.invested_capital_eur) || 0,
+        cash_balance_eur: Number(r.cash_balance_eur) || 0,
+        unrealized_pnl_eur: Number(r.unrealized_pnl_eur) || 0,
+        unrealized_pnl_pct: Number(r.unrealized_pnl_pct) || 0,
+      }));
 
-    return {
-      metrics,
-      history,
-      holdings,
-      assetSettings,
-      isDemo: false,
-      lastUpdated: new Date().toISOString(),
-    };
+      const holdings: CurrentAssetHoldingRecord[] = holdingsRows.map((r: any) => ({
+        symbol: String(r.symbol),
+        name: String(r.name),
+        isin: r.isin ? String(r.isin) : null,
+        shares_held: Number(r.shares_held) || 0,
+        current_price_eur: Number(r.current_price_eur) || 0,
+        total_value_eur: Number(r.total_value_eur) || 0,
+        total_cost_eur: Number(r.total_cost_eur) || 0,
+        unrealized_pnl_eur: Number(r.unrealized_pnl_eur) || 0,
+        actual_pct: Number(r.actual_pct) || 0,
+        target_pct: Number(r.target_pct) || 0,
+        drift_pct: Number(r.drift_pct) || 0,
+        recommended_action_eur: Number(r.recommended_action_eur) || 0,
+      }));
+
+      const metrics = calculatePortfolioMetrics(history, holdings);
+
+      return {
+        metrics,
+        history,
+        holdings,
+        assetSettings,
+        isDemo: false,
+        lastUpdated: new Date().toISOString(),
+      };
+    }
+
+    // Snapshot tables are empty in Neon - query degiro_transactions to calculate dynamically
+    const txRows = await sql`
+      SELECT 
+        date::text as date,
+        time,
+        product,
+        isin,
+        description,
+        amount,
+        balance,
+        order_id as "orderId",
+        row_hash as "rowHash"
+      FROM degiro_transactions
+      ORDER BY date ASC, time ASC
+    `.catch(() => []);
+
+    if (txRows && txRows.length > 0) {
+      const parsedTxs: IngestedTransaction[] = txRows.map((r: any) => ({
+        date: r.date || '',
+        time: r.time || '',
+        product: r.product || '',
+        isin: r.isin || '',
+        description: r.description || '',
+        quantity: null,
+        price: null,
+        value: r.amount !== null ? Number(r.amount) : null,
+        amount: r.amount !== null ? Number(r.amount) : null,
+        balance: r.balance !== null ? Number(r.balance) : null,
+        orderId: r.orderId || '',
+        rowHash: r.rowHash || '',
+      }));
+
+      const calculated = calculateDashboardFromTransactions(parsedTxs, assetSettings);
+      if (calculated) {
+        return {
+          ...calculated,
+          isDemo: false,
+        };
+      }
+    }
+
+    // If Neon is completely empty, check if any transactions were uploaded locally
+    const localTxs = loadLocalTransactions();
+    if (localTxs && localTxs.length > 0) {
+      const calculated = calculateDashboardFromTransactions(localTxs, assetSettings);
+      if (calculated) {
+        return calculated;
+      }
+    }
+
+    return getDemoDashboardData();
   } catch (err) {
     console.warn(
-      'Neon database query failed, gracefully displaying demo dashboard data:',
+      'Neon database query failed, attempting local transactions or demo fallback:',
       err
     );
+    const localTxs = loadLocalTransactions();
+    if (localTxs && localTxs.length > 0) {
+      const calculated = calculateDashboardFromTransactions(
+        localTxs,
+        loadLocalAssetSettings() || getDefaultAssetSettings()
+      );
+      if (calculated) {
+        return calculated;
+      }
+    }
     return getDemoDashboardData();
   }
 }
@@ -480,6 +571,7 @@ export async function saveAssetSettings(
 
   const resolvedUrl =
     databaseUrl ||
+    loadLocalDatabaseUrl() ||
     (typeof import.meta !== 'undefined' && import.meta.env
       ? import.meta.env.VITE_DATABASE_URL || import.meta.env.DATABASE_URL
       : undefined);
@@ -591,6 +683,7 @@ export async function saveTransactions(
 
   const resolvedUrl =
     databaseUrl ||
+    loadLocalDatabaseUrl() ||
     (typeof import.meta !== 'undefined' && import.meta.env
       ? import.meta.env.VITE_DATABASE_URL || import.meta.env.DATABASE_URL
       : undefined);
