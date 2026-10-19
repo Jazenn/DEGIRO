@@ -16,6 +16,7 @@ class RebalanceCalculator:
         if deposit_amount <= 0:
             return {
                 "recommended_buys": {asset: 0.0 for asset in current_values},
+                "estimated_shares": {asset: 0.0 for asset in current_values},
                 "total_buy_eur": 0.0,
                 "portfolio_value_after": float(portfolio_value or 0.0),
                 "underweight_assets": [],
@@ -26,6 +27,7 @@ class RebalanceCalculator:
         if total_target <= 0:
             return {
                 "recommended_buys": {asset: 0.0 for asset in current_values},
+                "estimated_shares": {asset: 0.0 for asset in current_values},
                 "total_buy_eur": 0.0,
                 "portfolio_value_after": float(portfolio_value or 0.0),
                 "underweight_assets": [],
@@ -44,6 +46,7 @@ class RebalanceCalculator:
         if not underweight:
             return {
                 "recommended_buys": {asset: 0.0 for asset in current_values},
+                "estimated_shares": {asset: 0.0 for asset in current_values},
                 "total_buy_eur": 0.0,
                 "portfolio_value_after": projected_total,
                 "underweight_assets": [],
@@ -53,6 +56,7 @@ class RebalanceCalculator:
         if total_gap <= 0:
             return {
                 "recommended_buys": {asset: 0.0 for asset in current_values},
+                "estimated_shares": {asset: 0.0 for asset in current_values},
                 "total_buy_eur": 0.0,
                 "portfolio_value_after": projected_total,
                 "underweight_assets": [],
@@ -66,8 +70,15 @@ class RebalanceCalculator:
             recommended[asset] = deposit_amount * (gap / total_gap)
 
         total_buy_eur = sum(recommended.values())
+        estimated_shares = {asset: 0.0 for asset in current_values}
+        if prices:
+            for asset, buy_eur in recommended.items():
+                price = float(prices.get(asset, 0.0) or 0.0)
+                estimated_shares[asset] = (buy_eur / price) if price > 0 else 0.0
+
         return {
             "recommended_buys": recommended,
+            "estimated_shares": estimated_shares,
             "total_buy_eur": total_buy_eur,
             "portfolio_value_after": projected_total,
             "underweight_assets": underweight,

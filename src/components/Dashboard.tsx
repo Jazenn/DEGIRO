@@ -8,6 +8,8 @@ import {
 import { DashboardData, Timeframe } from '../types/portfolio';
 import { MetricCards } from './MetricCards';
 import { PortfolioChart } from './PortfolioChart';
+import { AllocationDonut } from './AllocationDonut';
+import { RebalanceCockpit } from './RebalanceCockpit';
 import { filterPortfolioHistory } from '../utils/timeframe';
 
 interface DashboardProps {
@@ -94,6 +96,22 @@ export const Dashboard: React.FC<DashboardProps> = ({
           data={filteredHistory}
           timeframe={timeframe}
           onTimeframeChange={setTimeframe}
+        />
+      </section>
+
+      {/* Asset Allocation Donut Chart */}
+      <section aria-label="Asset Allocation & Drift Analysis">
+        <AllocationDonut
+          holdings={data.holdings}
+          totalPortfolioValue={data.metrics.totalPortfolioValue}
+        />
+      </section>
+
+      {/* Interactive Monthly Rebalancing Cockpit */}
+      <section aria-label="Interactive Monthly Rebalancing Cockpit">
+        <RebalanceCockpit
+          holdings={data.holdings}
+          totalPortfolioValue={data.metrics.totalPortfolioValue}
         />
       </section>
     </div>

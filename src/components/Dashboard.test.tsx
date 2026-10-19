@@ -57,7 +57,7 @@ describe('Dashboard Component', () => {
     render(<Dashboard initialData={demoData} />);
 
     expect(screen.getByText(/Portfolio Growth & Valuation/i)).toBeInTheDocument();
-    expect(screen.getByText(/^Portfolio Value$/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^Portfolio Value$/i).length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/^Invested Capital$/i)).toBeInTheDocument();
   });
 
@@ -65,5 +65,25 @@ describe('Dashboard Component', () => {
     render(<Dashboard initialData={demoData} />);
 
     expect(screen.getByText(/Demo Mode/i)).toBeInTheDocument();
+  });
+
+  it('renders asset allocation donut chart and drift indicators in the dashboard', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    expect(screen.getByText('Asset Allocation')).toBeInTheDocument();
+    expect(screen.getByText('5 Assets')).toBeInTheDocument();
+    expect(screen.getAllByText('VWCE.DE').length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('-1.3% Underweight')).toBeInTheDocument();
+    expect(screen.getByText('+1.8% Overweight')).toBeInTheDocument();
+  });
+
+  it('renders interactive monthly rebalancing cockpit below valuation chart', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    expect(screen.getByText('Interactive Rebalancing Cockpit')).toBeInTheDocument();
+    expect(screen.getByTestId('deposit-slider')).toBeInTheDocument();
+    expect(screen.getByTestId('deposit-number-input')).toBeInTheDocument();
+    expect(screen.getByTestId('current-deposit-label')).toBeInTheDocument();
+    expect(screen.getByTestId('post-rebalance-drift')).toBeInTheDocument();
   });
 });

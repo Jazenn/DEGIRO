@@ -1,4 +1,4 @@
-﻿import io
+import io
 import hashlib
 import json
 from contextlib import contextmanager
@@ -196,6 +196,105 @@ def test_rebalance_calculator_only_buys_underweight_assets():
     assert plan["recommended_buys"]["Bitcoin"] == pytest.approx(0.0)
     assert plan["recommended_buys"]["Europe"] > 0
     assert all(value >= 0 for value in plan["recommended_buys"].values())
+
+
+def test_rebalance_calculator_zero_deposit_returns_zero_buys():
+    calculator = RebalanceCalculator()
+    rebalancing_targets = {"All-World": 0.60, "Bitcoin": 0.20, "Europe": 0.20}
+    current_values = {"All-World": 200.0, "Bitcoin": 600.0, "Europe": 200.0}
+
+    plan = calculator.calculate_deposit_plan(
+        deposit_amount=0.0,
+        portfolio_value=sum(current_values.values()),
+        rebalancing_targets=rebalancing_targets,
+        current_values=current_values,
+    )
+
+    assert plan["total_buy_eur"] == pytest.approx(0.0)
+    assert all(val == 0.0 for val in plan["recommended_buys"].values())
+    assert plan["underweight_assets"] == []
+
+
+def test_rebalance_calculator_all_balanced_returns_zero_buys_when_no_gap():
+    calculator = RebalanceCalculator()
+    rebalancing_targets = {"All-World": 0.50, "Bitcoin": 0.50}
+    current_values = {"All-World": 500.0, "Bitcoin": 500.0}
+
+    plan = calculator.calculate_deposit_plan(
+        deposit_amount=0.0,
+        portfolio_value=1000.0,
+        rebalancing_targets=rebalancing_targets,
+        current_values=current_values,
+    )
+
+    assert plan["total_buy_eur"] == pytest.approx(0.0)
+    assert plan["recommended_buys"]["All-World"] == 0.0
+    assert plan["recommended_buys"]["Bitcoin"] == 0.0
+
+
+def test_rebalance_calculator_single_underweight_asset_receives_full_deposit():
+    calculator = RebalanceCalculator()
+    rebalancing_targets = {"All-World": 0.60, "Bitcoin": 0.20, "Europe": 0.20}
+    # VWCE: 800 (target 660), BTC: 250 (target 220), IMAE: 50 (target 220)
+    # Projected total with deposit 100 is 1200:
+    # VWCE target: 720 (< 800), BTC target: 240 (< 250), IMAE target: 240 (> 50)
+    current_values = {"All-World": 800.0, "Bitcoin": 250.0, "Europe": 50.0}
+    deposit = 100.0
+
+    plan = calculator.calculate_deposit_plan(
+        deposit_amount=deposit,
+        portfolio_value=1100.0,
+        rebalancing_targets=rebalancing_targets,
+        current_values=current_values,
+        prices={"All-World": 100.0, "Bitcoin": 50000.0, "Europe": 50.0},
+    )
+
+    assert plan["underweight_assets"] == ["Europe"]
+    assert plan["recommended_buys"]["Europe"] == pytest.approx(deposit)
+    assert plan["recommended_buys"]["All-World"] == 0.0
+    assert plan["recommended_buys"]["Bitcoin"] == 0.0
+    assert plan["total_buy_eur"] == pytest.approx(deposit)
+    assert plan["estimated_shares"]["Europe"] == pytest.approx(deposit / 50.0)
+
+
+def test_rebalance_calculator_deposit_larger_than_drift_enforces_non_negative_buys():
+    calculator = RebalanceCalculator()
+    rebalancing_targets = {"All-World": 0.60, "Bitcoin": 0.20, "Europe": 0.20}
+    current_values = {"All-World": 580.0, "Bitcoin": 250.0, "Europe": 170.0}
+    deposit = 5000.0
+
+    plan = calculator.calculate_deposit_plan(
+        deposit_amount=deposit,
+        portfolio_value=1000.0,
+        rebalancing_targets=rebalancing_targets,
+        current_values=current_values,
+        prices={"All-World": 100.0, "Bitcoin": 50000.0, "Europe": 50.0},
+    )
+
+    assert plan["total_buy_eur"] == pytest.approx(deposit)
+    assert all(val >= 0.0 for val in plan["recommended_buys"].values())
+    assert all(val >= 0.0 for val in plan["estimated_shares"].values())
+
+
+def test_rebalance_calculator_converts_to_estimated_shares():
+    calculator = RebalanceCalculator()
+    rebalancing_targets = {"VWCE": 0.80, "BTC": 0.20}
+    current_values = {"VWCE": 200.0, "BTC": 800.0}
+    prices = {"VWCE": 125.0, "BTC": 60000.0}
+    deposit = 500.0
+
+    plan = calculator.calculate_deposit_plan(
+        deposit_amount=deposit,
+        portfolio_value=1000.0,
+        rebalancing_targets=rebalancing_targets,
+        current_values=current_values,
+        prices=prices,
+    )
+
+    assert plan["recommended_buys"]["VWCE"] == pytest.approx(500.0)
+    assert plan["estimated_shares"]["VWCE"] == pytest.approx(500.0 / 125.0)
+    assert plan["estimated_shares"]["BTC"] == pytest.approx(0.0)
+
 
 
 def test_portfolio_calculation_engine_generates_daily_history_and_current_holdings():
