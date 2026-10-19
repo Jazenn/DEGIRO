@@ -39,6 +39,7 @@ export interface PortfolioAssetSetting {
   target_pct: number;
   buy_dip_trigger: number | null;
   sell_profit_trigger: number | null;
+  sell_profit_pct?: number;
   is_crypto: boolean;
   buy_budget: number | null;
   updated_at?: string;

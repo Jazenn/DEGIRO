@@ -169,7 +169,7 @@ export const CryptoScaleCard: React.FC<CryptoScaleCardProps> = ({
 
         <div className="text-xs font-mono text-slate-400 space-y-1">
           <div className="flex justify-between">
-            <span>Target Weight:</span>
+            <span>Rebalancing Target:</span>
             <span className="text-slate-200 font-semibold">{activeSetting.target_pct.toFixed(1)}%</span>
           </div>
           {holding && (
@@ -289,7 +289,7 @@ export const CryptoScaleCard: React.FC<CryptoScaleCardProps> = ({
           <div className="border-t border-slate-800/80 pt-2.5 flex items-center justify-between text-xs font-mono">
             <span className="text-slate-400">Discipline Rule:</span>
             <span className="text-rose-400 font-bold bg-rose-950/60 border border-rose-800/60 px-2 py-0.5 rounded">
-              Take 15% Profit
+              Take {activeSetting.sell_profit_pct ?? 15}% Profit
             </span>
           </div>
         </div>

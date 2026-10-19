@@ -18,7 +18,7 @@ export interface DepositPlanResult {
 
 export type RebalanceAssetStatus = 'underweight' | 'balanced' | 'overweight';
 
-export interface RebalanceItem {
+export interface RebalanceAsset {
   symbol: string;
   name: string;
   isin?: string | null;
@@ -35,13 +35,16 @@ export interface RebalanceItem {
   projectedDriftPct: number;
 }
 
+export type RebalanceItem = RebalanceAsset;
+
 export interface RebalancePlan {
   depositAmount: number;
   portfolioValueBefore: number;
   portfolioValueAfter: number;
   totalBuyEur: number;
   underweightAssets: string[];
-  items: RebalanceItem[];
+  assets: RebalanceAsset[];
+  items?: RebalanceAsset[];
   postRebalanceMaxDriftPct: number;
 }
 
@@ -195,9 +198,11 @@ export function calculateRebalancePlan(
       portfolioValueAfter: deposit,
       totalBuyEur: 0,
       underweightAssets: [],
+      assets: [],
       items: [],
       postRebalanceMaxDriftPct: 0,
     };
+
   }
 
   const totalCurrentValue =
@@ -225,7 +230,7 @@ export function calculateRebalancePlan(
 
   const projectedTotal = planResult.portfolioValueAfter;
 
-  const items: RebalanceItem[] = holdings.map((h) => {
+  const assets: RebalanceAsset[] = holdings.map((h) => {
     const buyEur = planResult.recommendedBuys[h.symbol] || 0;
     const shares = planResult.estimatedShares[h.symbol] || 0;
     const projectedVal = (Number(h.total_value_eur) || 0) + buyEur;
@@ -261,8 +266,8 @@ export function calculateRebalancePlan(
     };
   });
 
-  const postRebalanceMaxDriftPct = items.length > 0
-    ? Math.max(...items.map((i) => Math.abs(i.projectedDriftPct)))
+  const postRebalanceMaxDriftPct = assets.length > 0
+    ? Math.max(...assets.map((i) => Math.abs(i.projectedDriftPct)))
     : 0;
 
   return {
@@ -271,7 +276,8 @@ export function calculateRebalancePlan(
     portfolioValueAfter: projectedTotal,
     totalBuyEur: planResult.totalBuyEur,
     underweightAssets: planResult.underweightAssets,
-    items,
+    assets,
+    items: assets,
     postRebalanceMaxDriftPct,
   };
 }

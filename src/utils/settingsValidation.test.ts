@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-  validateTargetWeights,
+  validateRebalancingTargets,
   validateCryptoTriggerSettings,
 } from './settingsValidation';
 
 describe('settingsValidation', () => {
-  describe('validateTargetWeights', () => {
-    it('returns valid when target weights sum exactly to 100%', () => {
+  describe('validateRebalancingTargets', () => {
+    it('returns valid when rebalancing targets sum exactly to 100%', () => {
       const weights = {
         'VWCE.DE': 55.5,
         'EXUS.DE': 21.0,
@@ -15,50 +15,50 @@ describe('settingsValidation', () => {
         'ASWC.DE': 7.0,
       };
 
-      const result = validateTargetWeights(weights);
+      const result = validateRebalancingTargets(weights);
       expect(result.valid).toBe(true);
       expect(result.sum).toBeCloseTo(100.0, 2);
       expect(result.error).toBeUndefined();
     });
 
-    it('returns invalid when target weights sum to less than 100%', () => {
+    it('returns invalid when rebalancing targets sum to less than 100%', () => {
       const weights = {
         'VWCE.DE': 50.0,
         'BTC-EUR': 10.0,
       };
 
-      const result = validateTargetWeights(weights);
+      const result = validateRebalancingTargets(weights);
       expect(result.valid).toBe(false);
       expect(result.sum).toBe(60.0);
       expect(result.error).toMatch(/total must equal 100%/i);
     });
 
-    it('returns invalid when target weights sum to more than 100%', () => {
+    it('returns invalid when rebalancing targets sum to more than 100%', () => {
       const weights = {
         'VWCE.DE': 60.0,
         'EXUS.DE': 30.0,
         'BTC-EUR': 20.0,
       };
 
-      const result = validateTargetWeights(weights);
+      const result = validateRebalancingTargets(weights);
       expect(result.valid).toBe(false);
       expect(result.sum).toBe(110.0);
       expect(result.error).toMatch(/total must equal 100%/i);
     });
 
-    it('returns invalid when any weight is negative', () => {
+    it('returns invalid when any rebalancing target is negative', () => {
       const weights = {
         'VWCE.DE': 105.0,
         'BTC-EUR': -5.0,
       };
 
-      const result = validateTargetWeights(weights);
+      const result = validateRebalancingTargets(weights);
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/negative/i);
     });
 
-    it('returns invalid when weights map is empty', () => {
-      const result = validateTargetWeights({});
+    it('returns invalid when rebalancing targets map is empty', () => {
+      const result = validateRebalancingTargets({});
       expect(result.valid).toBe(false);
       expect(result.error).toMatch(/at least one asset/i);
     });
@@ -122,6 +122,25 @@ describe('settingsValidation', () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.buy_dip_trigger).toMatch(/must be lower than profit target/i);
+    });
+
+    it('validates sell_profit_pct when specified within 1-100%', () => {
+      const result = validateCryptoTriggerSettings({
+        sell_profit_pct: 20,
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toEqual({});
+    });
+
+    it('rejects sell_profit_pct when out of range (<=0 or >100)', () => {
+      const resZero = validateCryptoTriggerSettings({ sell_profit_pct: 0 });
+      expect(resZero.valid).toBe(false);
+      expect(resZero.errors.sell_profit_pct).toMatch(/between 1 and 100/i);
+
+      const resTooHigh = validateCryptoTriggerSettings({ sell_profit_pct: 120 });
+      expect(resTooHigh.valid).toBe(false);
+      expect(resTooHigh.errors.sell_profit_pct).toMatch(/between 1 and 100/i);
     });
   });
 });

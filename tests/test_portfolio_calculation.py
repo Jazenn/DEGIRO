@@ -360,3 +360,86 @@ def test_snapshot_refresh_fetches_quotes_and_persists_calculated_read_models():
     assert history.iloc[-1]["total_equity_eur"] == pytest.approx(1100.0)
     assert holdings.iloc[0]["current_price_eur"] == pytest.approx(120.0)
     assert holdings.iloc[0]["target_pct"] == pytest.approx(60.0)
+
+
+def test_current_holdings_computes_recommended_action_eur_for_underweight_assets():
+    transactions = pd.DataFrame(
+        [
+            {
+                "date": "2024-01-01",
+                "product": "Vanguard FTSE All-World",
+                "isin": "IE00BK5BQT80",
+                "description": "Koop 5 @ 100",
+                "amount": -500.0,
+            },
+            {
+                "date": "2024-01-01",
+                "product": "Bitcoin",
+                "isin": "BTC-CRYPTO",
+                "description": "Koop 1 @ 500",
+                "amount": -500.0,
+            },
+        ]
+    )
+
+    prices = {"IE00BK5BQT80": 100.0, "BTC-CRYPTO": 500.0}
+    targets = {"IE00BK5BQT80": 70.0, "BTC-CRYPTO": 30.0}
+
+    holdings = PortfolioCalculationEngine().compute_current_holdings(
+        transactions,
+        prices=prices,
+        targets=targets,
+    )
+
+    vwce_holding = holdings[holdings["symbol"] == "IE00BK5BQT80"].iloc[0]
+    btc_holding = holdings[holdings["symbol"] == "BTC-CRYPTO"].iloc[0]
+
+    assert vwce_holding["total_value_eur"] == pytest.approx(500.0)
+    assert vwce_holding["actual_pct"] == pytest.approx(50.0)
+    assert vwce_holding["target_pct"] == pytest.approx(70.0)
+    assert vwce_holding["drift_pct"] == pytest.approx(-20.0)
+    assert vwce_holding["recommended_action_eur"] == pytest.approx(200.0)
+
+    assert btc_holding["total_value_eur"] == pytest.approx(500.0)
+    assert btc_holding["actual_pct"] == pytest.approx(50.0)
+    assert btc_holding["target_pct"] == pytest.approx(30.0)
+    assert btc_holding["drift_pct"] == pytest.approx(20.0)
+    assert btc_holding["recommended_action_eur"] == pytest.approx(0.0)
+
+
+def test_current_holdings_with_explicit_deposit_amount():
+    transactions = pd.DataFrame(
+        [
+            {
+                "date": "2024-01-01",
+                "product": "Vanguard FTSE All-World",
+                "isin": "IE00BK5BQT80",
+                "description": "Koop 5 @ 100",
+                "amount": -500.0,
+            },
+            {
+                "date": "2024-01-01",
+                "product": "Bitcoin",
+                "isin": "BTC-CRYPTO",
+                "description": "Koop 1 @ 500",
+                "amount": -500.0,
+            },
+        ]
+    )
+
+    prices = {"IE00BK5BQT80": 100.0, "BTC-CRYPTO": 500.0}
+    targets = {"IE00BK5BQT80": 70.0, "BTC-CRYPTO": 30.0}
+
+    holdings = PortfolioCalculationEngine().compute_current_holdings(
+        transactions,
+        prices=prices,
+        targets=targets,
+        deposit_amount=500.0,
+    )
+
+    vwce_holding = holdings[holdings["symbol"] == "IE00BK5BQT80"].iloc[0]
+    btc_holding = holdings[holdings["symbol"] == "BTC-CRYPTO"].iloc[0]
+
+    assert vwce_holding["recommended_action_eur"] == pytest.approx(500.0)
+    assert btc_holding["recommended_action_eur"] == pytest.approx(0.0)
+

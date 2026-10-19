@@ -59,7 +59,7 @@ describe('RebalanceCockpit Component', () => {
     expect(screen.getByTestId('current-deposit-label')).toHaveTextContent('€800.00');
   });
 
-  it('renders recommended order cards with exact EUR amounts and estimated share quantities', () => {
+  it('renders rebalancing recommendations with exact EUR amounts and estimated share quantities', () => {
     render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
 
     // Underweight assets should show recommended EUR amounts and share estimates

@@ -133,4 +133,23 @@ describe('CryptoScaleCard', () => {
 
     expect(onOpenSettings).toHaveBeenCalledTimes(1);
   });
+
+  it('displays Rebalancing Target label and dynamic take profit percentage', () => {
+    const customSettings: PortfolioAssetSetting[] = [
+      {
+        ...mockCryptoSettings[0],
+        sell_profit_pct: 25.0,
+      },
+    ];
+
+    render(
+      <CryptoScaleCard
+        cryptoSettings={customSettings}
+        holdings={mockHoldings}
+      />
+    );
+
+    expect(screen.getByText('Rebalancing Target:')).toBeInTheDocument();
+    expect(screen.getByText('Take 25% Profit')).toBeInTheDocument();
+  });
 });

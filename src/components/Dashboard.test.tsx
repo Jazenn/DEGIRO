@@ -53,7 +53,7 @@ describe('Dashboard Component', () => {
     expect(btnAll).toHaveAttribute('data-active', 'false');
   });
 
-  it('displays the interactive performance curve with legend items', () => {
+  it('displays the interactive portfolio history growth with legend items', () => {
     render(<Dashboard initialData={demoData} />);
 
     expect(screen.getByText(/Portfolio Growth & Valuation/i)).toBeInTheDocument();

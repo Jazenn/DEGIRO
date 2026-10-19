@@ -5,6 +5,9 @@ export interface PriceRefreshOptions {
   isDemo?: boolean;
   delayMs?: number;
   customFetch?: typeof fetch;
+  dispatchType?: 'workflow_dispatch' | 'repository_dispatch';
+  eventType?: string;
+  clientPayload?: Record<string, any>;
 }
 
 export interface PriceRefreshResult {
@@ -18,7 +21,9 @@ export interface PriceRefreshResult {
  *
  * If `isDemo` is true (or neither repo nor token is provided), it simulates an on-demand
  * refresh with a live timestamp update.
- * If `repo` and `token` are provided, it dispatches the GitHub Actions `price_fetcher.yml` workflow.
+ * If `repo` and `token` are provided, it dispatches either:
+ *  - `repository_dispatch` (if options.dispatchType === 'repository_dispatch' or options.eventType is set)
+ *  - `workflow_dispatch` to price_fetcher.yml (default)
  */
 export async function triggerPriceRefresh(
   options: PriceRefreshOptions = {}
@@ -40,7 +45,8 @@ export async function triggerPriceRefresh(
 
   // Demo simulation mode if explicitly requested or if GitHub credentials are not present
   if (options.isDemo || !repo || !token) {
-    const delay = options.delayMs !== undefined ? options.delayMs : 600;
+    const defaultDelay = typeof process !== 'undefined' && process.env?.NODE_ENV === 'test' ? 0 : 600;
+    const delay = options.delayMs !== undefined ? options.delayMs : defaultDelay;
     if (delay > 0) {
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
@@ -61,7 +67,20 @@ export async function triggerPriceRefresh(
   }
 
   try {
-    const url = `https://api.github.com/repos/${repo}/actions/workflows/price_fetcher.yml/dispatches`;
+    const isRepoDispatch =
+      options.dispatchType === 'repository_dispatch' || Boolean(options.eventType);
+
+    const url = isRepoDispatch
+      ? `https://api.github.com/repos/${repo}/dispatches`
+      : `https://api.github.com/repos/${repo}/actions/workflows/price_fetcher.yml/dispatches`;
+
+    const body = isRepoDispatch
+      ? JSON.stringify({
+          event_type: options.eventType || 'refresh_prices',
+          client_payload: options.clientPayload || {},
+        })
+      : JSON.stringify({ ref });
+
     const response = await fetchFn(url, {
       method: 'POST',
       headers: {
@@ -69,13 +88,15 @@ export async function triggerPriceRefresh(
         Accept: 'application/vnd.github.v3+json',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ ref }),
+      body,
     });
 
     if (response.status === 204 || response.ok) {
       return {
         success: true,
-        message: 'Price fetcher workflow dispatched successfully',
+        message: isRepoDispatch
+          ? `Repository dispatch (${options.eventType || 'refresh_prices'}) triggered successfully`
+          : 'Price fetcher workflow dispatched successfully',
         timestamp: new Date().toISOString(),
       };
     }

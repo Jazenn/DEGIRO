@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { CurrentAssetHoldingRecord } from '../types/portfolio';
-import { calculateRebalancePlan, RebalanceItem } from '../utils/rebalance';
+import { calculateRebalancePlan, RebalanceAsset } from '../utils/rebalance';
 import { formatEur } from '../utils/metrics';
 import {
   SlidersHorizontal,
@@ -30,13 +30,13 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
 
   // Identify highest allocation among underweight assets for "Primary Fill" tag
   const highestBuySymbol = useMemo(() => {
-    if (!plan.items || plan.items.length === 0) return null;
+    if (!plan.assets || plan.assets.length === 0) return null;
     let maxBuy = 0;
     let topSym: string | null = null;
-    for (const item of plan.items) {
-      if (item.recommendedBuyEur > maxBuy) {
-        maxBuy = item.recommendedBuyEur;
-        topSym = item.symbol;
+    for (const asset of plan.assets) {
+      if (asset.recommendedBuyEur > maxBuy) {
+        maxBuy = asset.recommendedBuyEur;
+        topSym = asset.symbol;
       }
     }
     return topSym;
@@ -46,9 +46,9 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
     setDepositAmount(Math.max(0, value));
   };
 
-  const getPriorityBadge = (item: RebalanceItem) => {
-    if (item.recommendedBuyEur > 0) {
-      if (item.symbol === highestBuySymbol) {
+  const getPriorityBadge = (asset: RebalanceAsset) => {
+    if (asset.recommendedBuyEur > 0) {
+      if (asset.symbol === highestBuySymbol) {
         return (
           <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-sky-500/15 text-sky-400 border border-sky-500/30 flex items-center gap-1 shadow-sm">
             <Sparkles className="w-3 h-3" />
@@ -63,7 +63,7 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
       );
     }
 
-    if (item.status === 'overweight') {
+    if (asset.status === 'overweight') {
       return (
         <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
           Overweight
@@ -175,20 +175,20 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
         </div>
       </div>
 
-      {/* Recommended Order Cards Grid */}
-      {plan.items.length === 0 ? (
+      {/* Rebalancing Recommendations Grid */}
+      {plan.assets.length === 0 ? (
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-8 text-center text-slate-500 text-sm font-mono">
           No assets available to rebalance.
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {plan.items.map((item) => {
-            const hasBuy = item.recommendedBuyEur > 0;
+          {plan.assets.map((asset) => {
+            const hasBuy = asset.recommendedBuyEur > 0;
 
             return (
               <div
-                key={item.symbol}
-                data-testid={`rebalance-card-${item.symbol}`}
+                key={asset.symbol}
+                data-testid={`rebalance-card-${asset.symbol}`}
                 className={`rounded-2xl p-5 border flex flex-col justify-between transition-all duration-150 ${
                   hasBuy
                     ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 shadow-lg shadow-black/20'
@@ -201,21 +201,21 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-mono font-bold text-slate-400">
-                          {item.symbol}
+                          {asset.symbol}
                         </span>
-                        {item.isin && (
+                        {asset.isin && (
                           <span className="text-[10px] font-mono text-slate-500 truncate max-w-[100px]">
-                            {item.isin}
+                            {asset.isin}
                           </span>
                         )}
                       </div>
-                      <h4 className="font-bold text-white text-base truncate mt-0.5" title={item.name}>
-                        {item.name}
+                      <h4 className="font-bold text-white text-base truncate mt-0.5" title={asset.name}>
+                        {asset.name}
                       </h4>
                     </div>
 
                     <div className="flex-shrink-0">
-                      {getPriorityBadge(item)}
+                      {getPriorityBadge(asset)}
                     </div>
                   </div>
 
@@ -227,7 +227,7 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                           hasBuy ? 'text-sky-400' : 'text-slate-500'
                         }`}
                       >
-                        {formatEur(item.recommendedBuyEur)}
+                        {formatEur(asset.recommendedBuyEur)}
                       </span>
                     </div>
 
@@ -236,9 +236,9 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                         <>
                           Approx.{' '}
                           <span className="text-slate-200 font-semibold">
-                            {item.estimatedShares.toFixed(1)}
+                            {asset.estimatedShares.toFixed(1)}
                           </span>{' '}
-                          shares @ {formatEur(item.currentPriceEur)}
+                          shares @ {formatEur(asset.currentPriceEur)}
                         </>
                       ) : (
                         'Overweight / on target: no purchase needed'
@@ -251,14 +251,14 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                 <div className="mt-5 pt-3 border-t border-slate-800/60 space-y-2">
                   <div className="flex justify-between items-center text-[11px] font-mono">
                     <span className="text-slate-400">
-                      Current: <strong className="text-white">{item.actualPct.toFixed(1)}%</strong>
+                      Current: <strong className="text-white">{asset.actualPct.toFixed(1)}%</strong>
                     </span>
                     <span className="flex items-center gap-1 text-slate-500">
                       <ArrowRight className="w-3 h-3 text-slate-600" />
-                      Target: <strong className="text-slate-300">{item.targetPct.toFixed(1)}%</strong>
+                      Target: <strong className="text-slate-300">{asset.targetPct.toFixed(1)}%</strong>
                     </span>
                     <span className="text-sky-400 font-semibold">
-                      New: {item.projectedPct.toFixed(1)}%
+                      New: {asset.projectedPct.toFixed(1)}%
                     </span>
                   </div>
 
@@ -266,16 +266,16 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                   <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden flex border border-slate-800">
                     <div
                       className="bg-slate-600 transition-all duration-300"
-                      style={{ width: `${Math.min(100, item.actualPct)}%` }}
-                      title={`Current ${item.actualPct.toFixed(1)}%`}
+                      style={{ width: `${Math.min(100, asset.actualPct)}%` }}
+                      title={`Current ${asset.actualPct.toFixed(1)}%`}
                     />
                     {hasBuy && (
                       <div
                         className="bg-sky-500 transition-all duration-300 animate-pulse"
                         style={{
-                          width: `${Math.max(0, Math.min(100 - item.actualPct, item.projectedPct - item.actualPct))}%`,
+                          width: `${Math.max(0, Math.min(100 - asset.actualPct, asset.projectedPct - asset.actualPct))}%`,
                         }}
-                        title={`Projected Inflow +${(item.projectedPct - item.actualPct).toFixed(1)}%`}
+                        title={`Projected Inflow +${(asset.projectedPct - asset.actualPct).toFixed(1)}%`}
                       />
                     )}
                   </div>

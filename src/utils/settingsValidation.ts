@@ -1,12 +1,15 @@
-export interface TargetWeightsValidationResult {
+export interface RebalancingTargetsValidationResult {
   valid: boolean;
   sum: number;
   error?: string;
 }
 
+export type TargetWeightsValidationResult = RebalancingTargetsValidationResult;
+
 export interface CryptoTriggerSettingsInput {
   buy_dip_trigger?: number | null;
   sell_profit_trigger?: number | null;
+  sell_profit_pct?: number | null;
   buy_budget?: number | null;
 }
 
@@ -19,9 +22,9 @@ export interface CryptoTriggerValidationResult {
  * Validates that all asset target percentages sum to exactly 100%
  * and that no target percentage is negative.
  */
-export function validateTargetWeights(
+export function validateRebalancingTargets(
   weights: Record<string, number>
-): TargetWeightsValidationResult {
+): RebalancingTargetsValidationResult {
   const entries = Object.entries(weights);
   if (entries.length === 0) {
     return {
@@ -61,6 +64,8 @@ export function validateTargetWeights(
   };
 }
 
+export const validateTargetWeights = validateRebalancingTargets;
+
 /**
  * Validates cryptocurrency buy dip triggers, profit-taking targets, and cash budgets.
  */
@@ -69,7 +74,7 @@ export function validateCryptoTriggerSettings(
 ): CryptoTriggerValidationResult {
   const errors: Record<string, string> = {};
 
-  const { buy_dip_trigger, sell_profit_trigger, buy_budget } = settings;
+  const { buy_dip_trigger, sell_profit_trigger, sell_profit_pct, buy_budget } = settings;
 
   if (buy_dip_trigger !== null && buy_dip_trigger !== undefined) {
     const buyVal = Number(buy_dip_trigger);
@@ -82,6 +87,13 @@ export function validateCryptoTriggerSettings(
     const sellVal = Number(sell_profit_trigger);
     if (Number.isNaN(sellVal) || sellVal <= 0) {
       errors.sell_profit_trigger = 'Profit target must be greater than zero.';
+    }
+  }
+
+  if (sell_profit_pct !== null && sell_profit_pct !== undefined) {
+    const sellPctVal = Number(sell_profit_pct);
+    if (Number.isNaN(sellPctVal) || sellPctVal <= 0 || sellPctVal > 100) {
+      errors.sell_profit_pct = 'Profit-taking sell % must be between 1 and 100.';
     }
   }
 

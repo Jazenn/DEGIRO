@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { PortfolioAssetSetting } from '../types/portfolio';
 import {
-  validateTargetWeights,
+  validateRebalancingTargets,
   validateCryptoTriggerSettings,
 } from '../utils/settingsValidation';
 
@@ -52,7 +52,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   for (const s of localSettings) {
     weightsMap[s.symbol] = s.target_pct;
   }
-  const targetValidation = validateTargetWeights(weightsMap);
+  const targetValidation = validateRebalancingTargets(weightsMap);
   const isHundred = targetValidation.valid;
   const currentTotal = targetValidation.sum;
 
@@ -70,7 +70,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   const handleCryptoChange = (
     symbol: string,
-    field: 'buy_dip_trigger' | 'sell_profit_trigger' | 'buy_budget',
+    field: 'buy_dip_trigger' | 'sell_profit_trigger' | 'buy_budget' | 'sell_profit_pct',
     valueStr: string
   ) => {
     setErrorMessage(null);
@@ -96,8 +96,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     e.preventDefault();
     setErrorMessage(null);
 
-    // 1. Validate target weights
-    const targetCheck = validateTargetWeights(weightsMap);
+    // 1. Validate rebalancing targets
+    const targetCheck = validateRebalancingTargets(weightsMap);
     if (!targetCheck.valid) {
       setErrorMessage(targetCheck.error || 'Target percentages must equal 100%.');
       setActiveTab('targets');
@@ -110,6 +110,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         const cryptoCheck = validateCryptoTriggerSettings({
           buy_dip_trigger: s.buy_dip_trigger,
           sell_profit_trigger: s.sell_profit_trigger,
+          sell_profit_pct: s.sell_profit_pct,
           buy_budget: s.buy_budget,
         });
         if (!cryptoCheck.valid) {
@@ -318,11 +319,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       {crypto.display_name} ({crypto.symbol})
                     </span>
                     <span className="text-xs font-mono text-slate-400">
-                      Target Weight: {crypto.target_pct.toFixed(1)}%
+                      Rebalancing Target: {crypto.target_pct.toFixed(1)}%
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
                     {/* Dip Buy Trigger */}
                     <div className="space-y-1">
                       <label
@@ -372,6 +373,33 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       />
                       <span className="text-[10px] text-slate-500 block">
                         Stage 1 exit target
+                      </span>
+                    </div>
+
+                    {/* Profit-Taking Sell % */}
+                    <div className="space-y-1">
+                      <label
+                        htmlFor={`sell-profit-pct-${crypto.symbol}`}
+                        className="block text-[11px] font-mono text-purple-400 font-semibold"
+                      >
+                        Profit Sell (%)
+                      </label>
+                      <input
+                        id={`sell-profit-pct-${crypto.symbol}`}
+                        aria-label={`Profit Sell Percentage (${crypto.symbol})`}
+                        type="number"
+                        step="1"
+                        min="1"
+                        max="100"
+                        value={crypto.sell_profit_pct ?? ''}
+                        placeholder="15"
+                        onChange={(e) =>
+                          handleCryptoChange(crypto.symbol, 'sell_profit_pct', e.target.value)
+                        }
+                        className="w-full px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 font-mono font-bold text-purple-400 text-sm focus:outline-none focus:border-purple-500 transition"
+                      />
+                      <span className="text-[10px] text-slate-500 block">
+                        Staged exit % (default 15%)
                       </span>
                     </div>
 

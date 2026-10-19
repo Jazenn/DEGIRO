@@ -353,6 +353,7 @@ def test_database_schema_includes_portfolio_asset_settings_and_compatibility():
     assert "target_pct" in schema_sql
     assert "buy_dip_trigger" in schema_sql
     assert "sell_profit_trigger" in schema_sql
+    assert "sell_profit_pct" in schema_sql
     assert "is_crypto" in schema_sql
     assert "buy_budget" in schema_sql
     assert "updated_at" in schema_sql

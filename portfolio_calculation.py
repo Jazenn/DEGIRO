@@ -5,6 +5,7 @@ import re
 import pandas as pd
 
 from data_processing import classify_row, parse_quantity
+from rebalance_calculator import RebalanceCalculator
 
 
 HISTORY_COLUMNS = [
@@ -251,6 +252,7 @@ class PortfolioCalculationEngine:
         transactions: pd.DataFrame,
         prices: dict | None = None,
         targets: dict | None = None,
+        deposit_amount: float | None = None,
     ) -> pd.DataFrame:
         if transactions is None or transactions.empty:
             return pd.DataFrame(columns=HOLDING_COLUMNS)
@@ -310,7 +312,42 @@ class PortfolioCalculationEngine:
             holdings["total_value_eur"] / total_value * 100.0 if total_value else 0.0
         )
         holdings["drift_pct"] = holdings["actual_pct"] - holdings["target_pct"]
-        holdings["recommended_action_eur"] = 0.0
+
+        holding_targets = dict(zip(holdings["symbol"], holdings["target_pct"]))
+        current_values = dict(zip(holdings["symbol"], holdings["total_value_eur"]))
+        current_prices = dict(zip(holdings["symbol"], holdings["current_price_eur"]))
+
+        if deposit_amount is not None and float(deposit_amount) > 0:
+            effective_deposit = float(deposit_amount)
+        else:
+            total_target_pct = sum(v for v in holding_targets.values() if v > 0)
+            if total_target_pct > 0 and total_value > 0:
+                shortfall = sum(
+                    max(0.0, total_value * (weight / total_target_pct) - current_values.get(sym, 0.0))
+                    for sym, weight in holding_targets.items()
+                    if weight > 0
+                )
+                effective_deposit = shortfall
+            else:
+                effective_deposit = 0.0
+
+        if effective_deposit > 0:
+            calculator = RebalanceCalculator()
+            plan = calculator.calculate_deposit_plan(
+                deposit_amount=effective_deposit,
+                portfolio_value=total_value,
+                rebalancing_targets=holding_targets,
+                current_values=current_values,
+                prices=current_prices,
+            )
+            buys = plan.get("recommended_buys", {})
+            holdings["recommended_action_eur"] = holdings["symbol"].map(
+                lambda s: round(float(buys.get(s, 0.0)), 2)
+            )
+        else:
+            holdings["recommended_action_eur"] = 0.0
+
         return holdings[HOLDING_COLUMNS].sort_values(
             "total_value_eur", ascending=False
         ).reset_index(drop=True)
+

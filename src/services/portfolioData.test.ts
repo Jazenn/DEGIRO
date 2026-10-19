@@ -167,5 +167,73 @@ describe('Neon Data Query Adapter', () => {
     expect(updatedVwce.drift_pct).toBeCloseTo(updatedVwce.actual_pct - 60.0, 2);
     expect(updated.assetSettings?.find((s) => s.symbol === 'VWCE.DE')?.target_pct).toBe(60.0);
   });
+
+  it('persists transactions into localStorage in demo mode and skips duplicate hashes', async () => {
+    const { saveTransactions, loadLocalTransactions } = await import('./portfolioData');
+
+    const txs = [
+      {
+        date: '2026-01-15',
+        time: '10:30',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 10 @ 120.50',
+        quantity: 10,
+        price: 120.5,
+        value: -1205.0,
+        amount: -1205.0,
+        balance: 500.0,
+        orderId: 'ORD-001',
+        rowHash: 'a1b2c3d4e5f60718293a4b5c6d7e8f90',
+      },
+    ];
+
+    const res1 = await saveTransactions(txs);
+    expect(res1.inserted).toBe(1);
+    expect(res1.duplicates).toBe(0);
+
+    const stored = loadLocalTransactions();
+    expect(stored.length).toBe(1);
+    expect(stored[0].rowHash).toBe('a1b2c3d4e5f60718293a4b5c6d7e8f90');
+
+    // Attempting to re-save identical transaction should be counted as duplicate
+    const res2 = await saveTransactions(txs);
+    expect(res2.inserted).toBe(0);
+    expect(res2.duplicates).toBe(1);
+  });
+
+  it('executes ON CONFLICT (row_hash) DO NOTHING queries against Neon when databaseUrl is provided', async () => {
+    const { saveTransactions } = await import('./portfolioData');
+    const mockSql = vi.fn().mockImplementation(async () => [{ count: 1 }]);
+
+    const txs = [
+      {
+        date: '2026-01-20',
+        time: '14:15',
+        product: 'iShares MSCI World ex-USA',
+        isin: 'IE0006WW1TQ4',
+        description: 'Koop 5 @ 55.00',
+        quantity: 5,
+        price: 55.0,
+        value: -275.0,
+        amount: -275.0,
+        balance: 225.0,
+        orderId: 'ORD-002',
+        rowHash: 'f1e2d3c4b5a60718293a4b5c6d7e8f99',
+      },
+    ];
+
+    const result = await saveTransactions(
+      txs,
+      'postgres://fake:secret@ep-cool.neon.tech/neondb',
+      mockSql as any
+    );
+
+    expect(mockSql).toHaveBeenCalled();
+    const sqlText = mockSql.mock.calls[0][0].join('');
+    expect(sqlText).toContain('INSERT INTO degiro_transactions');
+    expect(sqlText).toContain('ON CONFLICT (row_hash) DO NOTHING');
+    expect(result.inserted).toBe(1);
+  });
 });
 

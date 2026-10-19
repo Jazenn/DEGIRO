@@ -81,7 +81,7 @@ describe('SettingsModal', () => {
     expect(hundredEls.some((el) => el.className.includes('text-emerald'))).toBe(true);
   });
 
-  it('shows warning and prevents saving when target weights do not sum to 100%', async () => {
+  it('shows warning and prevents saving when rebalancing targets do not sum to 100%', async () => {
     const onSave = vi.fn();
     render(
       <SettingsModal
@@ -106,7 +106,7 @@ describe('SettingsModal', () => {
     expect(screen.getByText(/Total must equal 100%/i)).toBeInTheDocument();
   });
 
-  it('allows editing crypto buy dip trigger and sell profit target and saves valid updates', async () => {
+  it('allows editing crypto buy dip trigger, sell profit target, and sell profit percentage and saves valid updates', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(
       <SettingsModal
@@ -121,6 +121,9 @@ describe('SettingsModal', () => {
     const cryptoTab = screen.getByRole('button', { name: /Crypto Triggers/i });
     fireEvent.click(cryptoTab);
 
+    // Check Rebalancing Target label appears in Crypto Triggers tab
+    expect(screen.getByText(/Rebalancing Target: 8\.0%/i)).toBeInTheDocument();
+
     // Update BTC buy dip trigger to 60000
     const buyInput = screen.getByLabelText(/Buy Dip Trigger \(BTC-EUR\)/i);
     fireEvent.change(buyInput, { target: { value: '60000' } });
@@ -128,6 +131,10 @@ describe('SettingsModal', () => {
     // Update BTC sell profit target to 80000
     const sellInput = screen.getByLabelText(/Profit Target \(BTC-EUR\)/i);
     fireEvent.change(sellInput, { target: { value: '80000' } });
+
+    // Update BTC sell profit pct to 20
+    const pctInput = screen.getByLabelText(/Profit Sell Percentage \(BTC-EUR\)/i);
+    fireEvent.change(pctInput, { target: { value: '20' } });
 
     // Click save
     const saveBtn = screen.getByRole('button', { name: /save settings/i });
@@ -141,6 +148,7 @@ describe('SettingsModal', () => {
     const btc = savedPayload.find((s) => s.symbol === 'BTC-EUR');
     expect(btc?.buy_dip_trigger).toBe(60000);
     expect(btc?.sell_profit_trigger).toBe(80000);
+    expect(btc?.sell_profit_pct).toBe(20);
   });
 
   it('calls onClose when Cancel or Close X is clicked', () => {

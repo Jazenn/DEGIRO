@@ -214,7 +214,7 @@ describe('Rebalance Calculation Seam', () => {
       expect(result.portfolioValueAfter).toBeCloseTo(6000.0, 2);
     });
 
-    it('normalizes target weights regardless of scale (decimal vs percent vs custom)', () => {
+    it('normalizes rebalancing targets regardless of scale (decimal vs percent vs custom)', () => {
       // 0.60, 0.20, 0.20 vs 60, 20, 20
       const currentValues = {
         'VWCE.DE': 400.0,
@@ -301,7 +301,7 @@ describe('Rebalance Calculation Seam', () => {
       },
     ];
 
-    it('generates rich RebalanceItem records with drift indicators and estimated shares', () => {
+    it('generates rich RebalanceAsset records with drift indicators and estimated shares', () => {
       // Total value = 50,000 EUR. Deposit = 800 EUR.
       const plan = calculateRebalancePlan(800, mockHoldings);
 
@@ -310,9 +310,9 @@ describe('Rebalance Calculation Seam', () => {
       expect(plan.portfolioValueAfter).toBe(50800);
       expect(plan.totalBuyEur).toBeCloseTo(800, 2);
 
-      expect(plan.items).toHaveLength(3);
+      expect(plan.assets).toHaveLength(3);
 
-      const vwce = plan.items.find((i) => i.symbol === 'VWCE.DE')!;
+      const vwce = plan.assets.find((i) => i.symbol === 'VWCE.DE')!;
       expect(vwce).toBeDefined();
       expect(vwce.status).toBe('underweight');
       expect(vwce.recommendedBuyEur).toBeCloseTo(777.30, 2);
@@ -320,12 +320,12 @@ describe('Rebalance Calculation Seam', () => {
       expect(vwce.driftPct).toBeCloseTo(-10.0, 1);
       expect(vwce.projectedPct).toBeGreaterThan(vwce.actualPct);
 
-      const btc = plan.items.find((i) => i.symbol === 'BTC-EUR')!;
+      const btc = plan.assets.find((i) => i.symbol === 'BTC-EUR')!;
       expect(btc.status).toBe('overweight');
       expect(btc.recommendedBuyEur).toBe(0);
       expect(btc.estimatedShares).toBe(0);
 
-      const imae = plan.items.find((i) => i.symbol === 'IMAE.AS')!;
+      const imae = plan.assets.find((i) => i.symbol === 'IMAE.AS')!;
       expect(imae.recommendedBuyEur).toBeCloseTo(22.70, 2);
       expect(imae.estimatedShares).toBeCloseTo(22.70 / 80.0, 2);
     });
@@ -343,7 +343,7 @@ describe('Rebalance Calculation Seam', () => {
       expect(plan.portfolioValueBefore).toBe(0);
       expect(plan.portfolioValueAfter).toBe(500);
       expect(plan.totalBuyEur).toBe(0);
-      expect(plan.items).toEqual([]);
+      expect(plan.assets).toEqual([]);
       expect(plan.underweightAssets).toEqual([]);
     });
   });

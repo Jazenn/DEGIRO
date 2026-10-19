@@ -1,6 +1,8 @@
 import React, { useState, useRef } from 'react';
 import { X, Upload, FileText, CheckCircle2, AlertCircle, RefreshCw, Layers } from 'lucide-react';
 import { parseDegiroCsv, CsvParseResult } from '../utils/csvParser';
+import { saveTransactions } from '../services/portfolioData';
+import { triggerPriceRefresh } from '../services/priceRefresh';
 
 export interface CsvUploadModalProps {
   isOpen: boolean;
@@ -18,6 +20,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parseResult, setParseResult] = useState<CsvParseResult | null>(null);
   const [isParsing, setIsParsing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,10 +81,22 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
     }
   };
 
-  const handleConfirmImport = () => {
+  const handleConfirmImport = async () => {
     if (parseResult && parseResult.success) {
-      onUploadSuccess(parseResult);
-      onClose();
+      setIsSaving(true);
+      try {
+        await saveTransactions(parseResult.transactions);
+        await triggerPriceRefresh({
+          dispatchType: 'repository_dispatch',
+          eventType: 'degiro_csv_uploaded',
+        });
+      } catch (err) {
+        console.warn('Failed to save transactions or trigger refresh:', err);
+      } finally {
+        setIsSaving(false);
+        onUploadSuccess(parseResult);
+        onClose();
+      }
     }
   };
 
@@ -245,11 +260,15 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
           <button
             type="button"
             onClick={handleConfirmImport}
-            disabled={!parseResult || !parseResult.success || parseResult.newRows === 0}
+            disabled={!parseResult || !parseResult.success || parseResult.newRows === 0 || isSaving}
             className="min-h-[44px] px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm font-medium font-mono shadow-sm transition flex items-center gap-2"
           >
-            <Upload className="w-4 h-4" />
-            <span>Import &amp; Refresh Snapshots</span>
+            {isSaving ? (
+              <RefreshCw className="w-4 h-4 animate-spin" />
+            ) : (
+              <Upload className="w-4 h-4" />
+            )}
+            <span>{isSaving ? 'Importing & Refreshing...' : 'Import & Refresh Snapshots'}</span>
           </button>
         </div>
       </div>

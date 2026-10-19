@@ -235,7 +235,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <MetricCards metrics={data.metrics} />
       </section>
 
-      {/* Interactive Performance Curve */}
+      {/* Interactive Portfolio History Growth */}
       <section id="section-chart" aria-label="Portfolio Growth Chart">
         <PortfolioChart
           data={filteredHistory}

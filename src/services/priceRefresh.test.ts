@@ -45,6 +45,40 @@ describe('priceRefresh service', () => {
     expect(result.timestamp).toBeDefined();
   });
 
+  it('dispatches repository_dispatch when dispatchType is repository_dispatch or eventType is provided', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 204,
+      text: async () => '',
+    });
+
+    const result = await triggerPriceRefresh({
+      repo: 'Jazenn/DEGIRO',
+      token: 'ghp_secret_token_123',
+      dispatchType: 'repository_dispatch',
+      eventType: 'degiro_csv_uploaded',
+      customFetch: mockFetch as unknown as typeof fetch,
+    });
+
+    expect(mockFetch).toHaveBeenCalledWith(
+      'https://api.github.com/repos/Jazenn/DEGIRO/dispatches',
+      expect.objectContaining({
+        method: 'POST',
+        headers: expect.objectContaining({
+          Authorization: 'Bearer ghp_secret_token_123',
+          Accept: 'application/vnd.github.v3+json',
+        }),
+        body: JSON.stringify({
+          event_type: 'degiro_csv_uploaded',
+          client_payload: {},
+        }),
+      })
+    );
+
+    expect(result.success).toBe(true);
+    expect(result.message).toContain('Repository dispatch');
+  });
+
   it('returns failure details when GitHub API responds with error status', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: false,

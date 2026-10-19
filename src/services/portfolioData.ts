@@ -5,6 +5,7 @@ import {
   DashboardData,
   PortfolioAssetSetting,
 } from '../types/portfolio';
+import { IngestedTransaction } from '../utils/csvParser';
 import { calculatePortfolioMetrics } from '../utils/metrics';
 
 /**
@@ -43,6 +44,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
       target_pct: 8.0,
       buy_dip_trigger: 58500,
       sell_profit_trigger: 75420,
+      sell_profit_pct: 15.0,
       is_crypto: true,
       buy_budget: 350,
     },
@@ -70,6 +72,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
       target_pct: 2.0,
       buy_dip_trigger: 2800,
       sell_profit_trigger: 3800,
+      sell_profit_pct: 15.0,
       is_crypto: true,
       buy_budget: 150,
     },
@@ -377,6 +380,7 @@ export async function fetchDashboardData(
           target_pct,
           buy_dip_trigger,
           sell_profit_trigger,
+          sell_profit_pct,
           is_crypto,
           buy_budget,
           updated_at::text as updated_at
@@ -391,6 +395,7 @@ export async function fetchDashboardData(
             target_pct,
             t1_buy as buy_dip_trigger,
             t1_sell as sell_profit_trigger,
+            15.0 as sell_profit_pct,
             (product_key ILIKE '%BTC%' OR product_key ILIKE '%ETH%' OR product_key ILIKE '%BITCOIN%' OR product_key ILIKE '%ETHEREUM%') as is_crypto,
             buy_budget,
             updated_at::text as updated_at
@@ -437,6 +442,7 @@ export async function fetchDashboardData(
             target_pct: Number(r.target_pct) || 0,
             buy_dip_trigger: r.buy_dip_trigger !== null && r.buy_dip_trigger !== undefined ? Number(r.buy_dip_trigger) : null,
             sell_profit_trigger: r.sell_profit_trigger !== null && r.sell_profit_trigger !== undefined ? Number(r.sell_profit_trigger) : null,
+            sell_profit_pct: r.sell_profit_pct !== null && r.sell_profit_pct !== undefined ? Number(r.sell_profit_pct) : 15.0,
             is_crypto: Boolean(r.is_crypto),
             buy_budget: r.buy_budget !== null && r.buy_budget !== undefined ? Number(r.buy_budget) : null,
             updated_at: r.updated_at ? String(r.updated_at) : undefined,
@@ -488,15 +494,16 @@ export async function saveAssetSettings(
       // Upsert into portfolio_asset_settings
       await sql`
         INSERT INTO portfolio_asset_settings (
-          symbol, display_name, target_pct, buy_dip_trigger, sell_profit_trigger, is_crypto, buy_budget, updated_at
+          symbol, display_name, target_pct, buy_dip_trigger, sell_profit_trigger, sell_profit_pct, is_crypto, buy_budget, updated_at
         ) VALUES (
-          ${setting.symbol}, ${setting.display_name}, ${setting.target_pct}, ${setting.buy_dip_trigger}, ${setting.sell_profit_trigger}, ${setting.is_crypto}, ${setting.buy_budget}, NOW()
+          ${setting.symbol}, ${setting.display_name}, ${setting.target_pct}, ${setting.buy_dip_trigger}, ${setting.sell_profit_trigger}, ${setting.sell_profit_pct ?? 15.0}, ${setting.is_crypto}, ${setting.buy_budget}, NOW()
         )
         ON CONFLICT (symbol) DO UPDATE SET
           display_name = EXCLUDED.display_name,
           target_pct = EXCLUDED.target_pct,
           buy_dip_trigger = EXCLUDED.buy_dip_trigger,
           sell_profit_trigger = EXCLUDED.sell_profit_trigger,
+          sell_profit_pct = EXCLUDED.sell_profit_pct,
           is_crypto = EXCLUDED.is_crypto,
           buy_budget = EXCLUDED.buy_budget,
           updated_at = NOW()
@@ -522,6 +529,130 @@ export async function saveAssetSettings(
   } catch (err) {
     console.warn('Failed to persist asset settings to database:', err);
     return false;
+  }
+}
+
+const LOCAL_STORAGE_TRANSACTIONS_KEY = 'degiro_transactions_history';
+
+export function loadLocalTransactions(): IngestedTransaction[] {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return [];
+  }
+  try {
+    const raw = window.localStorage.getItem(LOCAL_STORAGE_TRANSACTIONS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // Ignore parse error
+  }
+  return [];
+}
+
+/**
+ * Persists ingested transactions into degiro_transactions on Neon with
+ * ON CONFLICT (row_hash) DO NOTHING. In demo mode or offline, stores to localStorage.
+ */
+export async function saveTransactions(
+  transactions: IngestedTransaction[],
+  databaseUrl?: string,
+  customSql?: (query: TemplateStringsArray, ...args: any[]) => Promise<any[]>
+): Promise<{ inserted: number; duplicates: number }> {
+  if (!transactions || transactions.length === 0) {
+    return { inserted: 0, duplicates: 0 };
+  }
+
+  // Local storage persistence
+  const existingLocal = loadLocalTransactions();
+  const existingHashes = new Set(existingLocal.map((t) => t.rowHash));
+  let localInserted = 0;
+  const combined = [...existingLocal];
+
+  for (const tx of transactions) {
+    if (!existingHashes.has(tx.rowHash)) {
+      existingHashes.add(tx.rowHash);
+      combined.push(tx);
+      localInserted++;
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(
+        LOCAL_STORAGE_TRANSACTIONS_KEY,
+        JSON.stringify(combined)
+      );
+    } catch {
+      // Ignore quota errors
+    }
+  }
+
+  const resolvedUrl =
+    databaseUrl ||
+    (typeof import.meta !== 'undefined' && import.meta.env
+      ? import.meta.env.VITE_DATABASE_URL || import.meta.env.DATABASE_URL
+      : undefined);
+
+  if (!resolvedUrl && !customSql) {
+    return {
+      inserted: localInserted,
+      duplicates: transactions.length - localInserted,
+    };
+  }
+
+  try {
+    const sql = customSql || createNeonClient(resolvedUrl!);
+    let dbInserted = 0;
+    for (const tx of transactions) {
+      const amountVal =
+        tx.amount !== null && tx.amount !== undefined
+          ? tx.amount
+          : tx.value !== null && tx.value !== undefined
+          ? tx.value
+          : 0.0;
+      const balanceVal =
+        tx.balance !== null && tx.balance !== undefined ? tx.balance : 0.0;
+
+      const res = await sql`
+        INSERT INTO degiro_transactions (
+          row_hash,
+          date,
+          time,
+          product,
+          isin,
+          description,
+          amount,
+          balance,
+          order_id
+        ) VALUES (
+          ${tx.rowHash},
+          ${tx.date ? tx.date : null},
+          ${tx.time ? tx.time : null},
+          ${tx.product || null},
+          ${tx.isin || null},
+          ${tx.description || null},
+          ${amountVal},
+          ${balanceVal},
+          ${tx.orderId || null}
+        )
+        ON CONFLICT (row_hash) DO NOTHING
+      `;
+      if (res && (res.length > 0 || (res as any).rowCount > 0)) {
+        dbInserted++;
+      }
+    }
+    return {
+      inserted: dbInserted || localInserted,
+      duplicates: transactions.length - (dbInserted || localInserted),
+    };
+  } catch (err) {
+    console.warn('Failed to insert transactions into database:', err);
+    return {
+      inserted: localInserted,
+      duplicates: transactions.length - localInserted,
+    };
   }
 }
 

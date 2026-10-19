@@ -95,13 +95,14 @@ CREATE TABLE IF NOT EXISTS degiro_assets (
     updated_at     TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Strategy target weights and crypto price execution triggers
+-- Strategy rebalancing targets and crypto price execution triggers
 CREATE TABLE IF NOT EXISTS portfolio_asset_settings (
     symbol               TEXT PRIMARY KEY,
     display_name         TEXT,
     target_pct           DOUBLE PRECISION DEFAULT 0.0,
     buy_dip_trigger      DOUBLE PRECISION,
     sell_profit_trigger  DOUBLE PRECISION,
+    sell_profit_pct      DOUBLE PRECISION DEFAULT 15.0,
     is_crypto            BOOLEAN DEFAULT FALSE,
     buy_budget           DOUBLE PRECISION,
     updated_at           TIMESTAMPTZ DEFAULT NOW()
