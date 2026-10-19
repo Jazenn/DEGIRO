@@ -148,4 +148,70 @@ describe('calculateDashboardFromTransactions', () => {
     expect(result.metrics.freeCashBalance).toBe(1440);
     expect(result.metrics.totalPortfolioValue).toBe(2100); // 660 + 1440
   });
+
+  it('calculates portfolio metrics when quantity and price are null and embedded in description (Account.csv)', () => {
+    // Reverse chronological order with European dates as typical in DEGIRO exports
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '10-02-2026',
+        time: '14:30',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 10 @ 110,00 EUR',
+        amount: -1100,
+        value: -1100,
+        balance: 1000,
+        quantity: null,
+        price: null,
+        orderId: 'ORD-3',
+        rowHash: 'hash-c',
+      },
+      {
+        date: '02-02-2026',
+        time: '11:00',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 20 @ 100,00 EUR',
+        amount: -2000,
+        value: -2000,
+        balance: 2100,
+        quantity: null,
+        price: null,
+        orderId: 'ORD-2',
+        rowHash: 'hash-b',
+      },
+      {
+        date: '01-02-2026',
+        time: '09:00',
+        product: 'DEGIRO',
+        isin: 'NLFLATEXACNT',
+        description: 'Overboeking van uw geldrekening',
+        amount: 4100,
+        value: 4100,
+        balance: 4100,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'hash-a',
+      },
+    ];
+
+    const result = calculateDashboardFromTransactions(transactions, mockSettings);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // Latest cash balance should be 1000 (from 10-02-2026)
+    expect(result.metrics.freeCashBalance).toBe(1000);
+    // VWCE: 20 @ 100 + 10 @ 110 = 30 shares @ 110 latest price = 3300 value
+    expect(result.holdings.length).toBe(1);
+    expect(result.holdings[0].shares_held).toBe(30);
+    expect(result.holdings[0].current_price_eur).toBe(110);
+    expect(result.holdings[0].total_value_eur).toBe(3300);
+    // Total portfolio value = 3300 holdings + 1000 cash = 4300
+    expect(result.metrics.totalPortfolioValue).toBe(4300);
+    // Net invested = 4100 deposit
+    expect(result.metrics.netInvestedCapital).toBe(4100);
+    // Total gain = 4300 - 4100 = 200
+    expect(result.metrics.totalGainLossEur).toBe(200);
+  });
 });

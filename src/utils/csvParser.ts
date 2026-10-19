@@ -320,12 +320,31 @@ export function generateRowHash(row: {
 }
 
 /**
- * Normalizes European formatted number strings (e.g., "1.234,56" or "-1205,00" or "120.50").
+ * Normalizes European or US formatted number strings (e.g., "1.234,56" or "-1205,00" or "120.50" or "EUR 500,00").
  */
-function parseNumber(value: string | undefined): number | null {
-  if (!value) return null;
-  const clean = value.replace(/[\s€$£]/g, '').trim();
-  if (!clean) return null;
+export function parseNumber(value: string | undefined | null): number | null {
+  if (value === undefined || value === null) return null;
+  let clean = String(value)
+    .replace(/EUR|USD|GBP|CHF|JPY/gi, '')
+    .replace(/[\s€$£]/g, '')
+    .trim();
+  if (
+    !clean ||
+    clean === '-' ||
+    clean.toLowerCase() === 'nan' ||
+    clean.toLowerCase() === 'none'
+  ) {
+    return null;
+  }
+
+  // Handle trailing minus e.g. "120.50-" -> "-120.50"
+  if (clean.endsWith('-')) {
+    clean = '-' + clean.slice(0, -1);
+  }
+  // Handle parentheses e.g. "(120.50)" -> "-120.50"
+  if (clean.startsWith('(') && clean.endsWith(')')) {
+    clean = '-' + clean.slice(1, -1);
+  }
 
   // If comma is used as decimal separator (e.g. 1.205,50 or 1205,50)
   if (clean.includes(',') && !clean.includes('.')) {
@@ -346,6 +365,65 @@ function parseNumber(value: string | undefined): number | null {
 
   const num = parseFloat(clean);
   return isNaN(num) ? null : num;
+}
+
+/**
+ * Normalizes date strings to ISO YYYY-MM-DD.
+ * Converts DD-MM-YYYY or DD/MM/YYYY into YYYY-MM-DD.
+ */
+export function normalizeDate(dateStr: string): string {
+  if (!dateStr) return '';
+  const clean = dateStr.trim();
+  const dmyMatch = clean.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/);
+  if (dmyMatch) {
+    const day = dmyMatch[1].padStart(2, '0');
+    const month = dmyMatch[2].padStart(2, '0');
+    const year = dmyMatch[3];
+    return `${year}-${month}-${day}`;
+  }
+  const ymdMatch = clean.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/);
+  if (ymdMatch) {
+    const year = ymdMatch[1];
+    const month = ymdMatch[2].padStart(2, '0');
+    const day = ymdMatch[3].padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  }
+  return clean;
+}
+
+/**
+ * Extracts trade quantity and execution price from transaction descriptions
+ * (e.g. "Koop 10 @ 100,00 EUR" or "Sell 5 @ 120.50").
+ */
+export function extractTradeFromDescription(description: string): {
+  quantity: number | null;
+  price: number | null;
+  isTrade: boolean;
+  isSell: boolean;
+} {
+  if (!description) {
+    return { quantity: null, price: null, isTrade: false, isSell: false };
+  }
+  const match = description.match(
+    /(?:Koop|Verkoop|Buy|Sell)\s+([0-9.,eE+-]+)\s*@\s*([0-9.,eE+-]+)/i
+  );
+  if (!match) {
+    return { quantity: null, price: null, isTrade: false, isSell: false };
+  }
+  const isSell = /^(?:Verkoop|Sell)/i.test(match[0].trim());
+  const parsedQty = parseNumber(match[1]);
+  const parsedPrice = parseNumber(match[2]);
+
+  if (parsedQty === null) {
+    return { quantity: null, price: parsedPrice, isTrade: true, isSell };
+  }
+  const signedQty = isSell ? -Math.abs(parsedQty) : Math.abs(parsedQty);
+  return {
+    quantity: signedQty,
+    price: parsedPrice,
+    isTrade: true,
+    isSell,
+  };
 }
 
 /**
@@ -408,7 +486,8 @@ export function parseDegiroCsv(
     available.has('value') ||
     available.has('amount') ||
     available.has('quantity') ||
-    available.has('price');
+    available.has('price') ||
+    available.has('balance');
 
   if (!hasDate || !hasProductOrDescription || !hasFinancialMetric) {
     return {
@@ -448,24 +527,77 @@ export function parseDegiroCsv(
         ? cells[headerMap[key]].trim()
         : '';
 
-    const date = getVal('date');
+    const getNumericCell = (key: string): number | null => {
+      const idx = headerMap[key];
+      if (idx === undefined || idx < 0 || idx >= cells.length) {
+        return null;
+      }
+      const direct = parseNumber(cells[idx]);
+      if (direct !== null) {
+        return direct;
+      }
+      // If cell contains currency code like EUR/USD or is empty, inspect adjacent cells
+      if (idx + 1 < cells.length) {
+        const nextVal = parseNumber(cells[idx + 1]);
+        if (nextVal !== null) return nextVal;
+      }
+      if (
+        idx + 2 < cells.length &&
+        (!cells[idx + 1] || /^[A-Za-z]{3}$/.test(cells[idx + 1].trim()))
+      ) {
+        const nextVal2 = parseNumber(cells[idx + 2]);
+        if (nextVal2 !== null) return nextVal2;
+      }
+      if (idx - 1 >= 0) {
+        const prevVal = parseNumber(cells[idx - 1]);
+        if (prevVal !== null) return prevVal;
+      }
+      return null;
+    };
+
+    const date = normalizeDate(getVal('date'));
     const time = getVal('time');
     const product = getVal('product');
     const isin = getVal('isin');
     const description = getVal('description');
     const orderId = getVal('order_id');
-    const quantity = parseNumber(getVal('quantity'));
-    const price = parseNumber(getVal('price'));
-    const value = parseNumber(getVal('value'));
-    const amount = parseNumber(getVal('amount'));
-    const balance = parseNumber(getVal('balance'));
+
+    let quantity = getNumericCell('quantity');
+    let price = getNumericCell('price');
+    let value = getNumericCell('value');
+    const amount = getNumericCell('amount');
+    const balance = getNumericCell('balance');
+
+    // Extract trade details from description if quantity or price was not in dedicated columns
+    const tradeInfo = extractTradeFromDescription(description);
+    if (quantity === null && tradeInfo.quantity !== null) {
+      quantity = tradeInfo.quantity;
+    }
+    if (price === null && tradeInfo.price !== null) {
+      price = tradeInfo.price;
+    }
+    if (value === null) {
+      if (amount !== null) {
+        value = amount;
+      } else if (quantity !== null && price !== null) {
+        value = -(quantity * price);
+      }
+    }
+
+    // Handle crypto trades where quantity was blank in CSV export but price and value exist
+    if ((quantity === null || quantity === 0) && price && price > 0 && value) {
+      const computedQty = Math.abs(value) / price;
+      const descLower = description.toLowerCase();
+      const isSell = descLower.includes('verkoop') || descLower.includes('sell') || value > 0;
+      quantity = isSell ? -computedQty : computedQty;
+    }
 
     const rowHash = generateRowHash({
       date,
       time,
       isin,
       orderId,
-      amount,
+      amount: amount !== null ? amount : value,
       value: value !== null ? value : amount,
     });
 
@@ -484,7 +616,7 @@ export function parseDegiroCsv(
       quantity,
       price,
       value: value !== null ? value : amount,
-      amount,
+      amount: amount !== null ? amount : value,
       balance,
       orderId,
       rowHash,

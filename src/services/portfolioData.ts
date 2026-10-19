@@ -635,7 +635,16 @@ export function loadLocalTransactions(): IngestedTransaction[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
-      return parsed;
+      // Filter out empty/corrupted records where all financial values and quantities were null
+      return parsed.filter(
+        (t) =>
+          t.amount !== null ||
+          t.value !== null ||
+          t.balance !== null ||
+          t.quantity !== null ||
+          (t.description &&
+            /koop|verkoop|buy|sell|storting|deposit|overboeking/i.test(t.description))
+      );
     }
   } catch {
     // Ignore parse error

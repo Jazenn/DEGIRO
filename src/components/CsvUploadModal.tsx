@@ -15,7 +15,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   isOpen,
   onClose,
   onUploadSuccess,
-  existingHashes,
+  existingHashes: _existingHashes,
 }) => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [parseResult, setParseResult] = useState<CsvParseResult | null>(null);
@@ -47,7 +47,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
 
     try {
       const text = await readFileContent(file);
-      const result = parseDegiroCsv(text, { existingHashes });
+      const result = parseDegiroCsv(text);
 
       if (!result.success) {
         setErrorMessage(

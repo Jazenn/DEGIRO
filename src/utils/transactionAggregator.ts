@@ -4,7 +4,11 @@ import {
   PortfolioAssetSetting,
   PortfolioDailyHistoryRecord,
 } from '../types/portfolio';
-import { IngestedTransaction } from './csvParser';
+import {
+  IngestedTransaction,
+  extractTradeFromDescription,
+  normalizeDate,
+} from './csvParser';
 import { calculatePortfolioMetrics } from './metrics';
 import { calculateDepositPlan } from './rebalance';
 
@@ -21,13 +25,18 @@ function normalizeString(val: string | null | undefined): string {
 function isInternalCashTransaction(tx: IngestedTransaction): boolean {
   const isin = normalizeString(tx.isin);
   const prod = normalizeString(tx.product);
+  const desc = normalizeString(tx.description);
   return (
     isin.includes('nlflatexacnt') ||
     isin.includes('flatex') ||
     prod.includes('aegon') ||
     prod.includes('degiro cash') ||
     prod === 'degiro' ||
-    prod === 'flatex'
+    prod === 'flatex' ||
+    prod.includes('geldrekening') ||
+    desc.includes('geldrekening') ||
+    desc.includes('cash sweep') ||
+    desc.includes('flatex')
   );
 }
 
@@ -41,7 +50,9 @@ function isDepositTransaction(tx: IngestedTransaction): boolean {
     desc.includes('storting') ||
     desc.includes('ideal') ||
     desc.includes('deposit') ||
+    desc.includes('overboeking van') ||
     prod.includes('storting') ||
+    (desc.includes('geldrekening') && (tx.amount || 0) > 0) ||
     (isInternalCashTransaction(tx) && (tx.amount || 0) > 0)
   );
 }
@@ -56,7 +67,9 @@ function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
     desc.includes('terugstorting') ||
     desc.includes('onttrekking') ||
     desc.includes('withdrawal') ||
+    desc.includes('overboeking naar') ||
     prod.includes('terugstorting') ||
+    (desc.includes('geldrekening') && (tx.amount || 0) < 0) ||
     (isInternalCashTransaction(tx) && (tx.amount || 0) < 0)
   );
 }
@@ -75,7 +88,9 @@ export function calculateDashboardFromTransactions(
 
   // 1. Sort transactions chronologically
   const sorted = [...transactions].sort((a, b) => {
-    const dateComp = (a.date || '').localeCompare(b.date || '');
+    const da = normalizeDate(a.date || '');
+    const db = normalizeDate(b.date || '');
+    const dateComp = da.localeCompare(db);
     if (dateComp !== 0) return dateComp;
     return (a.time || '').localeCompare(b.time || '');
   });
@@ -133,8 +148,43 @@ export function calculateDashboardFromTransactions(
   for (const tx of sorted) {
     // Skip pure cash transactions and internal account rows
     if (isInternalCashTransaction(tx)) continue;
-    if (!tx.product && !tx.isin) continue;
+    if (!tx.product && !tx.isin && !tx.description) continue;
     if (isDepositTransaction(tx) || isWithdrawalTransaction(tx)) continue;
+
+    // Skip fee, dividend tax, and interest rows
+    const desc = normalizeString(tx.description);
+    const isFee =
+      desc.includes('transactiekosten') ||
+      desc.includes('kosten van derden') ||
+      desc.includes('aansluitingskosten') ||
+      desc.includes('valutakosten') ||
+      desc.includes('fee');
+    const isDividend =
+      desc.includes('dividend') ||
+      desc.includes('rente') ||
+      desc.includes('interest');
+    if (isFee || isDividend) continue;
+
+    let rawQty =
+      tx.quantity !== null && tx.quantity !== undefined
+        ? Number(tx.quantity)
+        : 0;
+    let execPrice =
+      tx.price !== null && tx.price !== undefined ? Number(tx.price) : 0;
+
+    // If quantity or price was not in tx, try to extract from description
+    if (rawQty === 0 || execPrice === 0) {
+      const extracted = extractTradeFromDescription(tx.description);
+      if (rawQty === 0 && extracted.quantity !== null) {
+        rawQty = extracted.quantity;
+      }
+      if (execPrice === 0 && extracted.price !== null) {
+        execPrice = extracted.price;
+      }
+    }
+
+    const isSell = desc.includes('verkoop') || desc.includes('sell') || rawQty < 0;
+    const absQty = Math.abs(rawQty);
 
     const key = (tx.isin || tx.product || 'UNKNOWN').trim().toUpperCase();
     if (!assetGroups.has(key)) {
@@ -144,19 +194,14 @@ export function calculateDashboardFromTransactions(
         isin: tx.isin || null,
         shares: 0,
         totalCost: 0,
-        latestPrice: Math.abs(tx.price || 0),
+        latestPrice: execPrice > 0 ? execPrice : Math.abs(tx.price || 0),
       });
     }
 
     const group = assetGroups.get(key)!;
-    if (tx.price && tx.price > 0) {
-      group.latestPrice = tx.price;
+    if (execPrice > 0) {
+      group.latestPrice = execPrice;
     }
-
-    const rawQty = tx.quantity !== null ? Number(tx.quantity) : 0;
-    const desc = normalizeString(tx.description);
-    const isSell = desc.includes('verkoop') || desc.includes('sell') || rawQty < 0;
-    const absQty = Math.abs(rawQty);
 
     if (absQty > 0) {
       if (isSell) {
@@ -167,7 +212,13 @@ export function calculateDashboardFromTransactions(
       } else {
         // Buy
         group.shares += absQty;
-        const buyCost = Math.abs(tx.amount || tx.value || absQty * (tx.price || group.latestPrice));
+        const buyCost = Math.abs(
+          tx.amount !== null && tx.amount !== undefined
+            ? tx.amount
+            : tx.value !== null && tx.value !== undefined
+            ? tx.value
+            : absQty * (execPrice || group.latestPrice)
+        );
         group.totalCost += buyCost;
       }
     }
@@ -180,7 +231,12 @@ export function calculateDashboardFromTransactions(
 
   for (const group of assetGroups.values()) {
     if (group.shares > 0.0001) {
-      const price = group.latestPrice > 0 ? group.latestPrice : group.totalCost / group.shares;
+      const price =
+        group.latestPrice > 0
+          ? group.latestPrice
+          : group.shares > 0
+          ? group.totalCost / group.shares
+          : 0;
       const totalValue = group.shares * price;
       totalHoldingsValue += totalValue;
       totalActiveCost += group.totalCost;
@@ -273,11 +329,13 @@ export function calculateDashboardFromTransactions(
   >();
 
   // Collect distinct transaction dates
-  const distinctDates = Array.from(new Set(sorted.map((t) => t.date).filter(Boolean))).sort();
+  const distinctDates = Array.from(
+    new Set(sorted.map((t) => normalizeDate(t.date)).filter(Boolean))
+  ).sort();
   if (distinctDates.length > 0) {
     let runningInvested = 0;
     for (const d of distinctDates) {
-      const txsOnDay = sorted.filter((t) => t.date === d);
+      const txsOnDay = sorted.filter((t) => normalizeDate(t.date) === d);
       for (const t of txsOnDay) {
         if (isDepositTransaction(t)) {
           runningInvested += Math.abs(t.amount || t.value || 0);

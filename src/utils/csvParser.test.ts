@@ -92,6 +92,48 @@ describe('parseDegiroCsv', () => {
     expect(result.newRows).toBe(2);
   });
 
+  it('handles Dutch Account.csv with currency column shifting and extracts trade from description', () => {
+    const csvContent = `Datum;Tijd;Valutadatum;Product;ISIN;Omschrijving;FX;;Mutatie;;Saldo;;Order Id
+01-01-2024;09:00;01-01-2024;DEGIRO;NLFLATEXACNT;iDEAL Storting;;;EUR;5000,00;EUR;5000,00;;
+02-01-2024;10:00;02-01-2024;Vanguard FTSE All-World UCITS ETF;IE00BK5BQT80;Koop 30 @ 100,00 EUR;;;EUR;-3000,00;EUR;2000,00;;ORD-1
+03-01-2024;11:00;03-01-2024;Bitcoin;XFC000A2YY6Q;Koop 0,02 @ 50.000,00 EUR;;;EUR;-1000,00;EUR;1000,00;;ORD-2
+`;
+
+    const result = parseDegiroCsv(csvContent);
+
+    expect(result.success).toBe(true);
+    expect(result.rowsProcessed).toBe(3);
+    expect(result.newRows).toBe(3);
+
+    // Row 0: Storting
+    expect(result.transactions[0].date).toBe('2024-01-01');
+    expect(result.transactions[0].amount).toBe(5000.0);
+    expect(result.transactions[0].balance).toBe(5000.0);
+
+    // Row 1: VWCE Buy
+    expect(result.transactions[1].date).toBe('2024-01-02');
+    expect(result.transactions[1].quantity).toBe(30);
+    expect(result.transactions[1].price).toBe(100.0);
+    expect(result.transactions[1].amount).toBe(-3000.0);
+    expect(result.transactions[1].balance).toBe(2000.0);
+
+    // Row 2: BTC Buy
+    expect(result.transactions[2].date).toBe('2024-01-03');
+    expect(result.transactions[2].quantity).toBe(0.02);
+    expect(result.transactions[2].price).toBe(50000.0);
+    expect(result.transactions[2].amount).toBe(-1000.0);
+    expect(result.transactions[2].balance).toBe(1000.0);
+  });
+
+  it('normalizes European DD-MM-YYYY dates correctly', () => {
+    const csvContent = `Datum;Tijd;Product;ISIN;Omschrijving;Mutatie;Saldo;Order Id
+15-08-2024;09:00;DEGIRO;NLFLATEXACNT;Storting;500.00;500.00;
+`;
+    const result = parseDegiroCsv(csvContent);
+    expect(result.success).toBe(true);
+    expect(result.transactions[0].date).toBe('2024-08-15');
+  });
+
   it('returns descriptive error when CSV format is invalid or missing headers', () => {
     const invalidCsv = `Col1,Col2,Col3
 val1,val2,val3
