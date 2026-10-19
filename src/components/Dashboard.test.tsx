@@ -1,5 +1,5 @@
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import Dashboard from './Dashboard';
 import { getDemoDashboardData } from '../services/portfolioData';
 
@@ -131,5 +131,45 @@ describe('Dashboard Component', () => {
       expect(screen.getByText('-5.8% Underweight')).toBeInTheDocument();
     });
   });
+
+  it('renders mobile menu button and opens mobile drawer on click', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    const menuBtn = screen.getByRole('button', { name: /Open navigation menu/i });
+    expect(menuBtn).toBeInTheDocument();
+
+    fireEvent.click(menuBtn);
+
+    expect(screen.getByRole('heading', { name: /Navigation & Actions/i })).toBeInTheDocument();
+  });
+
+  it('renders upload CSV button and opens CSV upload modal on click', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    const uploadBtn = screen.getByRole('button', { name: /Upload CSV/i });
+    expect(uploadBtn).toBeInTheDocument();
+
+    fireEvent.click(uploadBtn);
+
+    expect(screen.getByRole('heading', { name: /Upload DEGIRO CSV/i })).toBeInTheDocument();
+  });
+
+  it('triggers on-demand price refresh and shows toast notification upon completion', async () => {
+    const onRefresh = vi.fn().mockResolvedValue(undefined);
+    render(<Dashboard initialData={demoData} onRefresh={onRefresh} />);
+
+    const refreshBtn = screen.getByRole('button', { name: /Refresh Prices|Refresh/i });
+    fireEvent.click(refreshBtn);
+
+    await waitFor(() => {
+      expect(onRefresh).toHaveBeenCalledTimes(1);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole('status')).toBeInTheDocument();
+      expect(screen.getByText(/Prices refreshed/i)).toBeInTheDocument();
+    });
+  });
 });
+
 
