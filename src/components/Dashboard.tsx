@@ -88,6 +88,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
       type: 'success',
       message: 'Portfolio strategy settings saved successfully',
     });
+    if (onRefresh) {
+      await onRefresh();
+    }
   };
 
   const handlePriceRefresh = async () => {
