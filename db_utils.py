@@ -154,7 +154,8 @@ class DBStorage:
 
         keep_cols = [
             "date", "time", "value_date", "product", "isin",
-            "description", "fx", "amount", "balance", "order_id", "csv_row_id"
+            "description", "fx", "amount", "balance", "order_id", "csv_row_id",
+            "row_hash",
         ]
         df_save = df[[c for c in keep_cols if c in df.columns]].copy()
 
@@ -169,7 +170,8 @@ class DBStorage:
         records = []
         for _, row in df_save.iterrows():
             rec = {k: _safe_val(v) for k, v in row.items()}
-            rec["row_hash"] = _compute_row_hash(rec)
+            if not rec.get("row_hash"):
+                rec["row_hash"] = _compute_row_hash(rec)
             records.append(rec)
 
         if not records:
@@ -186,14 +188,26 @@ class DBStorage:
         """
 
         inserted = 0
-        try:
-            with self._conn() as conn:
-                with conn.cursor() as cur:
-                    for rec in records:
-                        cur.execute(sql, rec)
-                        inserted += cur.rowcount
-        except Exception as e:
-            st.error(f"DB: kan transacties niet opslaan: {e}")
+        legacy_hash_by_row_hash = {
+            rec["row_hash"]: legacy_hash
+            for rec in records
+            if (legacy_hash := _compute_row_hash(rec)) != rec["row_hash"]
+        }
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                existing_legacy_hashes = set()
+                if legacy_hash_by_row_hash:
+                    cur.execute(
+                        "SELECT row_hash FROM degiro_transactions WHERE row_hash = ANY(%s)",
+                        (list(legacy_hash_by_row_hash.values()),),
+                    )
+                    existing_legacy_hashes = {row[0] for row in cur.fetchall()}
+
+                for rec in records:
+                    if legacy_hash_by_row_hash.get(rec["row_hash"]) in existing_legacy_hashes:
+                        continue
+                    cur.execute(sql, rec)
+                    inserted += cur.rowcount
 
         return inserted
 
@@ -428,3 +442,82 @@ class DBStorage:
             df_copy[col] = df_copy[col].dt.strftime("%Y-%m-%dT%H:%M:%S")
         records = df_copy.where(df_copy.notna(), None).to_dict(orient="records")
         self.save_snapshot("history", {"records": records})
+
+    def save_portfolio_snapshots(
+        self, history: pd.DataFrame, holdings: pd.DataFrame
+    ) -> None:
+        """Atomically replace the current holdings and upsert portfolio history."""
+        history_columns = [
+            "date",
+            "total_equity_eur",
+            "invested_capital_eur",
+            "cash_balance_eur",
+            "unrealized_pnl_eur",
+            "unrealized_pnl_pct",
+        ]
+        holding_columns = [
+            "symbol",
+            "name",
+            "isin",
+            "shares_held",
+            "current_price_eur",
+            "total_value_eur",
+            "total_cost_eur",
+            "unrealized_pnl_eur",
+            "actual_pct",
+            "target_pct",
+            "drift_pct",
+            "recommended_action_eur",
+        ]
+
+        history_rows = []
+        for record in history.reindex(columns=history_columns).to_dict(orient="records"):
+            safe_record = {key: _safe_val(value) for key, value in record.items()}
+            safe_record["date"] = pd.Timestamp(safe_record["date"]).date()
+            history_rows.append(safe_record)
+
+        holding_rows = [
+            {key: _safe_val(value) for key, value in record.items()}
+            for record in holdings.reindex(columns=holding_columns).to_dict(orient="records")
+        ]
+
+        with self._conn() as conn:
+            with conn.cursor() as cur:
+                for record in history_rows:
+                    cur.execute(
+                        """
+                        INSERT INTO portfolio_daily_history (
+                            date, total_equity_eur, invested_capital_eur,
+                            cash_balance_eur, unrealized_pnl_eur, unrealized_pnl_pct
+                        ) VALUES (
+                            %(date)s, %(total_equity_eur)s, %(invested_capital_eur)s,
+                            %(cash_balance_eur)s, %(unrealized_pnl_eur)s, %(unrealized_pnl_pct)s
+                        )
+                        ON CONFLICT (date) DO UPDATE SET
+                            total_equity_eur = EXCLUDED.total_equity_eur,
+                            invested_capital_eur = EXCLUDED.invested_capital_eur,
+                            cash_balance_eur = EXCLUDED.cash_balance_eur,
+                            unrealized_pnl_eur = EXCLUDED.unrealized_pnl_eur,
+                            unrealized_pnl_pct = EXCLUDED.unrealized_pnl_pct,
+                            updated_at = NOW()
+                        """,
+                        record,
+                    )
+
+                cur.execute("DELETE FROM current_asset_holdings")
+                for record in holding_rows:
+                    cur.execute(
+                        """
+                        INSERT INTO current_asset_holdings (
+                            symbol, name, isin, shares_held, current_price_eur,
+                            total_value_eur, total_cost_eur, unrealized_pnl_eur,
+                            actual_pct, target_pct, drift_pct, recommended_action_eur
+                        ) VALUES (
+                            %(symbol)s, %(name)s, %(isin)s, %(shares_held)s,
+                            %(current_price_eur)s, %(total_value_eur)s, %(total_cost_eur)s,
+                            %(unrealized_pnl_eur)s, %(actual_pct)s, %(target_pct)s,
+                            %(drift_pct)s, %(recommended_action_eur)s
+                        )
+                        """,
+                        record,
+                    )
