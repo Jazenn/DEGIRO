@@ -1,10 +1,7 @@
 import re
 import pandas as pd
-import streamlit as st
 import yfinance as yf
-from utils import _shorten_name
 
-@st.cache_data(show_spinner=False)
 def load_degiro_csv(file_bytes: bytes) -> pd.DataFrame:
     """Load a DeGiro CSV file (Account or Transactions) into a cleaned DataFrame."""
     import io
@@ -37,6 +34,16 @@ def _clean_num(x):
         return float(x)
     except:
         return None
+
+def _shorten_name(name):
+    """Verkort de namen van ETFs voor betere leesbaarheid op mobiel."""
+    n = str(name).upper()
+    if "VANGUARD" in n: return "All-World"
+    if "STRACKERS" in n or "XTRACKERS" in n: return "Ex-USA"
+    if "ISHARES" in n: return "Europe"
+    if "FUTUREOFDEFENCE" in n or "HANETF" in n or "FUTURE OF DEFENCE" in n: return "FOD"
+    return name
+
 
 def _parse_transactions_csv(df: pd.DataFrame) -> pd.DataFrame:
     """Parse a Transactions.csv and convert its rows to match the Account.csv schema."""
@@ -233,7 +240,6 @@ def parse_quantity(description: str) -> float:
         qty = -qty
     return qty
 
-@st.cache_data
 def enrich_transactions(df: pd.DataFrame) -> pd.DataFrame:
     """Voeg extra kolommen toe: type, quantity, categorieën."""
     df = df.copy()
@@ -340,7 +346,6 @@ def build_trading_volume_by_month(df: pd.DataFrame) -> pd.DataFrame:
     
     return monthly
 
-@st.cache_data(ttl=3600)
 def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame:
     """
     Reconstrueer historische portefeuillewaarde per week.
@@ -384,7 +389,7 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
         yf_data_hourly = yf.download(unique_tickers, start=start_hourly, interval="5m", group_by="ticker", prepost=False, progress=False, threads=False)
         
     except Exception as e:
-        st.error(f"Fout bij ophalen historische data: {e}")
+        print(f"Fout bij ophalen historische data: {e}")
         return pd.DataFrame()
 
     for p in valid_products:
@@ -527,7 +532,6 @@ def build_portfolio_history(df: pd.DataFrame, product_map: dict) -> pd.DataFrame
     final_df.index.name = "date"
     return final_df.reset_index()
 
-@st.cache_data(ttl=3600)
 def build_global_invested_history(df: pd.DataFrame) -> pd.Series:
     """
     Bereken de cumulatieve 'invested' lijn over de tijd, op EXAACT dezelfde

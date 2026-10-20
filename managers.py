@@ -1,7 +1,6 @@
 import json
 from pathlib import Path
 import pandas as pd
-import streamlit as st
 import yfinance as yf
 import re
 import concurrent.futures
@@ -113,7 +112,7 @@ class ConfigManager:
             with open(self.CONFIG_FILE, "w") as f:
                 json.dump(data, f, indent=4)
         except Exception as e:
-            st.error(f"Config opslaan mislukt: {e}")
+            print(f"Config opslaan mislukt: {e}")
 
     def _save_json(self, filename, data):
         # Helper mainly for legacy or direct calls if needed, 
@@ -271,7 +270,7 @@ class PriceManager:
         
     def _should_use_snapshot(self):
         # Use snapshot if the seamless background fetch hasn't completed yet
-        return not st.session_state.get("live_fetch_done", False)
+        return not None
         
     def resolve_ticker(self, product_str: str, isin: str = None) -> str | None:
         """Resolve a product to a yfinance ticker using Config and logic."""
@@ -415,18 +414,15 @@ class PriceManager:
 
     def get_live_price(self, ticker):
         if not ticker: return 0.0
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_live_prices"):
-            return float(st.session_state["mem_live_prices"].get(ticker, 0.0))
         if self._snapshot_live and self._should_use_snapshot():
             return float(self._snapshot_live.get(ticker, 0.0))
         return self._fetch_live_price_cached(ticker)
 
-    @st.cache_data(ttl=60)
-    def _fetch_live_price_cached(_self, ticker):
+    def _fetch_live_price_cached(self, ticker):
         import requests
         # 1. Try TradeGate API first for any valid ISINs
         isin = None
-        for k, v in _self.config.get_mappings().items():
+        for k, v in self.config.get_mappings().items():
             if v == ticker and len(k) == 12 and not k.startswith("XFC"):
                 isin = k
                 break
@@ -459,8 +455,6 @@ class PriceManager:
         """Fetch live prices for multiple tickers in one optimized batch."""
         valid_tickers = [t for t in tickers if t]
         if not valid_tickers: return {}
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_live_prices"):
-            return {t: st.session_state["mem_live_prices"].get(t, 0.0) for t in valid_tickers}
         if self._snapshot_live and self._should_use_snapshot():
             return {t: self._snapshot_live.get(t, 0.0) for t in valid_tickers}
         return self._fetch_live_prices_batch_cached(tuple(set(valid_tickers)))
@@ -506,8 +500,7 @@ class PriceManager:
             }
         return result
 
-    @st.cache_data(ttl=60)
-    def _fetch_live_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+    def _fetch_live_prices_batch_cached(self, tickers_tuple: tuple) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         yf_tickers = []
         
@@ -516,7 +509,7 @@ class PriceManager:
         # 1. Try TradeGate API first for any valid ISINs
         # Map tickers to ISINs using config mappings (reverse lookup)
         ticker_to_isin = {}
-        for k, v in _self.config.get_mappings().items():
+        for k, v in self.config.get_mappings().items():
             if v in tickers_tuple and (len(k) == 12 and not k.startswith("XFC")): # simple ISIN check
                 ticker_to_isin[v] = k
                 
@@ -571,8 +564,7 @@ class PriceManager:
     def get_history(self, ticker, period="1y"):
         return self._fetch_history_cached(ticker, period)
 
-    @st.cache_data(ttl=3600)
-    def _fetch_history_cached(_self, ticker, period):
+    def _fetch_history_cached(self, ticker, period):
         try:
             return yf.Ticker(ticker).history(period=period, prepost=True)
         except: return pd.DataFrame()
@@ -580,22 +572,19 @@ class PriceManager:
     def get_prev_closes_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_prev_prices"):
-            return {t: st.session_state["mem_prev_prices"].get(t, 0.0) for t in valid}
         if self._snapshot_prev and self._should_use_snapshot():
             return {t: self._snapshot_prev.get(t, 0.0) for t in valid}
         current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
         return self._fetch_prev_closes_batch_cached(tuple(set(valid)), current_date_str)
 
-    @st.cache_data(ttl=21600)
-    def _fetch_prev_closes_batch_cached(_self, tickers_tuple: tuple, current_date_str: str) -> dict:
+    def _fetch_prev_closes_batch_cached(self, tickers_tuple: tuple, current_date_str: str) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         yf_tickers = []
         import requests
         
         # 1. Try TradeGate API first for any valid ISINs
         ticker_to_isin = {}
-        for k, v in _self.config.get_mappings().items():
+        for k, v in self.config.get_mappings().items():
              if v in tickers_tuple and (len(k) == 12 and not k.startswith("XFC")):
                  ticker_to_isin[v] = k
                  
@@ -639,19 +628,16 @@ class PriceManager:
     def get_prev_close(self, ticker):
         """Return previous trading day close."""
         if not ticker: return 0.0
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_prev_prices"):
-            return float(st.session_state["mem_prev_prices"].get(ticker, 0.0))
         if self._snapshot_prev and self._should_use_snapshot():
             return float(self._snapshot_prev.get(ticker, 0.0))
         current_date_str = pd.Timestamp.now(tz="Europe/Amsterdam").strftime("%Y-%m-%d")
         return self._fetch_prev_close_cached(ticker, current_date_str)
 
-    @st.cache_data(ttl=21600) # Cache for 6 hours
-    def _fetch_prev_close_cached(_self, ticker, current_date_str):
+    def _fetch_prev_close_cached(self, ticker, current_date_str):
         import requests
         # 1. Try TradeGate API first for any valid ISINs
         isin = None
-        for k, v in _self.config.get_mappings().items():
+        for k, v in self.config.get_mappings().items():
             if v == ticker and len(k) == 12 and not k.startswith("XFC"):
                 isin = k
                 break
@@ -680,14 +666,11 @@ class PriceManager:
     def get_market_open_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_open_prices"):
-            return {t: st.session_state["mem_open_prices"].get(t, 0.0) for t in valid}
         if self._snapshot_open and self._should_use_snapshot():
             return {t: self._snapshot_open.get(t, 0.0) for t in valid}
         return self._fetch_market_open_prices_batch_cached(tuple(set(valid)))
 
-    @st.cache_data(ttl=3600)
-    def _fetch_market_open_prices_batch_cached(_self, tickers_tuple: tuple) -> dict:
+    def _fetch_market_open_prices_batch_cached(self, tickers_tuple: tuple) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         try:
             tickers_str = " ".join(tickers_tuple)
@@ -711,14 +694,11 @@ class PriceManager:
     def get_market_open_price(self, ticker):
         """Return opening price of the most recent trading day."""
         if not ticker: return 0.0
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_open_prices"):
-            return float(st.session_state["mem_open_prices"].get(ticker, 0.0))
         if self._snapshot_open and self._should_use_snapshot():
             return float(self._snapshot_open.get(ticker, 0.0))
         return self._fetch_market_open_price_cached(ticker)
 
-    @st.cache_data(ttl=3600)
-    def _fetch_market_open_price_cached(_self, ticker):
+    def _fetch_market_open_price_cached(self, ticker):
         try:
             hist = yf.Ticker(ticker).history(period="1d")
             if not hist.empty and "Open" in hist.columns:
@@ -729,8 +709,6 @@ class PriceManager:
     def get_midnight_prices_batch(self, tickers: list[str]) -> dict:
         valid = [t for t in tickers if t]
         if not valid: return {}
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_mid_prices"):
-            return {t: st.session_state["mem_mid_prices"].get(t, 0.0) for t in valid}
         if self._snapshot_mid and self._should_use_snapshot():
             return {t: self._snapshot_mid.get(t, 0.0) for t in valid}
         # Use Amsterdam midnight for the cache key, but normalized to UTC base for YF logic
@@ -739,8 +717,7 @@ class PriceManager:
         date_str = midnight_ams.strftime("%Y-%m-%d %H:%M:%S %Z")
         return self._fetch_midnight_prices_batch_cached(tuple(set(valid)), date_str)
 
-    @st.cache_data(ttl=3600)
-    def _fetch_midnight_prices_batch_cached(_self, tickers_tuple: tuple, date_str: str) -> dict:
+    def _fetch_midnight_prices_batch_cached(self, tickers_tuple: tuple, date_str: str) -> dict:
         results = {t: 0.0 for t in tickers_tuple}
         try:
             tickers_str = " ".join(tickers_tuple)
@@ -811,16 +788,13 @@ class PriceManager:
     def get_midnight_price(self, ticker):
         """Return price at start of today (midnight Amsterdam time) for daily P/L."""
         if not ticker: return 0.0
-        if st.session_state.get("live_fetch_done") and st.session_state.get("mem_mid_prices"):
-            return float(st.session_state["mem_mid_prices"].get(ticker, 0.0))
         if self._snapshot_mid and self._should_use_snapshot():
             return float(self._snapshot_mid.get(ticker, 0.0))
         ams_midnight = pd.Timestamp.now(tz="Europe/Amsterdam").normalize()
         date_str = ams_midnight.strftime("%Y-%m-%d %H:%M:%S %Z")
         return self._fetch_midnight_price_cached(ticker, date_str)
 
-    @st.cache_data(ttl=3600)
-    def _fetch_midnight_price_cached(_self, ticker, date_str):
+    def _fetch_midnight_price_cached(self, ticker, date_str):
         try:
             # Fetch 3d of hourly data
             hist = yf.Ticker(ticker).history(period="3d", interval="1h", prepost=True)

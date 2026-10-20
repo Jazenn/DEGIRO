@@ -14,7 +14,6 @@ import os
 import pandas as pd
 import psycopg2
 import psycopg2.extras
-import streamlit as st
 from contextlib import contextmanager
 
 
@@ -23,15 +22,10 @@ from contextlib import contextmanager
 # ---------------------------------------------------------------------------
 
 def _get_secret(key: str) -> str:
-    """Lees een secret uit env vars of Streamlit secrets."""
-    if key in os.environ:
+    """Lees een secret uit environment variables."""
+    if key in os.environ and os.environ[key]:
         return os.environ[key]
-    try:
-        if hasattr(st, "secrets") and key in st.secrets:
-            return st.secrets[key]
-    except Exception:
-        pass
-    raise KeyError(f"Secret '{key}' niet gevonden in env vars of Streamlit secrets.")
+    raise KeyError(f"Secret '{key}' niet gevonden in environment variables.")
 
 
 def _compute_row_hash(row: dict) -> str:
@@ -123,7 +117,7 @@ class DBStorage:
                     conn
                 )
         except Exception as e:
-            st.error(f"DB: kan transacties niet laden: {e}")
+            print(f"DB: kan transacties niet laden: {e}")
             return pd.DataFrame()
 
         if df.empty:
@@ -218,7 +212,7 @@ class DBStorage:
                 with conn.cursor() as cur:
                     cur.execute("DELETE FROM degiro_transactions")
         except Exception as e:
-            st.error(f"DB: kan transacties niet wissen: {e}")
+            print(f"DB: kan transacties niet wissen: {e}")
 
     # ------------------------------------------------------------------ #
     # Snapshots (koersen, geschiedenis)                                   #
@@ -268,7 +262,7 @@ class DBStorage:
                             ON CONFLICT (key) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
                         """, (key, json.dumps(data)))
             except Exception as e:
-                st.error(f"DB: kan history snapshot niet opslaan: {e}")
+                print(f"DB: kan history snapshot niet opslaan: {e}")
             return
 
         if key == "prices":
@@ -302,7 +296,7 @@ class DBStorage:
                                     updated_at = NOW()
                             """, rec)
             except Exception as e:
-                st.error(f"DB: kan price snapshot niet opslaan: {e}")
+                print(f"DB: kan price snapshot niet opslaan: {e}")
 
     def clear_snapshot(self, key: str):
         """Verwijder een snapshot op basis van de key."""
@@ -411,7 +405,7 @@ class DBStorage:
                             buy_budget
                         ))
         except Exception as e:
-            st.error(f"DB: kan config niet opslaan: {e}")
+            print(f"DB: kan config niet opslaan: {e}")
 
     # ------------------------------------------------------------------ #
     # History DataFrame helpers (gebruikt door fetcher)                   #
