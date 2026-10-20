@@ -587,7 +587,15 @@ export async function fetchDashboardData(
         isCashSweep: r.isCashSweep !== undefined ? Boolean(r.isCashSweep) : r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
       }));
 
-      const calculated = calculateDashboardFromTransactions(parsedTxs, assetSettings);
+      const rawAssets = parsedTxs
+
+        .filter((t) => t.isin || t.product)
+
+        .map((t) => ({ isin: t.isin, symbol: t.product, name: t.product }));
+
+      const livePrices = await fetchLivePricesForHoldings(rawAssets);
+
+      const calculated = calculateDashboardFromTransactions(parsedTxs, assetSettings, livePrices);
       if (calculated) {
         return {
           ...calculated,
@@ -606,9 +614,14 @@ export async function fetchDashboardData(
     );
     const localTxs = loadLocalTransactions();
     if (localTxs && localTxs.length > 0) {
+      const rawAssets = localTxs
+        .filter((t) => t.isin || t.product)
+        .map((t) => ({ isin: t.isin, symbol: t.product, name: t.product }));
+      const livePrices = await fetchLivePricesForHoldings(rawAssets);
       const calculated = calculateDashboardFromTransactions(
         localTxs,
-        loadLocalAssetSettings() || getDefaultAssetSettings()
+        loadLocalAssetSettings() || getDefaultAssetSettings(),
+        livePrices
       );
       if (calculated) {
         return calculated;

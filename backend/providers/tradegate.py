@@ -6,6 +6,8 @@ import logging
 from typing import Dict, Optional
 import requests
 
+from backend.ingestion.normalizer import parse_degiro_number
+
 logger = logging.getLogger(__name__)
 
 HEADERS = {
@@ -34,9 +36,11 @@ def fetch_tradegate_quote(isin: str, timeout: float = 3.0) -> Dict[str, Optional
                     val = data.get(k)
                     if val is not None:
                         try:
-                            # Handle European float formatted as string or number
-                            num_str = str(val).replace(".", "").replace(",", ".")
-                            result[k] = float(num_str)
+                            if isinstance(val, (int, float)):
+                                result[k] = float(val) if float(val) > 0 else None
+                            else:
+                                parsed = parse_degiro_number(val)
+                                result[k] = parsed if parsed and parsed > 0 else None
                         except (ValueError, TypeError):
                             pass
     except Exception as e:
