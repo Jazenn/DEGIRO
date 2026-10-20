@@ -14,6 +14,7 @@ import psycopg2
 import psycopg2.extras
 
 from backend.db.connection import get_db_connection
+from backend.ingestion.normalizer import compute_row_hash
 
 
 def _safe_val(val: Any) -> Any:
@@ -32,7 +33,19 @@ def _safe_val(val: Any) -> Any:
 
 
 def _compute_row_hash(row: dict) -> str:
-    """Deterministic MD5 hash for transaction deduplication."""
+    """Canonical row hash computed via backend.ingestion.normalizer.compute_row_hash."""
+    return compute_row_hash(
+        date=str(row.get("date", "")).strip(),
+        time=str(row.get("time", "")).strip(),
+        isin=str(row.get("isin", "")).strip(),
+        order_id=str(row.get("order_id", "")).strip(),
+        amount=row.get("amount", 0.0),
+        description=str(row.get("description", "")).strip(),
+    )
+
+
+def _compute_legacy_row_hash(row: dict) -> str:
+    """Historical JSON-based row hash kept for backward compatibility with pre-migration Neon rows."""
     order_id = str(row.get("order_id", "")).strip()
     amount = str(row.get("amount", "")).strip()
 
@@ -123,7 +136,7 @@ class DBStorage:
         legacy_hash_by_row_hash = {
             rec["row_hash"]: legacy_hash
             for rec in records
-            if (legacy_hash := _compute_row_hash(rec)) != rec["row_hash"]
+            if (legacy_hash := _compute_legacy_row_hash(rec)) != rec["row_hash"]
         }
         with self._conn() as conn:
             with conn.cursor() as cur:

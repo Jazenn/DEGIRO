@@ -15,9 +15,7 @@ export interface ParsedTransaction {
   orderId: string;
   rowHash: string;
   csvRowId?: number;
-  csv_row_id?: number;
   isCashSweep?: boolean;
-  is_cash_sweep?: boolean;
 }
 
 export type IngestedTransaction = ParsedTransaction;
@@ -662,9 +660,7 @@ export function parseDegiroCsv(
       orderId,
       rowHash,
       csvRowId: i - 1,
-      csv_row_id: i - 1,
       isCashSweep,
-      is_cash_sweep: isCashSweep,
     });
   }
 

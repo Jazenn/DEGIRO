@@ -74,15 +74,20 @@ def classify_row(description: str) -> str:
     if "Flatex Interest" in desc or "Rente" in desc or "Interest" in desc:
         return "Interest"
 
-    if "Degiro Cash Sweep Transfer" in desc or "Overboeking van uw geldrekening bij flatexDEGIRO Bank" in desc or "Overboeking naar uw geldrekening bij flatexDEGIRO Bank" in desc:
+    d_lower = desc.lower()
+    if (
+        "cash sweep transfer" in d_lower
+        or ("overboeking" in d_lower and ("geldrekening" in d_lower or "flatex" in d_lower))
+        or ("transfer" in d_lower and ("cash account" in d_lower or "flatex" in d_lower))
+    ):
         return "Cash Sweep"
     if "Reservation iDEAL" in desc:
         return "Reservation"
     if "iDEAL Deposit" in desc or desc == "Deposit":
         return "Deposit"
-    if "Overboeking van uw geldrekening" in desc or "Storting" in desc:
+    if "Storting" in desc:
         return "Deposit"
-    if "Overboeking naar uw geldrekening" in desc or "Terugstorting" in desc or "Withdrawal" in desc:
+    if "Terugstorting" in desc or "Withdrawal" in desc:
         return "Withdrawal"
 
     return "Other"
