@@ -1,13 +1,19 @@
+"""Transaction ingestion service for normalizing and deduplicating DEGIRO CSV exports."""
+
+from __future__ import annotations
+
 import csv
 import hashlib
 import io
 import json
 import math
 from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
 
-from data_processing import load_degiro_csv
+from backend.ingestion.loader import load_degiro_csv
+from backend.ingestion.normalizer import compute_row_hash, parse_degiro_number
 
 
 @dataclass
@@ -21,7 +27,7 @@ class IngestionResult:
 class TransactionIngestionService:
     """Normalize and deduplicate DEGIRO CSV exports."""
 
-    HEADER_ALIASES = {
+    HEADER_ALIASES: Dict[str, List[str]] = {
         "date": ["date", "datum", "transaction date", "date of transaction"],
         "time": ["time", "tijd", "transaction time"],
         "product": ["product", "productnaam", "name", "fonds", "security"],
@@ -45,16 +51,16 @@ class TransactionIngestionService:
         "fx": ["fx", "autofx kosten", "autofx fee"],
     }
 
-    def __init__(self):
-        self.total_rows_seen = 0
-        self._seen_hashes = set()
+    def __init__(self) -> None:
+        self.total_rows_seen: int = 0
+        self._seen_hashes: Set[str] = set()
 
     @staticmethod
     def _normalize_header_name(header: str) -> str:
         return str(header or "").strip().lower().replace("\ufeff", "")
 
     @classmethod
-    def _stable_value(cls, value) -> str:
+    def _stable_value(cls, value: Any) -> str:
         if value is None or (isinstance(value, float) and math.isnan(value)):
             return ""
         if isinstance(value, (pd.Timestamp,)):
@@ -65,19 +71,17 @@ class TransactionIngestionService:
 
     @classmethod
     def _row_hash(cls, row: dict) -> str:
-        amount = row.get("amount")
-        value = row.get("value", amount)
-        payload = {
-            "date": cls._stable_value(row.get("date")),
-            "time": cls._stable_value(row.get("time")),
-            "isin": cls._stable_value(row.get("isin")),
-            "order_id": cls._stable_value(row.get("order_id")),
-            "amount": cls._stable_value(amount),
-            "value": cls._stable_value(value),
-        }
-        return hashlib.md5(
-            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        r = dict(row) if not isinstance(row, dict) else row
+        amount_raw = r.get("amount", r.get("value", 0.0))
+        amount = parse_degiro_number(amount_raw) if amount_raw is not None else 0.0
+        return compute_row_hash(
+            date=cls._stable_value(r.get("date")),
+            time=cls._stable_value(r.get("time")),
+            isin=cls._stable_value(r.get("isin")),
+            order_id=cls._stable_value(r.get("order_id")),
+            amount=amount if amount is not None else 0.0,
+            description=cls._stable_value(r.get("description", "")),
+        )
 
     @classmethod
     def _validate_headers(cls, headers: list[str]) -> None:
@@ -132,7 +136,7 @@ class TransactionIngestionService:
         transactions = []
         duplicates_skipped = 0
         for record in parsed_transactions.to_dict(orient="records"):
-            row_hash = self._row_hash(record)
+            row_hash = record.get("row_hash") or self._row_hash(record)
             if row_hash in self._seen_hashes:
                 duplicates_skipped += 1
                 continue
@@ -141,10 +145,10 @@ class TransactionIngestionService:
             transactions.append(record)
 
         self.total_rows_seen = len(self._seen_hashes)
-        unique_transactions = pd.DataFrame(transactions, columns=[
-            *parsed_transactions.columns,
-            "row_hash",
-        ])
+        cols = list(parsed_transactions.columns)
+        if "row_hash" not in cols:
+            cols.append("row_hash")
+        unique_transactions = pd.DataFrame(transactions, columns=cols)
         return IngestionResult(
             new_rows=len(unique_transactions),
             duplicates_skipped=duplicates_skipped,

@@ -7,10 +7,11 @@ from unittest.mock import patch
 import pandas as pd
 import pytest
 
-from db_utils import DBStorage
-from portfolio_calculation import PortfolioCalculationEngine
-from rebalance_calculator import RebalanceCalculator
-from transaction_ingestion import TransactionIngestionService
+from backend.db import DBStorage
+from backend.engine import PortfolioCalculationEngine
+from backend.engine.rebalancer import RebalanceCalculator
+from backend.ingestion import TransactionIngestionService
+from backend.providers import PriceService
 
 
 def test_transaction_ingestion_service_handles_dutch_and_english_headers_and_idempotency():

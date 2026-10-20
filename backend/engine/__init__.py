@@ -13,6 +13,13 @@ from backend.engine.portfolio import (
     build_daily_equity_history,
 )
 from backend.engine.rebalancer import RebalanceCalculator
+from backend.engine.portfolio_engine import (
+    PortfolioCalculationEngine,
+    HISTORY_COLUMNS,
+    HOLDING_COLUMNS,
+    refresh_portfolio_snapshots,
+    SnapshotRefreshResult,
+)
 
 __all__ = [
     "calculate_cash_balance",
@@ -22,4 +29,9 @@ __all__ = [
     "compute_fifo_holdings",
     "build_daily_equity_history",
     "RebalanceCalculator",
+    "PortfolioCalculationEngine",
+    "HISTORY_COLUMNS",
+    "HOLDING_COLUMNS",
+    "refresh_portfolio_snapshots",
+    "SnapshotRefreshResult",
 ]

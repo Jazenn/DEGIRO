@@ -4,10 +4,10 @@ import pytest
 from contextlib import contextmanager
 from unittest.mock import patch
 
-from db_utils import DBStorage
-from portfolio_calculation import PortfolioCalculationEngine
-from snapshot_worker import refresh_portfolio_snapshots
-from transaction_ingestion import TransactionIngestionService
+from backend.db import DBStorage
+from backend.engine import PortfolioCalculationEngine, refresh_portfolio_snapshots
+from backend.ingestion import TransactionIngestionService
+from backend.providers import PriceService
 
 
 def test_current_holdings_calculates_fifo_cost_basis_after_partial_sale():

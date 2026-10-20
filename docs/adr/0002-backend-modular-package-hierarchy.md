@@ -26,7 +26,7 @@ We decided to reorganize the entire headless Python backend into a cohesive pack
    - Standalone CLI interface for scheduled GitHub Actions runs and local debugging (`python -m backend.cli snapshot`, `python -m backend.cli ingest <file>`).
 
 ### Migration Seams & Backwards Compatibility
-During migration, root-level modules (`data_processing.py`, `db_utils.py`, `managers.py`, `portfolio_calculation.py`, `rebalance_calculator.py`, `snapshot_worker.py`, `transaction_ingestion.py`) will temporarily act as thin forwarders/shims importing from `backend.*` so that existing unit tests and GitHub Actions workflows run seamlessly without breaking changes mid-refactor.
+During initial migration, root-level modules (`data_processing.py`, `db_utils.py`, `managers.py`, `portfolio_calculation.py`, `rebalance_calculator.py`, `snapshot_worker.py`, `transaction_ingestion.py`) temporarily acted as thin forwarders/shims importing from `backend.*`. Following the migration of all test suites and consumers directly to `backend.*`, these root-level legacy files have been purged in Ticket #22 to maintain a clean repository structure.
 
 ## Consequences
 

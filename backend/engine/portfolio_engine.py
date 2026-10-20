@@ -1,12 +1,15 @@
+"""Portfolio calculation engine and snapshot worker for rolling history and FIFO holdings."""
+
 from __future__ import annotations
 
 import re
+from dataclasses import dataclass
+from typing import Any, Dict, List, Optional, Tuple
 
 import pandas as pd
 
-from data_processing import classify_row, parse_quantity
-from rebalance_calculator import RebalanceCalculator
-
+from backend.engine.rebalancer import RebalanceCalculator
+from backend.ingestion.normalizer import parse_degiro_number
 
 HISTORY_COLUMNS = [
     "date",
@@ -16,6 +19,7 @@ HISTORY_COLUMNS = [
     "unrealized_pnl_eur",
     "unrealized_pnl_pct",
 ]
+
 HOLDING_COLUMNS = [
     "symbol",
     "name",
@@ -30,18 +34,83 @@ HOLDING_COLUMNS = [
     "drift_pct",
     "recommended_action_eur",
 ]
+
 _QUANTITY_FROM_DESCRIPTION = re.compile(
     r"(?:Koop|Verkoop|Buy|Sell)\s+([0-9.,eE+-]+)\s+@", re.IGNORECASE
 )
 _PRICE_FROM_DESCRIPTION = re.compile(r"@\s*([0-9.,eE+-]+)", re.IGNORECASE)
 
 
-def _number(value, default=0.0) -> float:
+def _number(value: Any, default: float = 0.0) -> float:
     try:
         number = float(value)
     except (TypeError, ValueError):
         return default
     return number if pd.notna(number) else default
+
+
+def classify_row(description: str) -> str:
+    """Classify transaction description into standard types."""
+    desc = str(description or "").strip()
+
+    if "Koop " in desc or desc.startswith("Buy "):
+        return "Buy"
+    if "Verkoop " in desc or desc.startswith("Sell "):
+        return "Sell"
+
+    if "DEGIRO Transactiekosten" in desc or "Brokerskosten" in desc or "Transaction Fee" in desc:
+        return "Fee"
+    if "Kosten van derden" in desc or "Third party" in desc:
+        return "Fee"
+    if "Aansluitingskosten" in desc or "Connectivity Fee" in desc:
+        return "Fee"
+    if "Valutakosten" in desc or "Auto FX" in desc:
+        return "Fee"
+
+    if "Dividendbelasting" in desc or "Withholding Tax" in desc:
+        return "Dividend Tax"
+    if "Dividend" in desc:
+        return "Dividend"
+    if "Flatex Interest" in desc or "Rente" in desc or "Interest" in desc:
+        return "Interest"
+
+    d_lower = desc.lower()
+    if (
+        "cash sweep transfer" in d_lower
+        or ("overboeking" in d_lower and ("geldrekening" in d_lower or "flatex" in d_lower))
+        or ("transfer" in d_lower and ("cash account" in d_lower or "flatex" in d_lower))
+    ):
+        return "Cash Sweep"
+    if "Reservation iDEAL" in desc:
+        return "Reservation"
+    if "iDEAL Deposit" in desc or desc == "Deposit":
+        return "Deposit"
+    if "Storting" in desc:
+        return "Deposit"
+    if "Terugstorting" in desc or "Withdrawal" in desc:
+        return "Withdrawal"
+
+    return "Other"
+
+
+def parse_quantity(description: str) -> float:
+    """Parse transaction quantity from description string."""
+    if not isinstance(description, str):
+        return 0.0
+
+    match = re.search(r"(Koop|Verkoop|Buy|Sell)\s+([0-9.,eE+-]+)\s+@", description)
+    if not match:
+        return 0.0
+
+    action = match.group(1)
+    qty_str = match.group(2)
+    qty = parse_degiro_number(qty_str)
+    if qty is None:
+        return 0.0
+
+    if action in ("Verkoop", "Sell"):
+        qty = -qty
+    return qty
 
 
 def _transaction_quantity(row: pd.Series) -> float:
@@ -236,14 +305,15 @@ class PortfolioCalculationEngine:
 
     @staticmethod
     def _price_for_day(
-        symbol, product, day, prices, historical_prices, require_historical
+        symbol: str, product: Optional[str], day: Any, prices: dict, historical_prices: dict, require_historical: bool
     ) -> float:
         for key in (symbol, product):
-            series = historical_prices.get(key)
-            if series is not None:
-                price = series.get(day)
-                if pd.notna(price) and price > 0:
-                    return float(price)
+            if key is not None:
+                series = historical_prices.get(key)
+                if series is not None:
+                    price = series.get(day)
+                    if pd.notna(price) and price > 0:
+                        return float(price)
         if require_historical:
             raise ValueError(
                 f"Missing historical market price for {symbol} on {day:%Y-%m-%d}."
@@ -360,3 +430,88 @@ class PortfolioCalculationEngine:
             "total_value_eur", ascending=False
         ).reset_index(drop=True)
 
+
+@dataclass(frozen=True)
+class SnapshotRefreshResult:
+    history_rows: int
+    holding_rows: int
+    quotes_requested: int
+
+
+def refresh_portfolio_snapshots(
+    storage: Any,
+    price_provider: Any,
+    config_manager: Any,
+    as_of_date: str | None = None,
+) -> SnapshotRefreshResult:
+    """Fetch mapped quotes, calculate snapshots, and persist the read model."""
+    transactions = storage.load_transactions()
+    if transactions.empty:
+        return SnapshotRefreshResult(0, 0, 0)
+
+    asset_tickers = {}
+    tickers = set()
+    for _, row in transactions.iterrows():
+        product = str(row.get("product") or "").strip()
+        isin = str(row.get("isin") or "").strip()
+        if not product and not isin:
+            continue
+        ticker = price_provider.resolve_ticker(product, isin or None)
+        if ticker:
+            asset_tickers[(product, isin)] = ticker
+            tickers.add(ticker)
+
+    ticker_prices = price_provider.get_live_prices_batch(sorted(tickers))
+    snapshot_date = as_of_date or pd.Timestamp.now(
+        tz="Europe/Amsterdam"
+    ).strftime("%Y-%m-%d")
+    dates = (
+        pd.to_datetime(transactions["date"], errors="coerce").dropna()
+        if "date" in transactions
+        else pd.Series(dtype="datetime64[ns]")
+    )
+    historical_ticker_prices = (
+        price_provider.get_historical_prices_batch(
+            sorted(tickers),
+            (dates.min() - pd.Timedelta(days=7)).strftime("%Y-%m-%d"),
+        )
+        if len(dates) and tickers
+        else {}
+    )
+    prices = {}
+    historical_prices = {}
+    for (product, isin), ticker in asset_tickers.items():
+        price = ticker_prices.get(ticker, 0.0)
+        history = dict(historical_ticker_prices.get(ticker, {}))
+        if price and price > 0:
+            history[snapshot_date] = price
+        if isin:
+            prices[isin] = price
+            historical_prices[isin] = history
+        if product:
+            prices[product] = price
+            historical_prices[product] = history
+        prices[ticker] = price
+
+    targets = {
+        key: float(settings.get("target_pct") or 0.0)
+        for key, settings in config_manager.get_assets().items()
+    }
+    engine = PortfolioCalculationEngine()
+    history = engine.compute_daily_history(
+        transactions,
+        prices=prices,
+        historical_prices=historical_prices,
+    )
+    holdings = engine.compute_current_holdings(
+        transactions,
+        prices=prices,
+        targets=targets,
+    )
+    storage.save_portfolio_snapshots(history, holdings)
+
+    return SnapshotRefreshResult(
+        history_rows=len(history),
+        holding_rows=len(holdings),
+        quotes_requested=len(tickers),
+    )
