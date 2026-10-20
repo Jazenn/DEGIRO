@@ -153,4 +153,72 @@ val1,val2,val3
     expect(result.rowsProcessed).toBe(0);
     expect(result.newRows).toBe(0);
   });
+
+  it('tags internal Flatex cash sweeps and preserves csv_row_id', () => {
+    const csvContent = `Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id
+19-10-2026,03:32,19-10-2026,,,"Overboeking van uw geldrekening bij flatexDEGIRO Bank 419,04 EUR",,,,EUR,"5,96",
+19-10-2026,03:32,19-10-2026,,,Degiro Cash Sweep Transfer,,EUR,"419,04",EUR,"425,00",
+18-10-2026,10:00,18-10-2026,FLATEX EURO BANKACCOUNT,NLFLATEXACNT,Degiro Cash Sweep Transfer,,EUR,"-100,00",EUR,"6,00",
+17-10-2026,09:00,17-10-2026,,,"Transfer to your cash account at flatexDEGIRO Bank",,,,EUR,"106,00",
+16-10-2026,08:00,16-10-2026,,,iDEAL Deposit,,EUR,"100,00",EUR,"106,00",
+`;
+    const result = parseDegiroCsv(csvContent);
+    expect(result.success).toBe(true);
+    expect(result.transactions.length).toBe(5);
+
+    // Row 0: Overboeking sweep note
+    expect(result.transactions[0].isCashSweep).toBe(true);
+    expect(result.transactions[0].csv_row_id).toBe(0);
+
+    // Row 1: Degiro Cash Sweep Transfer
+    expect(result.transactions[1].isCashSweep).toBe(true);
+    expect(result.transactions[1].csv_row_id).toBe(1);
+
+    // Row 2: FLATEX EURO BANKACCOUNT
+    expect(result.transactions[2].isCashSweep).toBe(true);
+    expect(result.transactions[2].csv_row_id).toBe(2);
+
+    // Row 3: English sweep note
+    expect(result.transactions[3].isCashSweep).toBe(true);
+    expect(result.transactions[3].csv_row_id).toBe(3);
+
+    // Row 4: External deposit (not a sweep!)
+    expect(result.transactions[4].isCashSweep).toBe(false);
+    expect(result.transactions[4].csv_row_id).toBe(4);
+  });
+
+  it('extracts crypto trades (BITCOIN, ETHEREUM) lacking ISIN with fractional quantities', () => {
+    const csvContent = `Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id
+18-02-2026,09:55,18-02-2026,BITCOIN,,"Koop 0,003472 @ 57.590,21 EUR",,EUR,"-199,95",EUR,"2325,57",f15d5dcd-156a-4162-b8a3-d05ac337acbe
+05-02-2026,22:43,05-02-2026,ETHEREUM,,"Koop 0,0314 @ 1.585,98 EUR",,EUR,"-49,80",EUR,"200,09",eb7ce8a2-9769-4e52-9488-a1110cbfe43f
+12-02-2026,10:00,12-02-2026,BITCOIN,,"Sell 0.001 @ 60,000.00 EUR",,EUR,"60,00",EUR,"2385,57",c25d5dcd-156a-4162-b8a3-d05ac337acbf
+`;
+    const result = parseDegiroCsv(csvContent);
+    expect(result.success).toBe(true);
+    expect(result.transactions.length).toBe(3);
+
+    // Bitcoin buy
+    expect(result.transactions[0].product).toBe('BITCOIN');
+    expect(result.transactions[0].isin).toBe('');
+    expect(result.transactions[0].quantity).toBe(0.003472);
+    expect(result.transactions[0].price).toBe(57590.21);
+    expect(result.transactions[0].amount).toBe(-199.95);
+    expect(result.transactions[0].isCashSweep).toBe(false);
+
+    // Ethereum buy
+    expect(result.transactions[1].product).toBe('ETHEREUM');
+    expect(result.transactions[1].isin).toBe('');
+    expect(result.transactions[1].quantity).toBe(0.0314);
+    expect(result.transactions[1].price).toBe(1585.98);
+    expect(result.transactions[1].amount).toBe(-49.80);
+    expect(result.transactions[1].isCashSweep).toBe(false);
+
+    // Bitcoin sell (English)
+    expect(result.transactions[2].product).toBe('BITCOIN');
+    expect(result.transactions[2].isin).toBe('');
+    expect(result.transactions[2].quantity).toBe(-0.001);
+    expect(result.transactions[2].price).toBe(60000.0);
+    expect(result.transactions[2].amount).toBe(60.0);
+    expect(result.transactions[2].isCashSweep).toBe(false);
+  });
 });

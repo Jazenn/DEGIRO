@@ -5,7 +5,7 @@ import {
   DashboardData,
   PortfolioAssetSetting,
 } from '../types/portfolio';
-import { IngestedTransaction } from '../utils/csvParser';
+import { IngestedTransaction, isInternalCashSweep } from '../utils/csvParser';
 import { calculatePortfolioMetrics } from '../utils/metrics';
 import { calculateDashboardFromTransactions } from '../utils/transactionAggregator';
 import { fetchLivePricesForHoldings } from './livePrices';
@@ -583,6 +583,8 @@ export async function fetchDashboardData(
         balance: r.balance !== null ? Number(r.balance) : null,
         orderId: r.orderId || '',
         rowHash: r.rowHash || '',
+        isCashSweep: r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
+        is_cash_sweep: r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
       }));
 
       const calculated = calculateDashboardFromTransactions(parsedTxs, assetSettings);

@@ -15,6 +15,9 @@ export interface ParsedTransaction {
   orderId: string;
   rowHash: string;
   csvRowId?: number;
+  csv_row_id?: number;
+  isCashSweep?: boolean;
+  is_cash_sweep?: boolean;
 }
 
 export type IngestedTransaction = ParsedTransaction;
@@ -400,6 +403,36 @@ export function normalizeDate(dateStr: string): string {
  * Extracts trade quantity and execution price from transaction descriptions
  * (e.g. "Koop 10 @ 100,00 EUR" or "Sell 5 @ 120.50").
  */
+/**
+ * Identify if a row is an internal Flatex cash sweep (net-zero cash flow).
+ * Matches:
+ *  - Degiro Cash Sweep Transfer
+ *  - Overboeking van/naar uw geldrekening bij flatexDEGIRO Bank...
+ *  - Transfer from/to your cash account...
+ *  - FLATEX EURO BANKACCOUNT / NLFLATEXACNT
+ */
+export function isInternalCashSweep(
+  description?: string | null,
+  product?: string | null
+): boolean {
+  const d = (description || '').toLowerCase();
+  const p = (product || '').toLowerCase();
+
+  if (d.includes('cash sweep transfer')) {
+    return true;
+  }
+  if (d.includes('overboeking') && (d.includes('geldrekening') || d.includes('flatex'))) {
+    return true;
+  }
+  if (d.includes('transfer') && (d.includes('cash account') || d.includes('flatex'))) {
+    return true;
+  }
+  if (p.includes('flatex euro bankaccount') || p.includes('nlflatexacnt')) {
+    return true;
+  }
+  return false;
+}
+
 export function extractTradeFromDescription(description: string): {
   quantity: number | null;
   price: number | null;
@@ -612,6 +645,8 @@ export function parseDegiroCsv(
       continue;
     }
 
+    const isCashSweep = isInternalCashSweep(description, product);
+
     seenHashes.add(rowHash);
     transactions.push({
       date,
@@ -627,6 +662,9 @@ export function parseDegiroCsv(
       orderId,
       rowHash,
       csvRowId: i - 1,
+      csv_row_id: i - 1,
+      isCashSweep,
+      is_cash_sweep: isCashSweep,
     });
   }
 

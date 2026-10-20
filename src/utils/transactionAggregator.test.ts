@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { calculateDashboardFromTransactions } from './transactionAggregator';
+import {
+  calculateDashboardFromTransactions,
+  sortTransactionsChronologically,
+  isInternalCashTransaction,
+  calculateCashBalance,
+  calculateNetInvestedCapital,
+} from './transactionAggregator';
 import { IngestedTransaction } from './csvParser';
 import { PortfolioAssetSetting } from '../types/portfolio';
 
@@ -44,6 +50,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: null,
         orderId: '',
         rowHash: 'hash-1',
+        isCashSweep: false,
       },
       {
         date: '2026-01-06',
@@ -58,6 +65,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: 100,
         orderId: 'order-1',
         rowHash: 'hash-2',
+        isCashSweep: false,
       },
       {
         date: '2026-01-07',
@@ -72,6 +80,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: 100,
         orderId: 'order-2',
         rowHash: 'hash-3',
+        isCashSweep: false,
       },
     ];
 
@@ -106,6 +115,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: null,
         orderId: '',
         rowHash: 'hash-1',
+        isCashSweep: false,
       },
       {
         date: '2026-01-06',
@@ -120,6 +130,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: 100,
         orderId: 'order-1',
         rowHash: 'hash-2',
+        isCashSweep: false,
       },
       {
         date: '2026-01-10',
@@ -134,6 +145,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: 110,
         orderId: 'order-3',
         rowHash: 'hash-3',
+        isCashSweep: false,
       },
     ];
 
@@ -165,6 +177,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: null,
         orderId: 'ORD-3',
         rowHash: 'hash-c',
+        isCashSweep: false,
       },
       {
         date: '02-02-2026',
@@ -179,6 +192,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: null,
         orderId: 'ORD-2',
         rowHash: 'hash-b',
+        isCashSweep: false,
       },
       {
         date: '01-02-2026',
@@ -193,6 +207,7 @@ describe('calculateDashboardFromTransactions', () => {
         price: null,
         orderId: '',
         rowHash: 'hash-a',
+        isCashSweep: false,
       },
     ];
 
@@ -215,6 +230,174 @@ describe('calculateDashboardFromTransactions', () => {
     expect(result.metrics.totalGainLossEur).toBe(200);
   });
 
+  it('does not treat AEGON stock as an internal cash sweep and includes it in active holdings', () => {
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '2026-01-01',
+        time: '09:00',
+        product: 'DEGIRO',
+        isin: '',
+        description: 'iDEAL Deposit',
+        amount: 500,
+        value: 500,
+        balance: 500,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'hash-dep',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-01-02',
+        time: '10:00',
+        product: 'AEGON LTD.',
+        isin: 'BMG0112X1056',
+        description: 'Koop 50 @ 6,00 EUR',
+        amount: -300,
+        value: -300,
+        balance: 200,
+        quantity: 50,
+        price: 6.0,
+        orderId: 'ord-aegon',
+        rowHash: 'hash-aegon',
+        isCashSweep: false,
+      },
+    ];
+
+    expect(isInternalCashTransaction(transactions[1])).toBe(false);
+    const result = calculateDashboardFromTransactions(transactions);
+    expect(result).not.toBeNull();
+    const aegon = result?.holdings.find((h) => h.isin === 'BMG0112X1056' || h.symbol === 'BMG0112X1056');
+    expect(aegon).toBeDefined();
+    expect(aegon?.shares_held).toBe(50);
+    expect(aegon?.total_value_eur).toBe(300);
+  });
+
+  it('sorts transactions forward in time using tie-breaking (date ASC, time ASC, csv_row_id DESC)', () => {
+    const txA: IngestedTransaction = {
+      date: '2026-03-01',
+      time: '10:00',
+      product: 'Vanguard FTSE All-World',
+      isin: 'IE00BK5BQT80',
+      description: 'Koop 1 @ 100',
+      amount: -100,
+      value: -100,
+      balance: 400,
+      quantity: 1,
+      price: 100,
+      orderId: 'ord-1',
+      rowHash: 'hash-1',
+      csv_row_id: 10,
+      isCashSweep: false,
+    };
+    const txB: IngestedTransaction = {
+      date: '2026-03-01',
+      time: '10:00',
+      product: 'Vanguard FTSE All-World',
+      isin: 'IE00BK5BQT80',
+      description: 'DEGIRO Transactiekosten',
+      amount: -1,
+      value: -1,
+      balance: 399,
+      quantity: null,
+      price: null,
+      orderId: 'ord-1',
+      rowHash: 'hash-2',
+      csv_row_id: 9,
+      isCashSweep: false,
+    };
+
+    const sorted = sortTransactionsChronologically([txB, txA]);
+    expect(sorted[0].csv_row_id).toBe(10);
+    expect(sorted[1].csv_row_id).toBe(9);
+  });
+
+  it('excludes internal cash sweeps from net invested capital and cash mutations', () => {
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '2026-01-01',
+        time: '09:00',
+        product: '',
+        isin: '',
+        description: 'Reservation iDEAL',
+        amount: 1000,
+        value: 1000,
+        balance: 1000,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'h1',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-01-02',
+        time: '03:00',
+        product: '',
+        isin: '',
+        description: 'Reservation iDEAL',
+        amount: -1000,
+        value: -1000,
+        balance: 0,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'h2',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-01-02',
+        time: '03:00',
+        product: '',
+        isin: '',
+        description: 'iDEAL Deposit',
+        amount: 1000,
+        value: 1000,
+        balance: 1000,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'h3',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-01-03',
+        time: '04:00',
+        product: '',
+        isin: '',
+        description: 'Degiro Cash Sweep Transfer',
+        amount: 500,
+        value: 500,
+        balance: 1500,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'h4',
+        isCashSweep: true,
+      },
+      {
+        date: '2026-01-03',
+        time: '04:00',
+        product: '',
+        isin: '',
+        description: 'Overboeking naar uw geldrekening bij flatexDEGIRO Bank 500 EUR',
+        amount: null,
+        value: null,
+        balance: 1000,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'h5',
+        isCashSweep: true,
+      },
+    ];
+
+    const result = calculateDashboardFromTransactions(transactions);
+    expect(result).not.toBeNull();
+    expect(result?.metrics.netInvestedCapital).toBe(1000);
+    expect(calculateNetInvestedCapital(transactions)).toBe(1000);
+    expect(calculateCashBalance(transactions)).toBe(1000);
+  });
+
   it('correctly parses and aggregates real user Account.csv file', async () => {
     const fs = await import('fs');
     const { parseDegiroCsv } = await import('./csvParser');
@@ -227,5 +410,9 @@ describe('calculateDashboardFromTransactions', () => {
     expect(dashboard?.metrics.netInvestedCapital).toBe(3728);
     expect(dashboard?.metrics.freeCashBalance).toBe(5.96);
     expect(dashboard?.holdings.length).toBe(6);
+
+    // Verify standalone cash and invested capital functions
+    expect(calculateNetInvestedCapital(parseResult.transactions)).toBe(3728);
+    expect(calculateCashBalance(parseResult.transactions)).toBe(5.96);
   });
 });
