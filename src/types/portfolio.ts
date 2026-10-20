@@ -31,7 +31,7 @@ export interface PortfolioMetrics {
   totalHoldingsCount: number;
 }
 
-export type Timeframe = '1M' | '3M' | '1Y' | 'ALL';
+export type Timeframe = '24H' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
 
 export interface PortfolioAssetSetting {
   symbol: string;

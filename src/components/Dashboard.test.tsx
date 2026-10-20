@@ -27,9 +27,11 @@ describe('Dashboard Component', () => {
     expect(screen.getByText('€1,420.50')).toBeInTheDocument();
   });
 
-  it('renders timeframe selector buttons with 1M, 3M, 1Y, ALL', () => {
+  it('renders timeframe selector buttons with 24H, 1W, 1M, 3M, 1Y, ALL', () => {
     render(<Dashboard initialData={demoData} />);
 
+    expect(screen.getByRole('button', { name: /^24H$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^1W$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^1M$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^3M$/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^1Y$/i })).toBeInTheDocument();

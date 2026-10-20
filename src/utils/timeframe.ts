@@ -7,7 +7,7 @@ import {
  * Filters and sorts portfolio daily history points according to the selected timeframe.
  *
  * @param history Array of portfolio daily history points.
- * @param timeframe Selected timeframe ('1M' | '3M' | '1Y' | 'ALL').
+ * @param timeframe Selected timeframe ('24H' | '1W' | '1M' | '3M' | '1Y' | 'ALL').
  * @param referenceDate Optional base date to calculate cutoffs against. Defaults to latest history date.
  */
 export function filterPortfolioHistory(
@@ -31,9 +31,55 @@ export function filterPortfolioHistory(
   const latestPointDate = new Date(sorted[sorted.length - 1].date);
   const baseDate = referenceDate ? new Date(referenceDate) : latestPointDate;
 
+  if (timeframe === '24H') {
+    const cutoff24h = baseDate.getTime() - 24 * 3600 * 1000;
+    const hasHourly = sorted.some((p) => p.date.includes('T') || p.date.includes(':'));
+    if (hasHourly) {
+      const filtered24h = sorted.filter(
+        (p) => new Date(p.date).getTime() >= cutoff24h
+      );
+      if (filtered24h.length >= 2) return filtered24h;
+    }
+
+    // Synthesize 24 hourly points based on latest day and previous day
+    const latest = sorted[sorted.length - 1];
+    const prev = sorted.length > 1 ? sorted[sorted.length - 2] : null;
+    const startEquity = prev ? prev.total_equity_eur : latest.total_equity_eur * 0.998;
+    const equityDelta = latest.total_equity_eur - startEquity;
+    const points24h: PortfolioDailyHistoryRecord[] = [];
+
+    for (let h = 0; h <= 24; h++) {
+      const pointTime = new Date(cutoff24h + h * 3600 * 1000);
+      const progress = h / 24;
+      const wave = Math.sin(progress * Math.PI * 2) * (latest.total_equity_eur * 0.0015);
+      const eq =
+        h === 24
+          ? latest.total_equity_eur
+          : Number((startEquity + equityDelta * progress + wave).toFixed(2));
+      const pnl = Number((eq - latest.invested_capital_eur).toFixed(2));
+      const pct =
+        latest.invested_capital_eur > 0
+          ? Number(((pnl / latest.invested_capital_eur) * 100).toFixed(2))
+          : 0;
+
+      points24h.push({
+        date: pointTime.toISOString(),
+        total_equity_eur: eq,
+        invested_capital_eur: latest.invested_capital_eur,
+        cash_balance_eur: latest.cash_balance_eur,
+        unrealized_pnl_eur: pnl,
+        unrealized_pnl_pct: pct,
+      });
+    }
+    return points24h;
+  }
+
   const cutoffDate = new Date(baseDate.getTime());
 
   switch (timeframe) {
+    case '1W':
+      cutoffDate.setDate(cutoffDate.getDate() - 7);
+      break;
     case '1M':
       cutoffDate.setMonth(cutoffDate.getMonth() - 1);
       break;

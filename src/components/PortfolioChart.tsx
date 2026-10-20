@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
   PortfolioDailyHistoryRecord,
   Timeframe,
@@ -17,7 +17,36 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
   timeframe,
   onTimeframeChange,
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [chartWidth, setChartWidth] = useState<number>(800);
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
+
+  // ResizeObserver to track container width for pixel-perfect hover & aspect ratio
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateWidth = () => {
+      if (containerRef.current) {
+        const w = containerRef.current.clientWidth;
+        if (w > 0) setChartWidth(w);
+      }
+    };
+    updateWidth();
+
+    if (typeof ResizeObserver !== 'undefined') {
+      const ro = new ResizeObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.contentRect.width > 0) {
+            setChartWidth(Math.round(entry.contentRect.width));
+          }
+        }
+      });
+      ro.observe(containerRef.current);
+      return () => ro.disconnect();
+    } else {
+      window.addEventListener('resize', updateWidth);
+      return () => window.removeEventListener('resize', updateWidth);
+    }
+  }, []);
 
   // Calculate return over the selected period
   const periodReturn = useMemo(() => {
@@ -47,7 +76,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
     yGridLines,
     xLabels,
   } = useMemo(() => {
-    const width = 800;
+    const width = chartWidth || 800;
     const height = 340;
     const pLeft = 70;
     const pRight = 24;
@@ -95,7 +124,61 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       const yEquity = pTop + plotH - ((d.total_equity_eur - yMin) / yRange) * plotH;
       const yInvested =
         pTop + plotH - ((d.invested_capital_eur - yMin) / yRange) * plotH;
-      return { x, yEquity, yInvested, data: d };
+
+      const dateObj = new Date(d.date);
+      const nextDateObj = i < n - 1 ? new Date(data[i + 1].date) : undefined;
+
+      let isHighlight = false;
+      let label = '';
+
+      switch (timeframe) {
+        case '24H': {
+          // Highlight every 4 hours and last point
+          isHighlight = i % 4 === 0 || i === n - 1;
+          label = dateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+          break;
+        }
+        case '1W': {
+          // Highlight each day
+          isHighlight = true;
+          label = dateObj.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric' });
+          break;
+        }
+        case '1M': {
+          // Fluctuations during the whole week, highlight for each last day of the week (Sunday/week boundary)
+          const isSunday = dateObj.getDay() === 0;
+          const isWeekEnd = nextDateObj ? nextDateObj.getDay() <= dateObj.getDay() : true;
+          isHighlight = isSunday || isWeekEnd || i === n - 1;
+          label = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          break;
+        }
+        case '3M': {
+          // Fluctuations during the whole week, highlight for each last day of the week
+          const isSunday = dateObj.getDay() === 0;
+          const isWeekEnd = nextDateObj ? nextDateObj.getDay() <= dateObj.getDay() : true;
+          isHighlight = isSunday || isWeekEnd || i === n - 1;
+          label = dateObj.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+          break;
+        }
+        case '1Y': {
+          // Highlight at the end of each month
+          const isMonthEnd = nextDateObj ? nextDateObj.getMonth() !== dateObj.getMonth() : true;
+          isHighlight = isMonthEnd || i === n - 1;
+          label = dateObj.toLocaleDateString('en-GB', { month: 'short' });
+          break;
+        }
+        case 'ALL':
+        default: {
+          const isQuarterEnd = nextDateObj
+            ? Math.floor(nextDateObj.getMonth() / 3) !== Math.floor(dateObj.getMonth() / 3)
+            : true;
+          isHighlight = isQuarterEnd || i === 0 || i === n - 1;
+          label = dateObj.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' });
+          break;
+        }
+      }
+
+      return { x, yEquity, yInvested, isHighlight, label, data: d };
     });
 
     // Generate line path
@@ -128,26 +211,30 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       });
     }
 
-    // X date labels: pick up to 5 evenly spaced points
-    const step = Math.max(1, Math.floor(n / 5));
-    const labels = [];
-    for (let i = 0; i < n; i += step) {
-      const p = pts[i];
-      const d = new Date(p.data.date);
-      const label = d.toLocaleDateString('en-GB', {
-        month: 'short',
-        year: n > 15 ? '2-digit' : undefined,
-      });
-      labels.push({ x: p.x, label });
+    // X date labels: take highlights with minimum spacing to prevent label crowding
+    const highlightedPts = pts.filter((p) => p.isHighlight);
+    const labels: Array<{ x: number; label: string }> = [];
+    let lastX = -Infinity;
+    const minDistance = plotW > 600 ? 50 : 40;
+
+    for (let idx = 0; idx < highlightedPts.length; idx++) {
+      const hp = highlightedPts[idx];
+      const isLast = idx === highlightedPts.length - 1;
+
+      if (isLast) {
+        if (labels.length > 0 && hp.x - lastX < minDistance) {
+          labels.pop(); // Remove previous to fit the last label cleanly
+        }
+        labels.push({ x: hp.x, label: hp.label });
+      } else if (hp.x - lastX >= minDistance) {
+        labels.push({ x: hp.x, label: hp.label });
+        lastX = hp.x;
+      }
     }
-    // Always include the last date label if not already present
-    if (pts.length > 0 && (n - 1) % step !== 0) {
-      const lastP = pts[pts.length - 1];
-      const lastD = new Date(lastP.data.date);
-      labels.push({
-        x: lastP.x,
-        label: lastD.toLocaleDateString('en-GB', { month: 'short', year: '2-digit' }),
-      });
+
+    // If no labels were produced (e.g. data length 1), add at least the single point
+    if (labels.length === 0 && pts.length > 0) {
+      labels.push({ x: pts[0].x, label: pts[0].label });
     }
 
     return {
@@ -164,7 +251,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       yGridLines: gridLines,
       xLabels: labels,
     };
-  }, [data]);
+  }, [data, timeframe, chartWidth]);
 
   const activePoint = hoverIndex !== null && points[hoverIndex] ? points[hoverIndex] : null;
 
@@ -240,11 +327,27 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
             <div className="flex items-center gap-2">
               <span className="text-slate-400">Date:</span>
               <span className="font-semibold text-white">
-                {new Date(activePoint.data.date).toLocaleDateString('en-GB', {
-                  day: 'numeric',
-                  month: 'short',
-                  year: 'numeric',
-                })}
+                {(() => {
+                  const d = new Date(activePoint.data.date);
+                  const hasTime =
+                    timeframe === '24H' ||
+                    activePoint.data.date.includes('T') ||
+                    activePoint.data.date.includes(':');
+                  if (hasTime) {
+                    return `${d.toLocaleDateString('en-GB', {
+                      day: 'numeric',
+                      month: 'short',
+                    })}, ${d.toLocaleTimeString('en-GB', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                    })}`;
+                  }
+                  return d.toLocaleDateString('en-GB', {
+                    day: 'numeric',
+                    month: 'short',
+                    year: 'numeric',
+                  });
+                })()}
               </span>
             </div>
             <div className="flex items-center gap-4">
@@ -283,9 +386,10 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       </div>
 
       {/* SVG Canvas */}
-      <div className="relative w-full h-64 sm:h-72 mt-3 select-none">
+      <div ref={containerRef} className="relative w-full h-64 sm:h-72 mt-3 select-none">
         <svg
           viewBox={`0 0 ${viewBoxWidth} ${viewBoxHeight}`}
+          preserveAspectRatio="none"
           className="w-full h-full overflow-visible"
           onMouseMove={handleMouseMove}
           onMouseLeave={handleMouseLeave}
@@ -346,7 +450,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
               x={lbl.x}
               y={viewBoxHeight - 12}
               textAnchor="middle"
-              className="font-mono text-[10px] fill-slate-500"
+              className="font-mono text-[10px] fill-slate-500 font-medium select-none"
             >
               {lbl.label}
             </text>
@@ -379,6 +483,24 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
               strokeLinejoin="round"
             />
           )}
+
+          {/* Highlight marker dots for key milestones */}
+          {points.map((p, idx) => {
+            if (!p.isHighlight) return null;
+            const isHovered = activePoint?.data.date === p.data.date;
+            return (
+              <circle
+                key={`hl-${idx}`}
+                cx={p.x}
+                cy={p.yEquity}
+                r={isHovered ? 5 : 3}
+                fill={isHovered ? '#38bdf8' : '#0284c7'}
+                stroke="#0f172a"
+                strokeWidth={isHovered ? 2 : 1.5}
+                className="transition-all duration-150"
+              />
+            );
+          })}
 
           {/* Active Hover Guide and Points */}
           {activePoint && (

@@ -208,6 +208,10 @@ export function calculateDashboardFromTransactions(
   }
 
   // 4. Compute Holdings per Asset
+  interface AssetTradePoint {
+    date: string;
+    price: number;
+  }
   interface AssetGroup {
     symbol: string;
     name: string;
@@ -216,6 +220,7 @@ export function calculateDashboardFromTransactions(
     totalCost: number;
     latestPrice: number;
     lots: Array<{ quantity: number; price: number }>;
+    tradePrices: AssetTradePoint[];
   }
   const assetGroups = new Map<string, AssetGroup>();
 
@@ -270,12 +275,17 @@ export function calculateDashboardFromTransactions(
         totalCost: 0,
         latestPrice: execPrice > 0 ? execPrice : Math.abs(tx.price || 0),
         lots: [] as Array<{ quantity: number; price: number }>,
+        tradePrices: [] as AssetTradePoint[],
       });
     }
 
     const group = assetGroups.get(key)!;
     if (execPrice > 0) {
       group.latestPrice = execPrice;
+      const txD = normalizeDate(tx.date);
+      if (txD) {
+        group.tradePrices.push({ date: txD, price: execPrice });
+      }
     }
 
     if (absQty > 0) {
@@ -371,6 +381,7 @@ export function calculateDashboardFromTransactions(
           : group.shares > 0
           ? group.totalCost / group.shares
           : 0;
+      group.latestPrice = price;
       const totalValue = group.shares * price;
       totalHoldingsValue += totalValue;
       totalActiveCost += group.totalCost;
@@ -433,58 +444,210 @@ export function calculateDashboardFromTransactions(
   // Sort holdings by total value descending
   activeHoldingsList.sort((a, b) => b.total_value_eur - a.total_value_eur);
 
-  // 6. Build Daily Portfolio History from dates
-  const historyMap = new Map<
-    string,
-    {
-      date: string;
-      total_equity_eur: number;
-      invested_capital_eur: number;
-      cash_balance_eur: number;
-      unrealized_pnl_eur: number;
-      unrealized_pnl_pct: number;
-    }
-  >();
+  // 6. Build Daily Portfolio History across continuous calendar dates
+  const firstTxDate = normalizeDate(sorted[0]?.date);
+  const lastTxDate = normalizeDate(sorted[sorted.length - 1]?.date);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const startDateStr = firstTxDate || todayStr;
+  const endDateStr = lastTxDate > todayStr ? lastTxDate : todayStr;
 
-  // Collect distinct transaction dates
-  const distinctDates = Array.from(
-    new Set(sorted.map((t) => normalizeDate(t.date)).filter(Boolean))
-  ).sort();
-  if (distinctDates.length > 0) {
-    let runningInvested = 0;
-    for (const d of distinctDates) {
-      const txsOnDay = sorted.filter((t) => normalizeDate(t.date) === d);
-      for (const t of txsOnDay) {
-        if (isInternalCashTransaction(t)) continue;
-        if (isDepositTransaction(t)) {
-          const amt = t.amount !== null && !isNaN(t.amount)
-            ? t.amount
-            : t.value !== null && !isNaN(t.value)
-            ? t.value
-            : 0;
-          runningInvested += amt;
-        } else if (isWithdrawalTransaction(t)) {
-          runningInvested -= Math.abs(t.amount || t.value || 0);
-        }
-      }
-      const dayInvested = runningInvested > 0 ? runningInvested : netInvested;
-      historyMap.set(d, {
-        date: d,
-        total_equity_eur: Number(totalEquity.toFixed(2)),
-        invested_capital_eur: Number(dayInvested.toFixed(2)),
-        cash_balance_eur: Number(latestCashBalance.toFixed(2)),
-        unrealized_pnl_eur: Number((totalEquity - dayInvested).toFixed(2)),
-        unrealized_pnl_pct:
-          dayInvested > 0 ? Number((((totalEquity - dayInvested) / dayInvested) * 100).toFixed(2)) : 0,
-      });
+  const calendarDates: string[] = [];
+  const startD = new Date(startDateStr + 'T00:00:00Z');
+  const endD = new Date(endDateStr + 'T00:00:00Z');
+
+  if (isNaN(startD.getTime()) || isNaN(endD.getTime()) || startD.getTime() > endD.getTime()) {
+    calendarDates.push(todayStr);
+  } else {
+    const cur = new Date(startD);
+    while (cur.getTime() <= endD.getTime()) {
+      calendarDates.push(cur.toISOString().slice(0, 10));
+      cur.setUTCDate(cur.getUTCDate() + 1);
     }
   }
 
-  const history: PortfolioDailyHistoryRecord[] = Array.from(historyMap.values());
-  if (history.length === 0) {
-    const today = new Date().toISOString().slice(0, 10);
+  // Pre-index transactions by normalized date
+  const txByDate = new Map<string, IngestedTransaction[]>();
+  for (const tx of sorted) {
+    const d = normalizeDate(tx.date);
+    if (!d) continue;
+    if (!txByDate.has(d)) txByDate.set(d, []);
+    txByDate.get(d)!.push(tx);
+  }
+
+  // Helper to interpolate price for an asset on any date
+  const getAssetPriceOnDate = (group: AssetGroup, dateStr: string): number => {
+    if (!group.tradePrices || group.tradePrices.length === 0) {
+      return group.latestPrice || 0;
+    }
+    const targetTime = new Date(dateStr + 'T00:00:00Z').getTime();
+    const todayTime = new Date(todayStr + 'T00:00:00Z').getTime();
+
+    if (targetTime >= todayTime) {
+      return group.latestPrice || 0;
+    }
+
+    let beforeTrade: AssetTradePoint | null = null;
+    let afterTrade: AssetTradePoint | null = null;
+
+    for (const tp of group.tradePrices) {
+      const tpTime = new Date(tp.date + 'T00:00:00Z').getTime();
+      if (tpTime <= targetTime) {
+        if (!beforeTrade || tpTime > new Date(beforeTrade.date + 'T00:00:00Z').getTime()) {
+          beforeTrade = tp;
+        }
+      } else {
+        if (!afterTrade || tpTime < new Date(afterTrade.date + 'T00:00:00Z').getTime()) {
+          afterTrade = tp;
+        }
+      }
+    }
+
+    if (!beforeTrade) {
+      return afterTrade ? afterTrade.price : group.latestPrice || 0;
+    }
+
+    if (!afterTrade) {
+      const beforeTime = new Date(beforeTrade.date + 'T00:00:00Z').getTime();
+      const span = todayTime - beforeTime;
+      if (span <= 0) return beforeTrade.price;
+      const progress = Math.min(1, Math.max(0, (targetTime - beforeTime) / span));
+      return beforeTrade.price + (group.latestPrice - beforeTrade.price) * progress;
+    }
+
+    const beforeTime = new Date(beforeTrade.date + 'T00:00:00Z').getTime();
+    const afterTime = new Date(afterTrade.date + 'T00:00:00Z').getTime();
+    const span = afterTime - beforeTime;
+    if (span <= 0) return beforeTrade.price;
+    const progress = Math.min(1, Math.max(0, (targetTime - beforeTime) / span));
+    return beforeTrade.price + (afterTrade.price - beforeTrade.price) * progress;
+  };
+
+  const history: PortfolioDailyHistoryRecord[] = [];
+  let runningCash = 0;
+  let runningInvested = 0;
+  const currentShares = new Map<string, number>();
+  const currentCosts = new Map<string, number>();
+
+  for (let i = 0; i < calendarDates.length; i++) {
+    const d = calendarDates[i];
+    const isFinalDay = i === calendarDates.length - 1;
+    const dayTxs = txByDate.get(d) || [];
+
+    for (const tx of dayTxs) {
+      if (isInternalCashTransaction(tx)) continue;
+
+      if (isDepositTransaction(tx)) {
+        const amt =
+          tx.amount !== null && !isNaN(tx.amount)
+            ? tx.amount
+            : tx.value !== null && !isNaN(tx.value)
+            ? tx.value
+            : 0;
+        runningInvested += amt;
+      } else if (isWithdrawalTransaction(tx)) {
+        runningInvested -= Math.abs(tx.amount || tx.value || 0);
+      }
+
+      if (tx.balance !== null && tx.balance !== undefined && !isNaN(tx.balance)) {
+        runningCash = Number(tx.balance);
+      } else {
+        if (tx.amount !== null && !isNaN(tx.amount)) {
+          runningCash += tx.amount;
+        } else if (tx.value !== null && !isNaN(tx.value)) {
+          runningCash += tx.value;
+        }
+      }
+
+      if (tx.product || tx.isin || tx.description) {
+        const desc = normalizeString(tx.description);
+        const isFee =
+          desc.includes('transactiekosten') ||
+          desc.includes('kosten van derden') ||
+          desc.includes('aansluitingskosten') ||
+          desc.includes('valutakosten') ||
+          desc.includes('fee');
+        const isDividend =
+          desc.includes('dividend') ||
+          desc.includes('rente') ||
+          desc.includes('interest');
+        if (!isFee && !isDividend && !isDepositTransaction(tx) && !isWithdrawalTransaction(tx)) {
+          let rawQty =
+            tx.quantity !== null && tx.quantity !== undefined
+              ? Number(tx.quantity)
+              : 0;
+          let execPrice =
+            tx.price !== null && tx.price !== undefined ? Number(tx.price) : 0;
+          if (rawQty === 0 || execPrice === 0) {
+            const extracted = extractTradeFromDescription(tx.description);
+            if (rawQty === 0 && extracted.quantity !== null) rawQty = extracted.quantity;
+            if (execPrice === 0 && extracted.price !== null) execPrice = extracted.price;
+          }
+          const isSell = desc.includes('verkoop') || desc.includes('sell') || rawQty < 0;
+          const absQty = Math.abs(rawQty);
+          const key = (tx.isin || tx.product || 'UNKNOWN').trim().toUpperCase();
+          if (absQty > 0) {
+            const prevShares = currentShares.get(key) || 0;
+            const prevCost = currentCosts.get(key) || 0;
+            if (isSell) {
+              const newShares = Math.max(0, prevShares - absQty);
+              currentShares.set(key, newShares);
+              const costReduction = prevShares > 0 ? (absQty / prevShares) * prevCost : prevCost;
+              currentCosts.set(key, Math.max(0, prevCost - costReduction));
+            } else {
+              currentShares.set(key, prevShares + absQty);
+              const buyCost = Math.abs(
+                tx.amount !== null && tx.amount !== undefined
+                  ? tx.amount
+                  : tx.value !== null && tx.value !== undefined
+                  ? tx.value
+                  : absQty * execPrice
+              );
+              currentCosts.set(key, prevCost + buyCost);
+            }
+          }
+        }
+      }
+    }
+
+    let dayHoldingsValue = 0;
+    let totalCostBasis = 0;
+    for (const [key, shares] of currentShares.entries()) {
+      if (shares > 0.0001) {
+        const group = assetGroups.get(key);
+        if (group) {
+          const p = getAssetPriceOnDate(group, d);
+          dayHoldingsValue += shares * p;
+        }
+        totalCostBasis += currentCosts.get(key) || 0;
+      }
+    }
+
+    let dayTotalEquity = isFinalDay
+      ? totalEquity
+      : dayHoldingsValue + Math.max(0, runningCash);
+    let dayInvested = isFinalDay
+      ? netInvested
+      : runningInvested > 0
+      ? runningInvested
+      : totalCostBasis + Math.max(0, runningCash);
+    let dayCash = isFinalDay ? latestCashBalance : runningCash;
+
     history.push({
-      date: today,
+      date: d,
+      total_equity_eur: Number(dayTotalEquity.toFixed(2)),
+      invested_capital_eur: Number(dayInvested.toFixed(2)),
+      cash_balance_eur: Number(dayCash.toFixed(2)),
+      unrealized_pnl_eur: Number((dayTotalEquity - dayInvested).toFixed(2)),
+      unrealized_pnl_pct:
+        dayInvested > 0
+          ? Number((((dayTotalEquity - dayInvested) / dayInvested) * 100).toFixed(2))
+          : 0,
+    });
+  }
+
+  if (history.length === 0) {
+    history.push({
+      date: todayStr,
       total_equity_eur: Number(totalEquity.toFixed(2)),
       invested_capital_eur: Number(netInvested.toFixed(2)),
       cash_balance_eur: Number(latestCashBalance.toFixed(2)),

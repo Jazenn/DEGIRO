@@ -117,4 +117,16 @@ describe('Timeframe Filter Logic', () => {
     const result = filterPortfolioHistory(shortHistory, '1Y', refDate);
     expect(result.length).toBe(2);
   });
+
+  it('filters to the last 1 week for 1W timeframe', () => {
+    const result = filterPortfolioHistory(sampleHistory, '1W', refDate);
+    // cutoff: 2026-10-19 minus 7 days = 2026-10-12 -> includes 2026-10-19
+    expect(result.map((r) => r.date)).toEqual(['2026-10-19']);
+  });
+
+  it('generates 24-hour hourly points for 24H timeframe', () => {
+    const result = filterPortfolioHistory(sampleHistory, '24H', refDate);
+    expect(result.length).toBe(25);
+    expect(result[result.length - 1].total_equity_eur).toBe(48250);
+  });
 });

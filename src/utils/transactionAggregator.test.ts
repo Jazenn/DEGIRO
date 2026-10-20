@@ -503,4 +503,91 @@ describe('calculateDashboardFromTransactions', () => {
     // Unrealized PnL = 250 - 200 = 50
     expect(vwce.unrealized_pnl_eur).toBe(50);
   });
+
+  it('ensures historical portfolio equity begins at initial deposit and grows over time rather than pinning to latest value', () => {
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '2024-04-02',
+        time: '10:00',
+        product: '',
+        isin: '',
+        description: 'iDEAL Deposit',
+        amount: 10,
+        value: 10,
+        balance: 10,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'tx-1',
+        isCashSweep: false,
+      },
+      {
+        date: '2024-04-04',
+        time: '11:00',
+        product: 'AEGON LTD.',
+        isin: 'BMG0112X1056',
+        description: 'Koop 1 @ 5,75 EUR',
+        amount: -5.75,
+        value: -5.75,
+        balance: 4.25,
+        quantity: 1,
+        price: 5.75,
+        orderId: 'tx-2',
+        rowHash: 'tx-2',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-02-20',
+        time: '12:00',
+        product: '',
+        isin: '',
+        description: 'iDEAL Deposit',
+        amount: 4000,
+        value: 4000,
+        balance: 4004.25,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'tx-3',
+        isCashSweep: false,
+      },
+      {
+        date: '2026-02-20',
+        time: '14:00',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 40 @ 100 EUR',
+        amount: -4000,
+        value: -4000,
+        balance: 4.25,
+        quantity: 40,
+        price: 100,
+        orderId: 'tx-4',
+        rowHash: 'tx-4',
+        isCashSweep: false,
+      },
+    ];
+
+    const result = calculateDashboardFromTransactions(transactions, mockSettings);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // Check earliest history point on 2024-04-02
+    const firstDay = result.history.find((h) => h.date === '2024-04-02');
+    expect(firstDay).toBeDefined();
+    expect(firstDay?.invested_capital_eur).toBe(10);
+    expect(firstDay?.total_equity_eur).toBe(10);
+    expect(firstDay?.unrealized_pnl_eur).toBe(0);
+
+    // After first stock purchase on 2024-04-04
+    const purchaseDay = result.history.find((h) => h.date === '2024-04-04');
+    expect(purchaseDay).toBeDefined();
+    expect(purchaseDay?.invested_capital_eur).toBe(10);
+    expect(purchaseDay?.total_equity_eur).toBeCloseTo(10, 1);
+
+    // Latest day has the full ~4010 equity and invested capital
+    const latestDay = result.history[result.history.length - 1];
+    expect(latestDay.invested_capital_eur).toBe(4010);
+    expect(latestDay.total_equity_eur).toBeGreaterThanOrEqual(4010);
+  });
 });
