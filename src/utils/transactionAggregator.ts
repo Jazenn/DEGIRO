@@ -7,6 +7,7 @@ import {
 import {
   IngestedTransaction,
   extractTradeFromDescription,
+  isInternalCashSweep,
   normalizeDate,
 } from './csvParser';
 import { calculatePortfolioMetrics } from './metrics';
@@ -20,46 +21,42 @@ function normalizeString(val: string | null | undefined): string {
 }
 
 /**
- * Checks if a transaction is an internal cash account or non-position record.
+ * Checks if a transaction is an internal cash sweep or non-position record.
+ * Internal Flatex cash sweeps (Degiro Cash Sweep Transfer, Overboeking, FLATEX EURO BANKACCOUNT)
+ * are net-zero transfers that must NOT distort invested capital or cash ledger.
+ * Real stocks like Aegon are NOT internal cash sweeps.
  */
-function isInternalCashTransaction(tx: IngestedTransaction): boolean {
-  const isin = normalizeString(tx.isin);
-  const prod = normalizeString(tx.product);
-  const desc = normalizeString(tx.description);
-  return (
-    isin.includes('nlflatexacnt') ||
-    isin.includes('flatex') ||
-    prod.includes('aegon') ||
-    prod.includes('degiro cash') ||
-    prod === 'degiro' ||
-    prod === 'flatex' ||
-    prod.includes('geldrekening') ||
-    desc.includes('geldrekening') ||
-    desc.includes('cash sweep') ||
-    desc.includes('flatex')
-  );
+export function isInternalCashTransaction(tx: IngestedTransaction): boolean {
+  if (tx.isCashSweep !== undefined) {
+    return tx.isCashSweep;
+  }
+  if (tx.is_cash_sweep !== undefined) {
+    return tx.is_cash_sweep;
+  }
+  return isInternalCashSweep(tx.description, tx.product);
 }
 
 /**
  * Checks if a transaction is an external deposit (money transferred into DEGIRO from external bank).
  * Excludes internal cash sweeps and Flatex bank transfers.
+ * Includes 3-row iDEAL deposit lifecycle (+X Reservation, -X Reservation Release, +X Settled Deposit).
  */
-function isDepositTransaction(tx: IngestedTransaction): boolean {
+export function isDepositTransaction(tx: IngestedTransaction): boolean {
+  if (isInternalCashTransaction(tx)) {
+    return false;
+  }
   const desc = normalizeString(tx.description);
   if (
     desc.includes('flatexdegiro bank') ||
     desc.includes('cash sweep') ||
-    desc.includes('reservation') ||
-    isInternalCashTransaction(tx)
+    desc.includes('overboeking')
   ) {
     return false;
   }
   return (
-    desc === 'ideal deposit' ||
-    desc.startsWith('ideal deposit') ||
-    desc === 'storting' ||
-    (desc.includes('storting') && !desc.includes('terugstorting') && !desc.includes('overboeking')) ||
-    (desc.includes('deposit') && !desc.includes('reservation'))
+    desc.includes('ideal') ||
+    desc.includes('deposit') ||
+    (desc.includes('storting') && !desc.includes('terugstorting'))
   );
 }
 
@@ -67,12 +64,14 @@ function isDepositTransaction(tx: IngestedTransaction): boolean {
  * Checks if a transaction is an external withdrawal (money transferred out to external bank).
  * Excludes internal cash sweeps.
  */
-function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
+export function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
+  if (isInternalCashTransaction(tx)) {
+    return false;
+  }
   const desc = normalizeString(tx.description);
   if (
     desc.includes('flatexdegiro bank') ||
-    desc.includes('cash sweep') ||
-    isInternalCashTransaction(tx)
+    desc.includes('cash sweep')
   ) {
     return false;
   }
@@ -82,6 +81,89 @@ function isWithdrawalTransaction(tx: IngestedTransaction): boolean {
     (desc.includes('onttrekking') && !desc.includes('flatex')) ||
     (desc.includes('withdrawal') && !desc.includes('flatex'))
   );
+}
+
+/**
+ * Sort transactions forward in time using DEGIRO tie-breaking rules.
+ * Primary: Datetime (date + time) ASC
+ * Tie-breaker: csv_row_id DESC (original DEGIRO export is reverse chronological,
+ * so higher row index within the same minute executed earlier).
+ */
+export function sortTransactionsChronologically(
+  transactions: IngestedTransaction[]
+): IngestedTransaction[] {
+  return [...transactions].sort((a, b) => {
+    const da = normalizeDate(a.date || '');
+    const db = normalizeDate(b.date || '');
+    const dateComp = da.localeCompare(db);
+    if (dateComp !== 0) return dateComp;
+    const timeComp = (a.time || '').localeCompare(b.time || '');
+    if (timeComp !== 0) return timeComp;
+    const rowA = a.csv_row_id ?? a.csvRowId ?? 0;
+    const rowB = b.csv_row_id ?? b.csvRowId ?? 0;
+    return rowB - rowA;
+  });
+}
+
+/**
+ * Calculate current free cash balance from non-sweep cash ledger entries.
+ * Uses Saldo if present on latest transaction, or sums non-sweep cash mutations.
+ */
+export function calculateCashBalance(transactions: IngestedTransaction[]): number {
+  if (!transactions || transactions.length === 0) return 0;
+  const sorted = sortTransactionsChronologically(transactions);
+
+  for (let i = sorted.length - 1; i >= 0; i--) {
+    const tx = sorted[i];
+    if (tx.balance !== null && tx.balance !== undefined && !isNaN(tx.balance)) {
+      return Number(tx.balance);
+    }
+  }
+
+  let computedCash = 0;
+  for (const tx of sorted) {
+    if (isInternalCashTransaction(tx)) continue;
+    if (tx.amount !== null && !isNaN(tx.amount)) {
+      computedCash += tx.amount;
+    } else if (tx.value !== null && !isNaN(tx.value)) {
+      computedCash += tx.value;
+    }
+  }
+  return Math.round(computedCash * 100) / 100;
+}
+
+/**
+ * Calculate cumulative net external deposited capital.
+ * Follows the 3-row iDEAL lifecycle (+X reservation, -X reservation release, +X settled deposit)
+ * where internal cash sweeps are excluded. Net sum of external deposits and withdrawals.
+ */
+export function calculateNetInvestedCapital(transactions: IngestedTransaction[]): number {
+  if (!transactions || transactions.length === 0) return 0;
+  const sorted = sortTransactionsChronologically(transactions);
+  let totalDeposits = 0;
+  let totalWithdrawals = 0;
+  let hasExternalFlow = false;
+
+  for (const tx of sorted) {
+    if (isInternalCashTransaction(tx)) continue;
+
+    if (isDepositTransaction(tx)) {
+      const amt = tx.amount !== null && !isNaN(tx.amount)
+        ? tx.amount
+        : tx.value !== null && !isNaN(tx.value)
+        ? tx.value
+        : 0;
+      totalDeposits += amt;
+      hasExternalFlow = true;
+    } else if (isWithdrawalTransaction(tx)) {
+      const amt = Math.abs(tx.amount || tx.value || 0);
+      totalWithdrawals += amt;
+      hasExternalFlow = true;
+    }
+  }
+
+  if (!hasExternalFlow) return 0;
+  return Math.round((totalDeposits - totalWithdrawals) * 100) / 100;
 }
 
 /**
@@ -102,52 +184,29 @@ export function calculateDashboardFromTransactions(
   // When sorting chronologically (oldest to newest):
   // Date asc, Time asc.
   // For ties, higher csvRowId comes first (older in time, since CSV is exported newest-first).
-  const sorted = [...transactions].sort((a, b) => {
-    const da = normalizeDate(a.date || '');
-    const db = normalizeDate(b.date || '');
-    const dateComp = da.localeCompare(db);
-    if (dateComp !== 0) return dateComp;
-    const timeComp = (a.time || '').localeCompare(b.time || '');
-    if (timeComp !== 0) return timeComp;
-    const rowA = a.csvRowId ?? 0;
-    const rowB = b.csvRowId ?? 0;
-    return rowB - rowA;
-  });
+  const sorted = sortTransactionsChronologically(transactions);
 
   // 2. Compute Cash Balance
-  // Check in reverse chronological order for the latest non-null balance (e.g. from Account.csv Saldo)
-  let latestCashBalance: number | null = null;
-  for (let i = sorted.length - 1; i >= 0; i--) {
-    const tx = sorted[i];
-    if (tx.balance !== null && tx.balance !== undefined && !isNaN(tx.balance)) {
-      latestCashBalance = Number(tx.balance);
-      break;
-    }
-  }
-
-  // If no Saldo was present in CSV (e.g. Transactions.csv export), compute cash from flows
-  if (latestCashBalance === null) {
-    let computedCash = 0;
-    for (const tx of sorted) {
-      if (tx.amount !== null && !isNaN(tx.amount)) {
-        computedCash += tx.amount;
-      } else if (tx.value !== null && !isNaN(tx.value)) {
-        computedCash += tx.value;
-      }
-    }
-    latestCashBalance = computedCash;
-  }
+  const latestCashBalance = calculateCashBalance(sorted);
 
   // 3. Compute Net Invested Capital
   let totalDeposits = 0;
   let totalWithdrawals = 0;
+  let hasExternalFlow = false;
   for (const tx of sorted) {
+    if (isInternalCashTransaction(tx)) continue;
     if (isDepositTransaction(tx)) {
-      const amt = Math.abs(tx.amount || tx.value || 0);
+      const amt = tx.amount !== null && !isNaN(tx.amount)
+        ? tx.amount
+        : tx.value !== null && !isNaN(tx.value)
+        ? tx.value
+        : 0;
       totalDeposits += amt;
+      hasExternalFlow = true;
     } else if (isWithdrawalTransaction(tx)) {
       const amt = Math.abs(tx.amount || tx.value || 0);
       totalWithdrawals += amt;
+      hasExternalFlow = true;
     }
   }
 
@@ -323,8 +382,8 @@ export function calculateDashboardFromTransactions(
   // 5. Total Portfolio Equity
   const totalEquity = totalHoldingsValue + Math.max(0, latestCashBalance);
 
-  // If no deposits were recognized, estimate net invested from total cost + cash
-  let netInvested = totalDeposits - totalWithdrawals;
+  // If no external deposits were recognized, estimate net invested from total cost + cash
+  let netInvested = hasExternalFlow ? totalDeposits - totalWithdrawals : 0;
   if (netInvested <= 0) {
     netInvested = totalActiveCost + Math.max(0, latestCashBalance);
   }
@@ -381,8 +440,14 @@ export function calculateDashboardFromTransactions(
     for (const d of distinctDates) {
       const txsOnDay = sorted.filter((t) => normalizeDate(t.date) === d);
       for (const t of txsOnDay) {
+        if (isInternalCashTransaction(t)) continue;
         if (isDepositTransaction(t)) {
-          runningInvested += Math.abs(t.amount || t.value || 0);
+          const amt = t.amount !== null && !isNaN(t.amount)
+            ? t.amount
+            : t.value !== null && !isNaN(t.value)
+            ? t.value
+            : 0;
+          runningInvested += amt;
         } else if (isWithdrawalTransaction(t)) {
           runningInvested -= Math.abs(t.amount || t.value || 0);
         }
