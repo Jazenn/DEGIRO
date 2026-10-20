@@ -13,6 +13,7 @@ from typing import Any, Dict, List, Optional, Set
 import pandas as pd
 
 from backend.ingestion.loader import load_degiro_csv
+from backend.ingestion.normalizer import compute_row_hash, parse_degiro_number
 
 
 @dataclass
@@ -70,19 +71,17 @@ class TransactionIngestionService:
 
     @classmethod
     def _row_hash(cls, row: dict) -> str:
-        amount = row.get("amount")
-        value = row.get("value", amount)
-        payload = {
-            "date": cls._stable_value(row.get("date")),
-            "time": cls._stable_value(row.get("time")),
-            "isin": cls._stable_value(row.get("isin")),
-            "order_id": cls._stable_value(row.get("order_id")),
-            "amount": cls._stable_value(amount),
-            "value": cls._stable_value(value),
-        }
-        return hashlib.md5(
-            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
-        ).hexdigest()
+        r = dict(row) if not isinstance(row, dict) else row
+        amount_raw = r.get("amount", r.get("value", 0.0))
+        amount = parse_degiro_number(amount_raw) if amount_raw is not None else 0.0
+        return compute_row_hash(
+            date=cls._stable_value(r.get("date")),
+            time=cls._stable_value(r.get("time")),
+            isin=cls._stable_value(r.get("isin")),
+            order_id=cls._stable_value(r.get("order_id")),
+            amount=amount if amount is not None else 0.0,
+            description=cls._stable_value(r.get("description", "")),
+        )
 
     @classmethod
     def _validate_headers(cls, headers: list[str]) -> None:
@@ -137,7 +136,7 @@ class TransactionIngestionService:
         transactions = []
         duplicates_skipped = 0
         for record in parsed_transactions.to_dict(orient="records"):
-            row_hash = self._row_hash(record)
+            row_hash = record.get("row_hash") or self._row_hash(record)
             if row_hash in self._seen_hashes:
                 duplicates_skipped += 1
                 continue

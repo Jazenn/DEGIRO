@@ -273,7 +273,7 @@ describe('calculateDashboardFromTransactions', () => {
     expect(aegon?.total_value_eur).toBe(300);
   });
 
-  it('sorts transactions forward in time using tie-breaking (date ASC, time ASC, csv_row_id DESC)', () => {
+  it('sorts transactions forward in time using tie-breaking (date ASC, time ASC, csvRowId DESC)', () => {
     const txA: IngestedTransaction = {
       date: '2026-03-01',
       time: '10:00',
@@ -287,7 +287,7 @@ describe('calculateDashboardFromTransactions', () => {
       price: 100,
       orderId: 'ord-1',
       rowHash: 'hash-1',
-      csv_row_id: 10,
+      csvRowId: 10,
       isCashSweep: false,
     };
     const txB: IngestedTransaction = {
@@ -303,13 +303,13 @@ describe('calculateDashboardFromTransactions', () => {
       price: null,
       orderId: 'ord-1',
       rowHash: 'hash-2',
-      csv_row_id: 9,
+      csvRowId: 9,
       isCashSweep: false,
     };
 
     const sorted = sortTransactionsChronologically([txB, txA]);
-    expect(sorted[0].csv_row_id).toBe(10);
-    expect(sorted[1].csv_row_id).toBe(9);
+    expect(sorted[0].csvRowId).toBe(10);
+    expect(sorted[1].csvRowId).toBe(9);
   });
 
   it('excludes internal cash sweeps from net invested capital and cash mutations', () => {
@@ -414,5 +414,93 @@ describe('calculateDashboardFromTransactions', () => {
     // Verify standalone cash and invested capital functions
     expect(calculateNetInvestedCapital(parseResult.transactions)).toBe(3728);
     expect(calculateCashBalance(parseResult.transactions)).toBe(5.96);
+  });
+
+  it('calculates FIFO cost basis and depletes oldest lots first upon partial sale', () => {
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '2026-01-01',
+        time: '09:00',
+        product: 'DEGIRO',
+        isin: '',
+        description: 'iDEAL Deposit',
+        amount: 1000,
+        value: 1000,
+        balance: 1000,
+        quantity: null,
+        price: null,
+        orderId: '',
+        rowHash: 'hash-dep',
+        isCashSweep: false,
+        csvRowId: 0,
+      },
+      // Lot 1: Buy 10 @ €10 (cost = 100)
+      {
+        date: '2026-01-02',
+        time: '10:00',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 10 @ 10,00 EUR',
+        amount: -100,
+        value: -100,
+        balance: 900,
+        quantity: 10,
+        price: 10,
+        orderId: 'ord-buy-1',
+        rowHash: 'hash-buy-1',
+        isCashSweep: false,
+        csvRowId: 1,
+      },
+      // Lot 2: Buy 10 @ €20 (cost = 200)
+      {
+        date: '2026-01-03',
+        time: '10:00',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Koop 10 @ 20,00 EUR',
+        amount: -200,
+        value: -200,
+        balance: 700,
+        quantity: 10,
+        price: 20,
+        orderId: 'ord-buy-2',
+        rowHash: 'hash-buy-2',
+        isCashSweep: false,
+        csvRowId: 2,
+      },
+      // Sell 10 @ €25 (depletes Lot 1 @ €10 under FIFO; remaining is Lot 2 @ €20)
+      {
+        date: '2026-01-04',
+        time: '10:00',
+        product: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        description: 'Verkoop 10 @ 25,00 EUR',
+        amount: 250,
+        value: 250,
+        balance: 950,
+        quantity: -10,
+        price: 25,
+        orderId: 'ord-sell-1',
+        rowHash: 'hash-sell-1',
+        isCashSweep: false,
+        csvRowId: 3,
+      },
+    ];
+
+    const result = calculateDashboardFromTransactions(transactions, mockSettings);
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    expect(result.holdings.length).toBe(1);
+    const vwce = result.holdings[0];
+    expect(vwce.shares_held).toBe(10);
+    // Remaining cost basis under FIFO must be 10 * 20 = 200 (not weighted average 150)
+    expect(vwce.total_cost_eur).toBe(200);
+    // Current price is €25 from latest transaction
+    expect(vwce.current_price_eur).toBe(25);
+    // Total value = 10 * 25 = 250
+    expect(vwce.total_value_eur).toBe(250);
+    // Unrealized PnL = 250 - 200 = 50
+    expect(vwce.unrealized_pnl_eur).toBe(50);
   });
 });

@@ -73,7 +73,7 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
     else:
         buffer = file_bytes_or_buffer
 
-    df_raw = pd.read_csv(buffer, sep=None, engine="python")
+    df_raw = pd.read_csv(buffer, sep=None, engine="python", index_col=False)
     # Clean and lower header strings
     df_raw.columns = [str(c).strip().lower() for c in df_raw.columns]
 
@@ -105,7 +105,7 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             idx_saldo = i
 
     records = []
-    for row_idx, row in df_raw.iterrows():
+    for row_idx, (_, row) in enumerate(df_raw.iterrows()):
         d = str(row[c_date]).strip() if c_date and pd.notna(row[c_date]) else ""
         t = str(row[c_time]).strip() if c_time and pd.notna(row[c_time]) else ""
         vd = str(row[c_val_date]).strip() if c_val_date and pd.notna(row[c_val_date]) else d

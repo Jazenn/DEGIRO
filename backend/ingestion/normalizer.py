@@ -60,9 +60,13 @@ def compute_row_hash(
     norm_isin = (isin or "").strip().upper()
     norm_order = (order_id or "").strip().lower()
     norm_amount = f"{float(amount):.4f}" if amount is not None else "0.0000"
-    norm_desc = (description or "").strip()
 
-    raw_key = f"{norm_date}|{norm_time}|{norm_isin}|{norm_order}|{norm_amount}|{norm_desc}"
+    if norm_order and norm_order not in ("nan", "none"):
+        raw_key = f"{norm_date}|{norm_time}|{norm_isin}|{norm_order}|{norm_amount}"
+    else:
+        norm_desc = (description or "").strip()
+        raw_key = f"{norm_date}|{norm_time}|{norm_isin}||{norm_amount}|{norm_desc}"
+
     return hashlib.md5(raw_key.encode("utf-8")).hexdigest()
 
 

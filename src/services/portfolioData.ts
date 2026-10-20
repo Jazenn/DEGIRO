@@ -583,8 +583,8 @@ export async function fetchDashboardData(
         balance: r.balance !== null ? Number(r.balance) : null,
         orderId: r.orderId || '',
         rowHash: r.rowHash || '',
-        isCashSweep: r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
-        is_cash_sweep: r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
+        csvRowId: r.csvRowId ?? r.csv_row_id ?? 0,
+        isCashSweep: r.isCashSweep !== undefined ? Boolean(r.isCashSweep) : r.is_cash_sweep !== undefined ? Boolean(r.is_cash_sweep) : isInternalCashSweep(r.description, r.product),
       }));
 
       const calculated = calculateDashboardFromTransactions(parsedTxs, assetSettings);

@@ -1,4 +1,4 @@
-"""End-to-end audit and ingestion verification tests for raw Account.csv."""
+"""End-to-end audit and ingestion verification tests for raw Account.csv and checked-in fixtures."""
 
 from __future__ import annotations
 
@@ -14,16 +14,20 @@ from backend.cli import cmd_audit
 
 
 def _resolve_account_csv() -> Path | None:
-    """Find Account.csv in current directory or repo root."""
+    """Find real Account.csv in current directory or repo root."""
     candidate_paths = [
         Path("Account.csv"),
         Path(__file__).resolve().parent.parent / "Account.csv",
-        Path("C:/Users/griff/Projects/DEGIRO/Account.csv"),
     ]
     for p in candidate_paths:
         if p.exists() and p.is_file():
             return p
     return None
+
+
+def _resolve_synthetic_fixture_csv() -> Path:
+    """Resolve checked-in synthetic test fixture for CI and testing."""
+    return Path(__file__).resolve().parent / "fixtures" / "synthetic_account.csv"
 
 
 @pytest.fixture
@@ -32,6 +36,36 @@ def account_csv_path() -> Path:
     if not p:
         pytest.skip("Account.csv not found locally.")
     return p
+
+
+def test_end_to_end_synthetic_fixture_pipeline():
+    """Verify end-to-end ingestion, cash continuity, and holdings on synthetic fixture in CI."""
+    fixture_path = _resolve_synthetic_fixture_csv()
+    assert fixture_path.exists(), f"Synthetic fixture missing at {fixture_path}"
+    with open(fixture_path, "rb") as f:
+        content = f.read()
+
+    df = load_degiro_csv(content)
+    assert len(df) == 7, f"Expected 7 rows parsed, got {len(df)}"
+
+    # Invariants
+    net_invested = calculate_net_invested_capital(df)
+    assert net_invested == 2000.00, f"Expected net invested €2000.00, got €{net_invested}"
+
+    cash_balance = calculate_cash_balance(df)
+    assert cash_balance == 939.00, f"Expected cash balance €939.00, got €{cash_balance}"
+
+    holdings = compute_fifo_holdings(df)
+    holdings_by_symbol = {row["symbol"]: row for _, row in holdings.iterrows()}
+    assert "VWCE.DE" in holdings_by_symbol
+    assert holdings_by_symbol["VWCE.DE"]["shares_held"] == 8.0
+
+    assert "BTC-EUR" in holdings_by_symbol
+    assert holdings_by_symbol["BTC-EUR"]["shares_held"] == pytest.approx(0.005, abs=1e-6)
+
+    history = build_daily_equity_history(df)
+    assert not history.empty
+    assert history["cash_balance_eur"].iloc[-1] == 939.00
 
 
 def test_end_to_end_account_csv_ingestion_and_valuation(account_csv_path: Path):
@@ -114,14 +148,21 @@ def test_end_to_end_account_csv_ingestion_and_valuation(account_csv_path: Path):
     assert latest_row["cash_balance_eur"] == 5.96, f"Latest cash balance should be €5.96, got €{latest_row['cash_balance_eur']}"
 
 
-def test_cli_audit_command(account_csv_path: Path, capsys: pytest.CaptureFixture[str]):
-    """Verify backend CLI audit command runs successfully against Account.csv."""
-    cmd_audit(str(account_csv_path))
+def test_cli_audit_command(capsys: pytest.CaptureFixture[str]):
+    """Verify backend CLI audit command runs successfully against Account.csv or synthetic fixture."""
+    real_csv = _resolve_account_csv()
+    target_csv = real_csv if real_csv else _resolve_synthetic_fixture_csv()
+    cmd_audit(str(target_csv))
     captured = capsys.readouterr()
-    assert "Total rows parsed     : 172" in captured.out
-    assert "Net external invested : €    3728.00" in captured.out
-    assert "Closing cash balance  : €       5.96" in captured.out
+    if real_csv:
+        assert "Total rows parsed     : 172" in captured.out
+        assert "Net external invested : €    3728.00" in captured.out
+        assert "Closing cash balance  : €       5.96" in captured.out
+        assert "EXUS.DE" in captured.out
+        assert "ASWC.DE" in captured.out
+    else:
+        assert "Total rows parsed     : 7" in captured.out
+        assert "Net external invested : €    2000.00" in captured.out
+        assert "Closing cash balance  : €     939.00" in captured.out
     assert "VWCE.DE" in captured.out
-    assert "EXUS.DE" in captured.out
     assert "BTC-EUR" in captured.out
-    assert "ASWC.DE" in captured.out

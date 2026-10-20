@@ -154,7 +154,7 @@ val1,val2,val3
     expect(result.newRows).toBe(0);
   });
 
-  it('tags internal Flatex cash sweeps and preserves csv_row_id', () => {
+  it('tags internal Flatex cash sweeps and preserves csvRowId', () => {
     const csvContent = `Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id
 19-10-2026,03:32,19-10-2026,,,"Overboeking van uw geldrekening bij flatexDEGIRO Bank 419,04 EUR",,,,EUR,"5,96",
 19-10-2026,03:32,19-10-2026,,,Degiro Cash Sweep Transfer,,EUR,"419,04",EUR,"425,00",
@@ -168,26 +168,26 @@ val1,val2,val3
 
     // Row 0: Overboeking sweep note
     expect(result.transactions[0].isCashSweep).toBe(true);
-    expect(result.transactions[0].csv_row_id).toBe(0);
+    expect(result.transactions[0].csvRowId).toBe(0);
 
     // Row 1: Degiro Cash Sweep Transfer
     expect(result.transactions[1].isCashSweep).toBe(true);
-    expect(result.transactions[1].csv_row_id).toBe(1);
+    expect(result.transactions[1].csvRowId).toBe(1);
 
     // Row 2: FLATEX EURO BANKACCOUNT
     expect(result.transactions[2].isCashSweep).toBe(true);
-    expect(result.transactions[2].csv_row_id).toBe(2);
+    expect(result.transactions[2].csvRowId).toBe(2);
 
     // Row 3: English sweep note
     expect(result.transactions[3].isCashSweep).toBe(true);
-    expect(result.transactions[3].csv_row_id).toBe(3);
+    expect(result.transactions[3].csvRowId).toBe(3);
 
     // Row 4: External deposit (not a sweep!)
     expect(result.transactions[4].isCashSweep).toBe(false);
-    expect(result.transactions[4].csv_row_id).toBe(4);
+    expect(result.transactions[4].csvRowId).toBe(4);
   });
 
-  it('extracts crypto trades (BITCOIN, ETHEREUM) lacking ISIN with fractional quantities', () => {
+  it('extracts crypto transactions (BITCOIN, ETHEREUM) lacking ISIN with fractional quantities', () => {
     const csvContent = `Datum,Tijd,Valutadatum,Product,ISIN,Omschrijving,FX,Mutatie,,Saldo,,Order Id
 18-02-2026,09:55,18-02-2026,BITCOIN,,"Koop 0,003472 @ 57.590,21 EUR",,EUR,"-199,95",EUR,"2325,57",f15d5dcd-156a-4162-b8a3-d05ac337acbe
 05-02-2026,22:43,05-02-2026,ETHEREUM,,"Koop 0,0314 @ 1.585,98 EUR",,EUR,"-49,80",EUR,"200,09",eb7ce8a2-9769-4e52-9488-a1110cbfe43f

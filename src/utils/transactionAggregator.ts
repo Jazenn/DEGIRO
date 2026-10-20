@@ -30,9 +30,6 @@ export function isInternalCashTransaction(tx: IngestedTransaction): boolean {
   if (tx.isCashSweep !== undefined) {
     return tx.isCashSweep;
   }
-  if (tx.is_cash_sweep !== undefined) {
-    return tx.is_cash_sweep;
-  }
   return isInternalCashSweep(tx.description, tx.product);
 }
 
@@ -99,14 +96,14 @@ export function sortTransactionsChronologically(
     if (dateComp !== 0) return dateComp;
     const timeComp = (a.time || '').localeCompare(b.time || '');
     if (timeComp !== 0) return timeComp;
-    const rowA = a.csv_row_id ?? a.csvRowId ?? 0;
-    const rowB = b.csv_row_id ?? b.csvRowId ?? 0;
+    const rowA = a.csvRowId ?? 0;
+    const rowB = b.csvRowId ?? 0;
     return rowB - rowA;
   });
 }
 
 /**
- * Calculate current free cash balance from non-sweep cash ledger entries.
+ * Calculate current free cash balance from non-sweep cash ledger transactions.
  * Uses Saldo if present on latest transaction, or sums non-sweep cash mutations.
  */
 export function calculateCashBalance(transactions: IngestedTransaction[]): number {
@@ -211,17 +208,16 @@ export function calculateDashboardFromTransactions(
   }
 
   // 4. Compute Holdings per Asset
-  const assetGroups = new Map<
-    string,
-    {
-      symbol: string;
-      name: string;
-      isin: string | null;
-      shares: number;
-      totalCost: number;
-      latestPrice: number;
-    }
-  >();
+  interface AssetGroup {
+    symbol: string;
+    name: string;
+    isin: string | null;
+    shares: number;
+    totalCost: number;
+    latestPrice: number;
+    lots: Array<{ quantity: number; price: number }>;
+  }
+  const assetGroups = new Map<string, AssetGroup>();
 
   for (const tx of sorted) {
     // Skip pure cash transactions and internal account rows
@@ -273,6 +269,7 @@ export function calculateDashboardFromTransactions(
         shares: 0,
         totalCost: 0,
         latestPrice: execPrice > 0 ? execPrice : Math.abs(tx.price || 0),
+        lots: [] as Array<{ quantity: number; price: number }>,
       });
     }
 
@@ -283,12 +280,28 @@ export function calculateDashboardFromTransactions(
 
     if (absQty > 0) {
       if (isSell) {
-        // Reduce shares and cost proportionally
-        const fraction = group.shares > 0 ? Math.min(absQty / group.shares, 1.0) : 1.0;
-        group.totalCost -= group.totalCost * fraction;
+        // FIFO lot depletion matching backend/engine/portfolio.py
+        let sellQty = absQty;
         group.shares = Math.max(0, group.shares - absQty);
+        while (sellQty > 0 && group.lots.length > 0) {
+          const lot = group.lots[0];
+          if (lot.quantity <= sellQty + 1e-9) {
+            sellQty -= lot.quantity;
+            group.lots.shift();
+          } else {
+            lot.quantity -= sellQty;
+            sellQty = 0;
+          }
+        }
+        if (group.shares <= 1e-6) {
+          group.shares = 0;
+          group.totalCost = 0;
+          group.lots = [];
+        } else {
+          group.totalCost = group.lots.reduce((acc: number, lot: { quantity: number; price: number }) => acc + lot.quantity * lot.price, 0);
+        }
       } else {
-        // Buy
+        // Buy: append FIFO lot
         group.shares += absQty;
         const buyCost = Math.abs(
           tx.amount !== null && tx.amount !== undefined
@@ -297,7 +310,9 @@ export function calculateDashboardFromTransactions(
             ? tx.value
             : absQty * (execPrice || group.latestPrice)
         );
-        group.totalCost += buyCost;
+        const lotPrice = execPrice > 0 ? execPrice : absQty > 0 ? buyCost / absQty : group.latestPrice;
+        group.lots.push({ quantity: absQty, price: lotPrice });
+        group.totalCost = group.lots.reduce((acc: number, lot: { quantity: number; price: number }) => acc + lot.quantity * lot.price, 0);
       }
     }
   }

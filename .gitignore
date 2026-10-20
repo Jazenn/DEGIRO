@@ -1,4 +1,5 @@
 *.csv
+!tests/fixtures/*.csv
 .streamlit/
 __pycache__/
 *.json
