@@ -250,21 +250,6 @@ export function calculateDashboardFromTransactions(
 
   for (const group of assetGroups.values()) {
     if (group.shares > 0.0001) {
-      const livePrice =
-        currentPrices?.[group.symbol] ||
-        (group.isin ? currentPrices?.[group.isin] : undefined);
-      const price =
-        livePrice && livePrice > 0
-          ? livePrice
-          : group.latestPrice > 0
-          ? group.latestPrice
-          : group.shares > 0
-          ? group.totalCost / group.shares
-          : 0;
-      const totalValue = group.shares * price;
-      totalHoldingsValue += totalValue;
-      totalActiveCost += group.totalCost;
-
       // Find matching asset setting by symbol, isin, or name
       const setting = assetSettings.find((s) => {
         const sSym = normalizeString(s.symbol);
@@ -281,13 +266,48 @@ export function calculateDashboardFromTransactions(
         );
       });
 
+      const symUpper = (group.symbol || '').toUpperCase();
+      const isinUpper = (group.isin || '').toUpperCase();
+      const settingSym = setting?.symbol ? setting.symbol.toUpperCase() : '';
+      const settingName = setting?.display_name ? setting.display_name.toUpperCase() : '';
+
+      const livePrice =
+        (currentPrices && (
+          (isinUpper && currentPrices[isinUpper]) ||
+          (group.isin && currentPrices[group.isin]) ||
+          (symUpper && currentPrices[symUpper]) ||
+          (group.symbol && currentPrices[group.symbol]) ||
+          (settingSym && currentPrices[settingSym]) ||
+          (setting?.symbol && currentPrices[setting.symbol]) ||
+          (settingName && currentPrices[settingName]) ||
+          (setting?.display_name && currentPrices[setting.display_name]) ||
+          (symUpper.includes('BTC') || symUpper.includes('BITCOIN')
+            ? currentPrices['BITCOIN'] || currentPrices['BTC'] || currentPrices['BTC-EUR']
+            : undefined) ||
+          (symUpper.includes('ETH') || symUpper.includes('ETHEREUM')
+            ? currentPrices['ETHEREUM'] || currentPrices['ETH'] || currentPrices['ETH-EUR']
+            : undefined)
+        )) || undefined;
+
+      const price =
+        livePrice && livePrice > 0
+          ? livePrice
+          : group.latestPrice > 0
+          ? group.latestPrice
+          : group.shares > 0
+          ? group.totalCost / group.shares
+          : 0;
+      const totalValue = group.shares * price;
+      totalHoldingsValue += totalValue;
+      totalActiveCost += group.totalCost;
+
       const targetPct = setting ? setting.target_pct : 0;
 
       activeHoldingsList.push({
         symbol: setting ? setting.symbol : group.symbol,
         name: setting ? setting.display_name : group.name,
         isin: group.isin,
-        shares_held: Number(group.shares.toFixed(4)),
+        shares_held: Number(group.shares.toFixed(8)),
         current_price_eur: Number(price.toFixed(2)),
         total_value_eur: Number(totalValue.toFixed(2)),
         total_cost_eur: Number(group.totalCost.toFixed(2)),

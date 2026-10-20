@@ -23,6 +23,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
   const [isSaving, setIsSaving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
+  const [replaceExisting, setReplaceExisting] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!isOpen) return null;
@@ -85,7 +86,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
     if (parseResult && parseResult.success) {
       setIsSaving(true);
       try {
-        await saveTransactions(parseResult.transactions);
+        await saveTransactions(parseResult.transactions, undefined, undefined, replaceExisting);
         await triggerPriceRefresh({
           dispatchType: 'repository_dispatch',
           eventType: 'degiro_csv_uploaded',
@@ -240,9 +241,21 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
                 </div>
               </div>
 
+              <label className="flex items-center gap-2.5 text-xs text-slate-300 cursor-pointer select-none bg-slate-950/40 p-3 rounded-xl border border-slate-800 hover:border-slate-700 transition">
+                <input
+                  type="checkbox"
+                  checked={replaceExisting}
+                  onChange={(e) => setReplaceExisting(e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-900 text-sky-500 focus:ring-sky-500 focus:ring-offset-0 h-4 w-4"
+                />
+                <span>
+                  Clean replace (replaces stored history to clear prior duplicate transactions)
+                </span>
+              </label>
+
               <p className="text-xs text-slate-400 flex items-center gap-1.5">
                 <Layers className="w-3.5 h-3.5 text-slate-500" />
-                Deduplication verified via deterministic MD5 row signatures.
+                Deduplication verified via canonical transaction business keys.
               </p>
             </div>
           )}
@@ -260,7 +273,7 @@ export const CsvUploadModal: React.FC<CsvUploadModalProps> = ({
           <button
             type="button"
             onClick={handleConfirmImport}
-            disabled={!parseResult || !parseResult.success || parseResult.newRows === 0 || isSaving}
+            disabled={!parseResult || !parseResult.success || isSaving}
             className="min-h-[44px] px-5 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white text-sm font-medium font-mono shadow-sm transition flex items-center gap-2"
           >
             {isSaving ? (

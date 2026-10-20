@@ -8,6 +8,7 @@ import {
 import { IngestedTransaction } from '../utils/csvParser';
 import { calculatePortfolioMetrics } from '../utils/metrics';
 import { calculateDashboardFromTransactions } from '../utils/transactionAggregator';
+import { fetchLivePricesForHoldings } from './livePrices';
 
 export const LOCAL_STORAGE_DATABASE_URL_KEY = 'degiro_database_url';
 
@@ -360,9 +361,14 @@ export async function fetchDashboardData(
   if (!resolvedUrl && !customSql) {
     const localTxs = loadLocalTransactions();
     if (localTxs && localTxs.length > 0) {
+      const rawAssets = localTxs
+        .filter((t) => t.isin || t.product)
+        .map((t) => ({ isin: t.isin, symbol: t.product, name: t.product }));
+      const livePrices = await fetchLivePricesForHoldings(rawAssets);
       const calculated = calculateDashboardFromTransactions(
         localTxs,
-        loadLocalAssetSettings() || getDefaultAssetSettings()
+        loadLocalAssetSettings() || getDefaultAssetSettings(),
+        livePrices
       );
       if (calculated) {
         return calculated;
@@ -464,10 +470,15 @@ export async function fetchDashboardData(
     }
 
     const localTxs = loadLocalTransactions();
-    const localCalculated =
-      localTxs && localTxs.length > 0
-        ? calculateDashboardFromTransactions(localTxs, assetSettings, neonPrices)
-        : null;
+    let localCalculated: DashboardData | null = null;
+    if (localTxs && localTxs.length > 0) {
+      const rawAssets = localTxs
+        .filter((t) => t.isin || t.product)
+        .map((t) => ({ isin: t.isin, symbol: t.product, name: t.product }));
+      const livePrices = await fetchLivePricesForHoldings(rawAssets);
+      const mergedPrices = { ...neonPrices, ...livePrices };
+      localCalculated = calculateDashboardFromTransactions(localTxs, assetSettings, mergedPrices);
+    }
 
     // If pre-aggregated snapshot tables have records AND are complete (at least as many holdings as local calculation)
     if (
@@ -486,20 +497,42 @@ export async function fetchDashboardData(
         unrealized_pnl_pct: Number(r.unrealized_pnl_pct) || 0,
       }));
 
-      const holdings: CurrentAssetHoldingRecord[] = holdingsRows.map((r: any) => ({
-        symbol: String(r.symbol),
-        name: String(r.name),
-        isin: r.isin ? String(r.isin) : null,
-        shares_held: Number(r.shares_held) || 0,
-        current_price_eur: Number(r.current_price_eur) || 0,
-        total_value_eur: Number(r.total_value_eur) || 0,
-        total_cost_eur: Number(r.total_cost_eur) || 0,
-        unrealized_pnl_eur: Number(r.unrealized_pnl_eur) || 0,
-        actual_pct: Number(r.actual_pct) || 0,
-        target_pct: Number(r.target_pct) || 0,
-        drift_pct: Number(r.drift_pct) || 0,
-        recommended_action_eur: Number(r.recommended_action_eur) || 0,
-      }));
+      // Fetch live prices to guarantee up-to-the-minute TradeGate and crypto quotes
+      const livePrices = await fetchLivePricesForHoldings(holdingsRows);
+      const holdings: CurrentAssetHoldingRecord[] = holdingsRows.map((r: any) => {
+        const sym = String(r.symbol);
+        const isin = r.isin ? String(r.isin) : null;
+        const symUpper = sym.toUpperCase();
+        const liveP =
+          (isin && livePrices[isin]) ||
+          livePrices[sym] ||
+          livePrices[symUpper] ||
+          (symUpper.includes('BTC') || symUpper.includes('BITCOIN') ? livePrices['BITCOIN'] || livePrices['BTC-EUR'] : undefined) ||
+          (symUpper.includes('ETH') || symUpper.includes('ETHEREUM') ? livePrices['ETHEREUM'] || livePrices['ETH-EUR'] : undefined) ||
+          neonPrices[sym] ||
+          (isin && neonPrices[isin]) ||
+          Number(r.current_price_eur) ||
+          0;
+        const currentPrice = liveP > 0 ? liveP : Number(r.current_price_eur) || 0;
+        const sharesHeld = Number(r.shares_held) || 0;
+        const totalCost = Number(r.total_cost_eur) || 0;
+        const totalValue = sharesHeld * currentPrice;
+
+        return {
+          symbol: sym,
+          name: String(r.name),
+          isin,
+          shares_held: sharesHeld,
+          current_price_eur: Number(currentPrice.toFixed(2)),
+          total_value_eur: Number(totalValue.toFixed(2)),
+          total_cost_eur: totalCost,
+          unrealized_pnl_eur: Number((totalValue - totalCost).toFixed(2)),
+          actual_pct: Number(r.actual_pct) || 0,
+          target_pct: Number(r.target_pct) || 0,
+          drift_pct: Number(r.drift_pct) || 0,
+          recommended_action_eur: Number(r.recommended_action_eur) || 0,
+        };
+      });
 
       const metrics = calculatePortfolioMetrics(history, holdings);
 
@@ -650,6 +683,42 @@ export async function saveAssetSettings(
 
 const LOCAL_STORAGE_TRANSACTIONS_KEY = 'degiro_transactions_history';
 
+/**
+ * Canonical transaction business key to prevent position doubling across files and repeated uploads.
+ */
+export function getCanonicalTransactionKey(tx: IngestedTransaction): string {
+  const orderId = (tx.orderId || '').trim();
+  if (orderId && orderId !== 'null' && orderId !== 'undefined' && orderId !== '') {
+    const amt =
+      tx.amount !== null && tx.amount !== undefined
+        ? Number(tx.amount).toFixed(4)
+        : tx.value !== null && tx.value !== undefined
+        ? Number(tx.value).toFixed(4)
+        : '';
+    const prod = (tx.isin || tx.product || '').trim().toUpperCase();
+    const desc = (tx.description || '').trim().toLowerCase();
+    const isFee = desc.includes('transactiekosten') || desc.includes('fee');
+    return `order:${orderId}:${prod}:${isFee ? 'fee' : 'trade'}:${amt}`;
+  }
+  const d = (tx.date || '').trim();
+  const t = (tx.time || '').trim();
+  const amt =
+    tx.amount !== null && tx.amount !== undefined
+      ? Number(tx.amount).toFixed(2)
+      : tx.value !== null && tx.value !== undefined
+      ? Number(tx.value).toFixed(2)
+      : '0';
+  const bal = tx.balance !== null && tx.balance !== undefined ? Number(tx.balance).toFixed(2) : '';
+  const desc = (tx.description || '').trim().toLowerCase();
+  return `cash:${d}:${t}:${desc}:${amt}:${bal}`;
+}
+
+export function clearLocalTransactions(): void {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    window.localStorage.removeItem(LOCAL_STORAGE_TRANSACTIONS_KEY);
+  }
+}
+
 export function loadLocalTransactions(): IngestedTransaction[] {
   if (typeof window === 'undefined' || !window.localStorage) {
     return [];
@@ -660,7 +729,7 @@ export function loadLocalTransactions(): IngestedTransaction[] {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed)) {
       // Filter out empty/corrupted records where all financial values and quantities were null
-      return parsed.filter(
+      const valid = parsed.filter(
         (t) =>
           t.amount !== null ||
           t.value !== null ||
@@ -669,6 +738,33 @@ export function loadLocalTransactions(): IngestedTransaction[] {
           (t.description &&
             /koop|verkoop|buy|sell|storting|deposit|overboeking/i.test(t.description))
       );
+
+      // Auto-heal deduplication using canonical business keys
+      const seen = new Set<string>();
+      const deduplicated: IngestedTransaction[] = [];
+      let hadDuplicates = false;
+      for (const t of valid) {
+        const key = getCanonicalTransactionKey(t);
+        if (!seen.has(key)) {
+          seen.add(key);
+          deduplicated.push(t);
+        } else {
+          hadDuplicates = true;
+        }
+      }
+
+      if (hadDuplicates) {
+        try {
+          window.localStorage.setItem(
+            LOCAL_STORAGE_TRANSACTIONS_KEY,
+            JSON.stringify(deduplicated)
+          );
+        } catch {
+          // Ignore storage quota errors
+        }
+      }
+
+      return deduplicated;
     }
   } catch {
     // Ignore parse error
@@ -683,21 +779,23 @@ export function loadLocalTransactions(): IngestedTransaction[] {
 export async function saveTransactions(
   transactions: IngestedTransaction[],
   databaseUrl?: string,
-  customSql?: (query: TemplateStringsArray, ...args: any[]) => Promise<any[]>
+  customSql?: (query: TemplateStringsArray, ...args: any[]) => Promise<any[]>,
+  replaceExisting: boolean = false
 ): Promise<{ inserted: number; duplicates: number }> {
   if (!transactions || transactions.length === 0) {
     return { inserted: 0, duplicates: 0 };
   }
 
-  // Local storage persistence
-  const existingLocal = loadLocalTransactions();
-  const existingHashes = new Set(existingLocal.map((t) => t.rowHash));
+  // Local storage persistence with canonical deduplication
+  const existingLocal = replaceExisting ? [] : loadLocalTransactions();
+  const existingKeys = new Set(existingLocal.map((t) => getCanonicalTransactionKey(t)));
   let localInserted = 0;
   const combined = [...existingLocal];
 
   for (const tx of transactions) {
-    if (!existingHashes.has(tx.rowHash)) {
-      existingHashes.add(tx.rowHash);
+    const key = getCanonicalTransactionKey(tx);
+    if (!existingKeys.has(key)) {
+      existingKeys.add(key);
       combined.push(tx);
       localInserted++;
     }
