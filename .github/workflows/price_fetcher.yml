@@ -2,8 +2,8 @@ name: Price Fetcher
 
 on:
   schedule:
-    # 08:00-22:00 CET (UTC+1 in winter) on weekdays.
-    - cron: '0 7-21 * * 1-5'
+    # 22:00 CET (21:00 UTC) on weekdays (market close snapshot archive)
+    - cron: '0 21 * * 1-5'
   workflow_dispatch:
   repository_dispatch:
     types: [degiro_csv_uploaded, refresh_prices]
@@ -26,8 +26,8 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      - name: Run Fetcher
+      - name: Run Fetcher & Snapshot Generator
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: |
-          python fetcher.py
+          python -m backend.cli snapshot
