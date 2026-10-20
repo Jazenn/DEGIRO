@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterPortfolioHistory } from './timeframe';
+import { filterPortfolioHistory, getAssetPortfolioHistory } from './timeframe';
 import { PortfolioDailyHistoryRecord } from '../types/portfolio';
 
 describe('Timeframe Filter Logic', () => {
@@ -128,5 +128,74 @@ describe('Timeframe Filter Logic', () => {
     const result = filterPortfolioHistory(sampleHistory, '24H', refDate);
     expect(result.length).toBe(25);
     expect(result[result.length - 1].total_equity_eur).toBe(48250);
+  });
+});
+
+describe('getAssetPortfolioHistory', () => {
+  const historyWithBreakdown: PortfolioDailyHistoryRecord[] = [
+    {
+      date: '2025-01-01',
+      total_equity_eur: 1000,
+      invested_capital_eur: 1000,
+      cash_balance_eur: 1000,
+      unrealized_pnl_eur: 0,
+      unrealized_pnl_pct: 0,
+      asset_breakdown: {},
+    },
+    {
+      date: '2025-02-01',
+      total_equity_eur: 1200,
+      invested_capital_eur: 1000,
+      cash_balance_eur: 200,
+      unrealized_pnl_eur: 200,
+      unrealized_pnl_pct: 20,
+      asset_breakdown: {
+        'BTC-EUR': {
+          value_eur: 1000,
+          cost_eur: 800,
+          shares: 0.05,
+          price_eur: 20000,
+          pnl_eur: 200,
+          pnl_pct: 25,
+        },
+      },
+    },
+    {
+      date: '2025-03-01',
+      total_equity_eur: 1500,
+      invested_capital_eur: 1000,
+      cash_balance_eur: 200,
+      unrealized_pnl_eur: 500,
+      unrealized_pnl_pct: 50,
+      asset_breakdown: {
+        'BTC-EUR': {
+          value_eur: 1300,
+          cost_eur: 800,
+          shares: 0.05,
+          price_eur: 26000,
+          pnl_eur: 500,
+          pnl_pct: 62.5,
+        },
+      },
+    },
+  ];
+
+  it('returns original history when assetKey is null or ALL', () => {
+    expect(getAssetPortfolioHistory(historyWithBreakdown, null)).toEqual(historyWithBreakdown);
+    expect(getAssetPortfolioHistory(historyWithBreakdown, 'ALL')).toEqual(historyWithBreakdown);
+  });
+
+  it('filters to individual asset valuation and trims leading empty dates', () => {
+    const btcHistory = getAssetPortfolioHistory(historyWithBreakdown, 'BTC-EUR');
+    // Leading date 2025-01-01 had 0 BTC, should be trimmed to start from 2025-02-01
+    expect(btcHistory.length).toBe(2);
+    expect(btcHistory[0].date).toBe('2025-02-01');
+    expect(btcHistory[0].total_equity_eur).toBe(1000);
+    expect(btcHistory[0].invested_capital_eur).toBe(800);
+    expect(btcHistory[0].unrealized_pnl_eur).toBe(200);
+
+    expect(btcHistory[1].date).toBe('2025-03-01');
+    expect(btcHistory[1].total_equity_eur).toBe(1300);
+    expect(btcHistory[1].unrealized_pnl_eur).toBe(500);
   });
 });

@@ -1,3 +1,12 @@
+export interface AssetDaySnapshot {
+  value_eur: number;
+  cost_eur: number;
+  shares: number;
+  price_eur: number;
+  pnl_eur: number;
+  pnl_pct: number;
+}
+
 export interface PortfolioDailyHistoryRecord {
   date: string;
   total_equity_eur: number;
@@ -5,6 +14,7 @@ export interface PortfolioDailyHistoryRecord {
   cash_balance_eur: number;
   unrealized_pnl_eur: number;
   unrealized_pnl_pct: number;
+  asset_breakdown?: Record<string, AssetDaySnapshot>;
 }
 
 export interface CurrentAssetHoldingRecord {
@@ -53,4 +63,3 @@ export interface DashboardData {
   isDemo: boolean;
   lastUpdated: string | null;
 }
-

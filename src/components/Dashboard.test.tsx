@@ -172,6 +172,28 @@ describe('Dashboard Component', () => {
       expect(screen.getByText(/Prices refreshed/i)).toBeInTheDocument();
     });
   });
+
+  it('filters chart to an individual stock or crypto when selected from asset filter dropdown', () => {
+    render(<Dashboard initialData={demoData} />);
+
+    expect(screen.getByText('Portfolio Growth & Valuation')).toBeInTheDocument();
+    expect(screen.getAllByText(/^Portfolio Value$/i).length).toBeGreaterThanOrEqual(1);
+    expect(screen.getByText('Invested Capital')).toBeInTheDocument();
+
+    const assetSelect = screen.getByLabelText(/filter chart by asset/i);
+    expect(assetSelect).toBeInTheDocument();
+
+    // Select Bitcoin
+    fireEvent.change(assetSelect, { target: { value: 'BTC-EUR' } });
+
+    expect(screen.getByText(/Bitcoin Growth & Valuation/i)).toBeInTheDocument();
+    expect(screen.getByText('Asset Value')).toBeInTheDocument();
+    expect(screen.getByText('Invested Cost')).toBeInTheDocument();
+
+    // Switch back to combined portfolio
+    fireEvent.change(assetSelect, { target: { value: 'ALL' } });
+    expect(screen.getByText('Portfolio Growth & Valuation')).toBeInTheDocument();
+  });
 });
 
 

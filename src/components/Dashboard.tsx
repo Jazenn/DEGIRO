@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   RotateCw,
   Database,
@@ -20,7 +20,7 @@ import { CryptoScaleCard } from './CryptoScaleCard';
 import { SettingsModal } from './SettingsModal';
 import { MobileDrawer } from './MobileDrawer';
 import { CsvUploadModal } from './CsvUploadModal';
-import { filterPortfolioHistory } from '../utils/timeframe';
+import { filterPortfolioHistory, getAssetPortfolioHistory } from '../utils/timeframe';
 import {
   saveAssetSettings,
   applySettingsToDashboardData,
@@ -50,6 +50,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     assetSettings: initialData.assetSettings || getDefaultAssetSettings(),
   }));
   const [timeframe, setTimeframe] = useState<Timeframe>('ALL');
+  const [selectedAsset, setSelectedAsset] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -75,7 +76,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return () => clearTimeout(timer);
   }, [toast]);
 
-  const filteredHistory = filterPortfolioHistory(data.history, timeframe);
+  const assetFilteredHistory = useMemo(
+    () => getAssetPortfolioHistory(data.history, selectedAsset),
+    [data.history, selectedAsset]
+  );
+  const filteredHistory = filterPortfolioHistory(assetFilteredHistory, timeframe);
 
   const handleSaveSettings = async (updatedSettings: PortfolioAssetSetting[]) => {
     // Persist settings (to Neon Serverless DB or localStorage)
@@ -244,6 +249,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
           data={filteredHistory}
           timeframe={timeframe}
           onTimeframeChange={setTimeframe}
+          holdings={data.holdings}
+          selectedAsset={selectedAsset}
+          onSelectedAssetChange={setSelectedAsset}
         />
       </section>
 

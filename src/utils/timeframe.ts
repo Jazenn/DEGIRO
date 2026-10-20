@@ -97,3 +97,70 @@ export function filterPortfolioHistory(
   // If the timeframe starts before the earliest point, return all available points
   return filtered.length > 0 ? filtered : sorted;
 }
+
+
+/**
+ * Transforms portfolio daily history to focus on a single asset's valuation and profit trajectory.
+ * If assetKey is null, undefined, or 'ALL', returns the original combined portfolio history.
+ *
+ * @param history Array of portfolio daily history records.
+ * @param assetKey Selected asset symbol or identifier (e.g. 'IE00BK5BQT80' or 'BITCOIN').
+ */
+export function getAssetPortfolioHistory(
+  history: PortfolioDailyHistoryRecord[],
+  assetKey: string | null | undefined
+): PortfolioDailyHistoryRecord[] {
+  if (!history || history.length === 0 || !assetKey || assetKey === 'ALL') {
+    return history || [];
+  }
+
+  const cleanKey = assetKey.trim();
+  const cleanKeyUpper = cleanKey.toUpperCase();
+
+  const assetHistory: PortfolioDailyHistoryRecord[] = history.map((r) => {
+    const snap =
+      r.asset_breakdown?.[cleanKey] ||
+      r.asset_breakdown?.[cleanKeyUpper] ||
+      Object.entries(r.asset_breakdown || {}).find(([k]) => {
+        const kUpper = k.toUpperCase();
+        return (
+          kUpper === cleanKeyUpper ||
+          kUpper.includes(cleanKeyUpper) ||
+          cleanKeyUpper.includes(kUpper)
+        );
+      })?.[1];
+
+    if (snap) {
+      return {
+        date: r.date,
+        total_equity_eur: snap.value_eur,
+        invested_capital_eur: snap.cost_eur,
+        cash_balance_eur: 0,
+        unrealized_pnl_eur: snap.pnl_eur,
+        unrealized_pnl_pct: snap.pnl_pct,
+        asset_breakdown: r.asset_breakdown,
+      };
+    }
+
+    return {
+      date: r.date,
+      total_equity_eur: 0,
+      invested_capital_eur: 0,
+      cash_balance_eur: 0,
+      unrealized_pnl_eur: 0,
+      unrealized_pnl_pct: 0,
+      asset_breakdown: r.asset_breakdown,
+    };
+  });
+
+  // Find the first date where the asset was held or traded to avoid leading empty periods
+  const firstActiveIdx = assetHistory.findIndex(
+    (r) => r.total_equity_eur > 0 || r.invested_capital_eur > 0
+  );
+
+  if (firstActiveIdx > 0) {
+    return assetHistory.slice(firstActiveIdx);
+  }
+
+  return assetHistory;
+}

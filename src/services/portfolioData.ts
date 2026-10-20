@@ -241,6 +241,37 @@ export function getDemoDashboardData(): DashboardData {
     },
   ];
 
+  const demoHoldingsConfig = [
+    { symbol: 'VWCE.DE', isin: 'IE00BK5BQT80', name: 'Vanguard FTSE All-World UCITS ETF', valRatio: 0.54, costRatio: 0.54 },
+    { symbol: 'EXUS.DE', isin: 'IE0006WW1TQ4', name: 'iShares MSCI World ex-USA UCITS ETF', valRatio: 0.22, costRatio: 0.22 },
+    { symbol: 'BTC-EUR', isin: 'XFC000A2YY6Q', name: 'Bitcoin', valRatio: 0.10, costRatio: 0.10 },
+    { symbol: 'ETH-EUR', isin: 'XFC000A2YY7T', name: 'Ethereum', valRatio: 0.14, costRatio: 0.14 },
+  ];
+
+  history.forEach((r) => {
+    const breakdown: Record<string, any> = {};
+    const stockVal = Math.max(0, r.total_equity_eur - r.cash_balance_eur);
+    const stockCost = r.invested_capital_eur;
+    for (const dh of demoHoldingsConfig) {
+      const val = Number((stockVal * dh.valRatio).toFixed(2));
+      const cost = Number((stockCost * dh.costRatio).toFixed(2));
+      const pnl = Number((val - cost).toFixed(2));
+      const pnlPct = cost > 0 ? Number(((pnl / cost) * 100).toFixed(2)) : 0;
+      const snap = {
+        value_eur: val,
+        cost_eur: cost,
+        shares: 1,
+        price_eur: val,
+        pnl_eur: pnl,
+        pnl_pct: pnlPct,
+      };
+      breakdown[dh.symbol] = snap;
+      breakdown[dh.isin] = snap;
+      breakdown[dh.name] = snap;
+    }
+    r.asset_breakdown = breakdown;
+  });
+
   const assetSettings = loadLocalAssetSettings() || getDefaultAssetSettings();
 
   const holdings: CurrentAssetHoldingRecord[] = [

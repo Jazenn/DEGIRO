@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import {
+  CurrentAssetHoldingRecord,
   PortfolioDailyHistoryRecord,
   Timeframe,
 } from '../types/portfolio';
@@ -10,12 +11,18 @@ interface PortfolioChartProps {
   data: PortfolioDailyHistoryRecord[];
   timeframe: Timeframe;
   onTimeframeChange: (tf: Timeframe) => void;
+  holdings?: CurrentAssetHoldingRecord[];
+  selectedAsset?: string | null;
+  onSelectedAssetChange?: (asset: string | null) => void;
 }
 
 export const PortfolioChart: React.FC<PortfolioChartProps> = ({
   data,
   timeframe,
   onTimeframeChange,
+  holdings = [],
+  selectedAsset = null,
+  onSelectedAssetChange,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [chartWidth, setChartWidth] = useState<number>(800);
@@ -47,6 +54,27 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
       return () => window.removeEventListener('resize', updateWidth);
     }
   }, []);
+
+  const activeHolding = useMemo(() => {
+    if (!selectedAsset || !holdings) return null;
+    return holdings.find(
+      (h) =>
+        h.symbol === selectedAsset ||
+        h.isin === selectedAsset ||
+        h.name === selectedAsset
+    );
+  }, [selectedAsset, holdings]);
+
+  const chartTitle = activeHolding
+    ? `${activeHolding.name || activeHolding.symbol} Growth & Valuation`
+    : 'Portfolio Growth & Valuation';
+
+  const chartSubtitle = activeHolding
+    ? `Historical valuation and profit fluctuations for ${activeHolding.name || activeHolding.symbol}`
+    : 'Historical portfolio valuation compared against invested capital';
+
+  const valueLegend = activeHolding ? 'Asset Value' : 'Portfolio Value';
+  const investedLegend = activeHolding ? 'Invested Cost' : 'Invested Capital';
 
   // Calculate return over the selected period
   const periodReturn = useMemo(() => {
@@ -285,7 +313,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
         <div>
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-bold text-white tracking-tight">
-              Portfolio Growth &amp; Valuation
+              {chartTitle}
             </h3>
             {data.length > 1 && (
               <span
@@ -300,22 +328,53 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
             )}
           </div>
           <p className="text-xs text-slate-400 mt-1">
-            Historical portfolio valuation compared against invested capital
+            {chartSubtitle}
           </p>
         </div>
 
-        {/* Timeframe & Legend */}
-        <div className="flex flex-wrap items-center gap-4">
+        {/* Controls: Asset Filter + Legend + Timeframe */}
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
+          {/* Asset Filter Selector */}
+          {holdings.length > 0 && onSelectedAssetChange && (
+            <div className="flex items-center gap-1.5">
+              <label
+                htmlFor="portfolio-chart-asset-filter"
+                className="text-xs text-slate-400 font-mono hidden md:inline"
+              >
+                Asset:
+              </label>
+              <select
+                id="portfolio-chart-asset-filter"
+                aria-label="Filter chart by asset"
+                value={selectedAsset || 'ALL'}
+                onChange={(e) =>
+                  onSelectedAssetChange(e.target.value === 'ALL' ? null : e.target.value)
+                }
+                className="bg-slate-950 border border-slate-800 text-xs font-mono font-medium text-slate-200 rounded-xl px-2.5 py-1.5 focus:border-sky-500 focus:ring-1 focus:ring-sky-500 outline-none cursor-pointer hover:border-slate-700 transition-colors shadow-inner max-w-[200px] truncate"
+              >
+                <option value="ALL">Combined Portfolio</option>
+                {holdings.map((h) => (
+                  <option key={h.symbol} value={h.symbol}>
+                    {h.name && h.name !== h.symbol ? `${h.name} (${h.symbol})` : h.symbol}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {/* Legend */}
           <div className="flex items-center gap-4 text-xs font-mono">
             <div className="flex items-center gap-1.5">
               <span className="w-2.5 h-2.5 rounded-full bg-sky-500 shadow-sm shadow-sky-500/50"></span>
-              <span className="text-slate-300">Portfolio Value</span>
+              <span className="text-slate-300">{valueLegend}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <span className="w-3 border-t-2 border-dashed border-slate-400"></span>
-              <span className="text-slate-400">Invested Capital</span>
+              <span className="text-slate-400">{investedLegend}</span>
             </div>
           </div>
+
+          {/* Timeframe Selector */}
           <TimeframeSelector selected={timeframe} onChange={onTimeframeChange} />
         </div>
       </div>
@@ -358,7 +417,9 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
                 </span>
               </div>
               <div>
-                <span className="text-slate-400">Invested: </span>
+                <span className="text-slate-400">
+                  {activeHolding ? 'Cost: ' : 'Invested: '}
+                </span>
                 <span className="font-medium text-slate-300">
                   {formatEur(activePoint.data.invested_capital_eur)}
                 </span>

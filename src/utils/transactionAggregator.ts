@@ -1,4 +1,5 @@
 import {
+  AssetDaySnapshot,
   CurrentAssetHoldingRecord,
   DashboardData,
   PortfolioAssetSetting,
@@ -611,14 +612,51 @@ export function calculateDashboardFromTransactions(
 
     let dayHoldingsValue = 0;
     let totalCostBasis = 0;
+    const dayBreakdown: Record<string, AssetDaySnapshot> = {};
+
     for (const [key, shares] of currentShares.entries()) {
-      if (shares > 0.0001) {
+      const cost = currentCosts.get(key) || 0;
+      if (shares > 0.0001 || cost > 0.01) {
         const group = assetGroups.get(key);
-        if (group) {
-          const p = getAssetPriceOnDate(group, d);
-          dayHoldingsValue += shares * p;
-        }
-        totalCostBasis += currentCosts.get(key) || 0;
+        const p = group ? getAssetPriceOnDate(group, d) : 0;
+        const val = shares * p;
+        dayHoldingsValue += val;
+        totalCostBasis += cost;
+
+        const pnl = val - cost;
+        const pnlPct = cost > 0 ? (pnl / cost) * 100 : 0;
+        const snap: AssetDaySnapshot = {
+          value_eur: Number(val.toFixed(2)),
+          cost_eur: Number(cost.toFixed(2)),
+          shares: Number(shares.toFixed(8)),
+          price_eur: Number(p.toFixed(2)),
+          pnl_eur: Number(pnl.toFixed(2)),
+          pnl_pct: Number(pnlPct.toFixed(2)),
+        };
+
+        dayBreakdown[key] = snap;
+        if (group?.symbol) dayBreakdown[group.symbol] = snap;
+        if (group?.isin) dayBreakdown[group.isin] = snap;
+        if (group?.name) dayBreakdown[group.name] = snap;
+      }
+    }
+
+    if (isFinalDay) {
+      for (const h of activeHoldingsList) {
+        const snap: AssetDaySnapshot = {
+          value_eur: h.total_value_eur,
+          cost_eur: h.total_cost_eur,
+          shares: h.shares_held,
+          price_eur: h.current_price_eur,
+          pnl_eur: h.unrealized_pnl_eur,
+          pnl_pct:
+            h.total_cost_eur > 0
+              ? Number((((h.total_value_eur - h.total_cost_eur) / h.total_cost_eur) * 100).toFixed(2))
+              : 0,
+        };
+        dayBreakdown[h.symbol] = snap;
+        if (h.isin) dayBreakdown[h.isin] = snap;
+        if (h.name) dayBreakdown[h.name] = snap;
       }
     }
 
@@ -642,10 +680,26 @@ export function calculateDashboardFromTransactions(
         dayInvested > 0
           ? Number((((dayTotalEquity - dayInvested) / dayInvested) * 100).toFixed(2))
           : 0,
+      asset_breakdown: dayBreakdown,
     });
   }
 
   if (history.length === 0) {
+    const fallbackBreakdown: Record<string, AssetDaySnapshot> = {};
+    for (const h of activeHoldingsList) {
+      fallbackBreakdown[h.symbol] = {
+        value_eur: h.total_value_eur,
+        cost_eur: h.total_cost_eur,
+        shares: h.shares_held,
+        price_eur: h.current_price_eur,
+        pnl_eur: h.unrealized_pnl_eur,
+        pnl_pct:
+          h.total_cost_eur > 0
+            ? Number((((h.total_value_eur - h.total_cost_eur) / h.total_cost_eur) * 100).toFixed(2))
+            : 0,
+      };
+      if (h.isin) fallbackBreakdown[h.isin] = fallbackBreakdown[h.symbol];
+    }
     history.push({
       date: todayStr,
       total_equity_eur: Number(totalEquity.toFixed(2)),
@@ -654,6 +708,7 @@ export function calculateDashboardFromTransactions(
       unrealized_pnl_eur: Number((totalEquity - netInvested).toFixed(2)),
       unrealized_pnl_pct:
         netInvested > 0 ? Number((((totalEquity - netInvested) / netInvested) * 100).toFixed(2)) : 0,
+      asset_breakdown: fallbackBreakdown,
     });
   }
 
