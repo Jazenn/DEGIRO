@@ -198,4 +198,60 @@ describe('getAssetPortfolioHistory', () => {
     expect(btcHistory[1].total_equity_eur).toBe(1300);
     expect(btcHistory[1].unrealized_pnl_eur).toBe(500);
   });
+
+  it('resolves crypto and ETF aliases when filtering asset history', () => {
+    // Breakdown stored under BITCOIN should be found when querying BTC-EUR
+    const btcAliasHistory = getAssetPortfolioHistory(
+      [
+        {
+          date: '2025-02-01',
+          total_equity_eur: 1000,
+          invested_capital_eur: 800,
+          cash_balance_eur: 0,
+          unrealized_pnl_eur: 200,
+          unrealized_pnl_pct: 25,
+          asset_breakdown: {
+            BITCOIN: {
+              value_eur: 1000,
+              cost_eur: 800,
+              shares: 0.05,
+              price_eur: 20000,
+              pnl_eur: 200,
+              pnl_pct: 25,
+            },
+          },
+        },
+      ],
+      'BTC-EUR'
+    );
+    expect(btcAliasHistory.length).toBe(1);
+    expect(btcAliasHistory[0].total_equity_eur).toBe(1000);
+
+    // Breakdown stored under IE000OJ5TQP4 should be found when querying ASWC.DE
+    const fodAliasHistory = getAssetPortfolioHistory(
+      [
+        {
+          date: '2026-01-16',
+          total_equity_eur: 182,
+          invested_capital_eur: 180,
+          cash_balance_eur: 0,
+          unrealized_pnl_eur: 2,
+          unrealized_pnl_pct: 1.1,
+          asset_breakdown: {
+            IE000OJ5TQP4: {
+              value_eur: 182,
+              cost_eur: 180,
+              shares: 10,
+              price_eur: 18.2,
+              pnl_eur: 2,
+              pnl_pct: 1.1,
+            },
+          },
+        },
+      ],
+      'ASWC.DE'
+    );
+    expect(fodAliasHistory.length).toBe(1);
+    expect(fodAliasHistory[0].total_equity_eur).toBe(182);
+  });
 });

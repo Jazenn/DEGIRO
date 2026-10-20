@@ -590,4 +590,82 @@ describe('calculateDashboardFromTransactions', () => {
     expect(latestDay.invested_capital_eur).toBe(4010);
     expect(latestDay.total_equity_eur).toBeGreaterThanOrEqual(4010);
   });
+
+  it('populates asset breakdown for crypto and single-trade ETFs across multiple historical dates', () => {
+    const transactions: IngestedTransaction[] = [
+      {
+        date: '2025-01-01',
+        time: '10:00',
+        product: '',
+        isin: '',
+        description: 'iDEAL Storting',
+        amount: 2000,
+        value: 2000,
+        balance: 2000,
+        quantity: null,
+        price: null,
+        orderId: 'dep-1',
+        rowHash: 'dep-1',
+        isCashSweep: false,
+      },
+      {
+        date: '2025-01-15',
+        time: '11:00',
+        product: 'BITCOIN',
+        isin: '',
+        description: 'Koop 0.01 @ 50000 EUR',
+        amount: -500,
+        value: -500,
+        balance: 1500,
+        quantity: 0.01,
+        price: 50000,
+        orderId: 'tx-btc',
+        rowHash: 'tx-btc',
+        isCashSweep: false,
+      },
+      {
+        date: '2025-02-01',
+        time: '12:00',
+        product: 'FUTURE OF DEFENCE UCITS - ACC ETF',
+        isin: 'IE000OJ5TQP4',
+        description: 'Koop 10 @ 18.00 EUR',
+        amount: -180,
+        value: -180,
+        balance: 1320,
+        quantity: 10,
+        price: 18.0,
+        orderId: 'tx-fod',
+        rowHash: 'tx-fod',
+        isCashSweep: false,
+      },
+    ];
+
+    const result = calculateDashboardFromTransactions(transactions, mockSettings, {
+      'BTC-EUR': 60000,
+      'IE000OJ5TQP4': 19.5,
+    });
+    expect(result).not.toBeNull();
+    if (!result) return;
+
+    // Check intermediate date: both assets should exist in asset_breakdown
+    const midPoint = result.history.find((h) => h.date === '2025-02-15');
+    expect(midPoint).toBeDefined();
+    expect(midPoint?.asset_breakdown?.['BTC-EUR']).toBeDefined();
+    expect(midPoint?.asset_breakdown?.['BITCOIN']).toBeDefined();
+    expect(midPoint?.asset_breakdown?.['IE000OJ5TQP4']).toBeDefined();
+    expect(midPoint?.asset_breakdown?.['ASWC.DE']).toBeDefined();
+
+    // Check final day: positive unrealized pnl for both
+    const finalDay = result.history[result.history.length - 1];
+    const btcSnap = finalDay.asset_breakdown?.['BTC-EUR'];
+    const fodSnap = finalDay.asset_breakdown?.['ASWC.DE'];
+
+    expect(btcSnap).toBeDefined();
+    expect(btcSnap?.value_eur).toBeCloseTo(600, 0); // 0.01 * 60000
+    expect(btcSnap?.pnl_eur).toBeGreaterThan(0);
+
+    expect(fodSnap).toBeDefined();
+    expect(fodSnap?.value_eur).toBeCloseTo(195, 0); // 10 * 19.50
+    expect(fodSnap?.pnl_eur).toBeGreaterThan(0);
+  });
 });

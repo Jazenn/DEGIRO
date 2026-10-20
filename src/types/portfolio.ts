@@ -46,6 +46,7 @@ export type Timeframe = '24H' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
 export interface PortfolioAssetSetting {
   symbol: string;
   display_name: string;
+  isin?: string | null;
   target_pct: number;
   buy_dip_trigger: number | null;
   sell_profit_trigger: number | null;

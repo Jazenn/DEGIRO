@@ -62,8 +62,18 @@ export async function fetchTradeGatePrice(
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeoutMs);
 
-    const url = `https://www.tradegate.de/refresh.php?isin=${encodeURIComponent(cleanIsin)}`;
-    const response = await fetch(url, { signal: controller.signal });
+    // Primary: tradegatebsx.com has Access-Control-Allow-Origin: * and HTTP 200 without redirect
+    const url = `https://www.tradegatebsx.com/refresh.php?isin=${encodeURIComponent(cleanIsin)}`;
+    let response: Response;
+    try {
+      response = await fetch(url, { signal: controller.signal });
+    } catch {
+      // Fallback to tradegate.de
+      response = await fetch(
+        `https://www.tradegate.de/refresh.php?isin=${encodeURIComponent(cleanIsin)}`,
+        { signal: controller.signal }
+      );
+    }
     clearTimeout(timer);
 
     if (!response.ok) return null;
@@ -163,6 +173,22 @@ export async function fetchCryptoPrices(
   };
 }
 
+const KNOWN_TICKER_TO_ISIN: Record<string, string> = {
+  'VWCE.DE': 'IE00BK5BQT80',
+  'EXUS.DE': 'IE0006WW1TQ4',
+  'IMAE.AS': 'IE00B4K48X80',
+  'ASWC.DE': 'IE000OJ5TQP4',
+  'AGN.AS': 'BMG0112X1056',
+};
+
+const KNOWN_ISIN_TO_TICKER: Record<string, string> = {
+  'IE00BK5BQT80': 'VWCE.DE',
+  'IE0006WW1TQ4': 'EXUS.DE',
+  'IE00B4K48X80': 'IMAE.AS',
+  'IE000OJ5TQP4': 'ASWC.DE',
+  'BMG0112X1056': 'AGN.AS',
+};
+
 /**
  * Fetches live market prices for a list of holdings/assets.
  * Returns a map of symbol/isin/name -> current price in EUR.
@@ -176,7 +202,7 @@ export async function fetchLivePricesForHoldings(
   let needsCrypto = false;
 
   for (const h of holdings) {
-    const isin = (h.isin || '').trim().toUpperCase();
+    let isin = (h.isin || '').trim().toUpperCase();
     const sym = (h.symbol || '').trim().toUpperCase();
     const name = (h.name || '').trim().toUpperCase();
 
@@ -189,6 +215,10 @@ export async function fetchLivePricesForHoldings(
       name.includes('ETHEREUM')
     ) {
       needsCrypto = true;
+    }
+
+    if (!isin && KNOWN_TICKER_TO_ISIN[sym]) {
+      isin = KNOWN_TICKER_TO_ISIN[sym];
     }
 
     if (isin && isin.length === 12 && !isin.startsWith('XFC')) {
@@ -224,6 +254,10 @@ export async function fetchLivePricesForHoldings(
       fetchTradeGatePrice(isin).then((price) => {
         if (price && price > 0) {
           result[isin] = price;
+          const mappedTicker = KNOWN_ISIN_TO_TICKER[isin];
+          if (mappedTicker) {
+            result[mappedTicker] = price;
+          }
         }
       })
     );

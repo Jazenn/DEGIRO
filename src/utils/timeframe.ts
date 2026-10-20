@@ -117,11 +117,45 @@ export function getAssetPortfolioHistory(
   const cleanKey = assetKey.trim();
   const cleanKeyUpper = cleanKey.toUpperCase();
 
+  const isBtc = cleanKeyUpper.includes('BTC') || cleanKeyUpper.includes('BITCOIN');
+  const isEth = cleanKeyUpper.includes('ETH') || cleanKeyUpper.includes('ETHEREUM');
+  const isFod =
+    cleanKeyUpper === 'IE000OJ5TQP4' ||
+    cleanKeyUpper === 'ASWC.DE' ||
+    cleanKeyUpper.includes('DEFENCE') ||
+    cleanKeyUpper.includes('DEFENSE');
+
   const assetHistory: PortfolioDailyHistoryRecord[] = history.map((r) => {
-    const snap =
+    let snap =
       r.asset_breakdown?.[cleanKey] ||
-      r.asset_breakdown?.[cleanKeyUpper] ||
-      Object.entries(r.asset_breakdown || {}).find(([k]) => {
+      r.asset_breakdown?.[cleanKeyUpper];
+
+    if (!snap && isBtc) {
+      snap =
+        r.asset_breakdown?.['BTC-EUR'] ||
+        r.asset_breakdown?.['BITCOIN'] ||
+        r.asset_breakdown?.['BTC'] ||
+        r.asset_breakdown?.['Bitcoin'];
+    }
+
+    if (!snap && isEth) {
+      snap =
+        r.asset_breakdown?.['ETH-EUR'] ||
+        r.asset_breakdown?.['ETHEREUM'] ||
+        r.asset_breakdown?.['ETH'] ||
+        r.asset_breakdown?.['Ethereum'];
+    }
+
+    if (!snap && isFod) {
+      snap =
+        r.asset_breakdown?.['ASWC.DE'] ||
+        r.asset_breakdown?.['IE000OJ5TQP4'] ||
+        r.asset_breakdown?.['FUTURE OF DEFENCE UCITS - ACC ETF'] ||
+        r.asset_breakdown?.['Future of Defence UCITS ETF'];
+    }
+
+    if (!snap && r.asset_breakdown) {
+      snap = Object.entries(r.asset_breakdown).find(([k]) => {
         const kUpper = k.toUpperCase();
         return (
           kUpper === cleanKeyUpper ||
@@ -129,6 +163,7 @@ export function getAssetPortfolioHistory(
           cleanKeyUpper.includes(kUpper)
         );
       })?.[1];
+    }
 
     if (snap) {
       return {

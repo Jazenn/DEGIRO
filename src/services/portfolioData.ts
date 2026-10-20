@@ -44,6 +44,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'VWCE.DE',
       display_name: 'Vanguard FTSE All-World UCITS ETF',
+      isin: 'IE00BK5BQT80',
       target_pct: 55.5,
       buy_dip_trigger: null,
       sell_profit_trigger: null,
@@ -53,6 +54,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'EXUS.DE',
       display_name: 'iShares MSCI World ex-USA UCITS ETF',
+      isin: 'IE0006WW1TQ4',
       target_pct: 21.0,
       buy_dip_trigger: null,
       sell_profit_trigger: null,
@@ -62,6 +64,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'BTC-EUR',
       display_name: 'Bitcoin',
+      isin: null,
       target_pct: 8.0,
       buy_dip_trigger: 58500,
       sell_profit_trigger: 75420,
@@ -72,6 +75,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'IMAE.AS',
       display_name: 'iShares European Property Yield / Small ETF',
+      isin: 'IE00B4K48X80',
       target_pct: 8.5,
       buy_dip_trigger: null,
       sell_profit_trigger: null,
@@ -81,6 +85,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'ASWC.DE',
       display_name: 'Clean Energy & Technology ETF',
+      isin: 'IE000OJ5TQP4',
       target_pct: 5.0,
       buy_dip_trigger: null,
       sell_profit_trigger: null,
@@ -90,6 +95,7 @@ export function getDefaultAssetSettings(): PortfolioAssetSetting[] {
     {
       symbol: 'ETH-EUR',
       display_name: 'Ethereum',
+      isin: null,
       target_pct: 2.0,
       buy_dip_trigger: 2800,
       sell_profit_trigger: 3800,
