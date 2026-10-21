@@ -2,9 +2,9 @@
 
 Research for [Audit trustworthy valuations and the dashboard data foundation](https://github.com/Jazenn/DEGIRO/issues/32), 2026-10-21. Inspected revision: `23d0b8d`. No implementation changes.
 
-## Decision
+## Audit recommendation
 
-Retain the ledger, ingestion/domain seams, configurable allocation model and background snapshot/read-model architecture. A blanket rewrite is not justified. Correct price coverage, financial semantics, freshness and deployment boundaries before adding performance charts or evaluating Crypto Scale strategies.
+Recommended boundary, pending the architecture decision: retain the ledger, ingestion/domain seams, configurable allocation model and background snapshot/read-model architecture. A blanket rewrite is not justified. Correct price coverage, financial semantics, freshness and deployment boundaries before adding performance charts or evaluating Crypto Scale strategies.
 
 ## Verified correctness and provenance matrix
 
@@ -51,3 +51,4 @@ Decide canonical ledger/engine, local-only versus authenticated remote deploymen
 ## Verification limits
 
 Source tracing, primary-document checks and a private non-financial schema/identity check completed. No production DB, deployed credentials or live portfolio reconciliation was accessed. No workflow dispatched, code changed, application tests/build run, or latency measured. Findings establish reachable source behavior; frequency and impact in the deployed portfolio remain unknown.
+
