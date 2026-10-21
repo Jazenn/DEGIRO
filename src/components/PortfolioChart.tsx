@@ -161,8 +161,8 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
 
       switch (timeframe) {
         case '24H': {
-          // Highlight every 4 hours and last point
-          isHighlight = i % 4 === 0 || i === n - 1;
+          // Highlight every 15 minutes and the latest point
+          isHighlight = true;
           label = dateObj.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
           break;
         }
@@ -243,7 +243,7 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
     const highlightedPts = pts.filter((p) => p.isHighlight);
     const labels: Array<{ x: number; label: string }> = [];
     let lastX = -Infinity;
-    const minDistance = plotW > 600 ? 50 : 40;
+    const minDistance = timeframe === '24H' ? (plotW > 600 ? 65 : 55) : (plotW > 600 ? 50 : 40);
 
     for (let idx = 0; idx < highlightedPts.length; idx++) {
       const hp = highlightedPts[idx];
@@ -549,12 +549,13 @@ export const PortfolioChart: React.FC<PortfolioChartProps> = ({
           {points.map((p, idx) => {
             if (!p.isHighlight) return null;
             const isHovered = activePoint?.data.date === p.data.date;
+            const radius = isHovered ? 5 : (timeframe === '24H' ? 2 : 3);
             return (
               <circle
                 key={`hl-${idx}`}
                 cx={p.x}
                 cy={p.yEquity}
-                r={isHovered ? 5 : 3}
+                r={radius}
                 fill={isHovered ? '#38bdf8' : '#0284c7'}
                 stroke="#0f172a"
                 strokeWidth={isHovered ? 2 : 1.5}

@@ -6,6 +6,7 @@ import {
   PiggyBank,
   Layers,
   Banknote,
+  Coins,
 } from 'lucide-react';
 import { PortfolioMetrics } from '../types/portfolio';
 import { formatEur, formatPct } from '../utils/metrics';
@@ -18,7 +19,7 @@ export const MetricCards: React.FC<MetricCardsProps> = ({ metrics }) => {
   const isPositive = metrics.totalGainLossEur >= 0;
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
       {/* 1. Total Portfolio Value */}
       <div className="bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-5 transition shadow-sm relative overflow-hidden group">
         <div className="flex items-center justify-between">
@@ -121,6 +122,29 @@ export const MetricCards: React.FC<MetricCardsProps> = ({ metrics }) => {
             {formatEur(metrics.freeCashBalance)}
           </h2>
           <p className="mt-2 text-xs text-slate-400">Available dry powder</p>
+        </div>
+      </div>
+
+      {/* 5. Dividends Paid Out */}
+      <div
+        data-testid="metric-dividends-card"
+        className="bg-slate-900/90 border border-slate-800 hover:border-slate-700/80 rounded-2xl p-5 transition shadow-sm relative overflow-hidden group"
+      >
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-medium uppercase tracking-wider text-slate-400">
+            Dividends Paid
+          </span>
+          <div className="p-2 rounded-xl bg-teal-500/10 text-teal-400">
+            <Coins className="w-4 h-4" />
+          </div>
+        </div>
+        <div className="mt-3">
+          <h2 className="text-2xl sm:text-3xl font-extrabold font-mono text-teal-400 tracking-tight">
+            {metrics.totalDividendsEur !== undefined && metrics.totalDividendsEur > 0
+              ? `+${formatEur(metrics.totalDividendsEur)}`
+              : formatEur(metrics.totalDividendsEur ?? 0)}
+          </h2>
+          <p className="mt-2 text-xs text-slate-400">Cumulative payouts</p>
         </div>
       </div>
     </div>

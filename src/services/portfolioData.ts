@@ -374,7 +374,7 @@ export function getDemoDashboardData(): DashboardData {
     };
   });
 
-  const metrics = calculatePortfolioMetrics(history, syncedHoldings);
+  const metrics = calculatePortfolioMetrics(history, syncedHoldings, 384.50);
 
   return {
     metrics,
@@ -578,7 +578,14 @@ export async function fetchDashboardData(
         };
       });
 
-      const metrics = calculatePortfolioMetrics(history, holdings);
+      let totalDividends = 0;
+      try {
+        const divRows = await sql`SELECT COALESCE(SUM(amount), 0) as total FROM degiro_transactions WHERE description ILIKE '%dividend%';`;
+        if (divRows && divRows.length > 0) totalDividends = Number(divRows[0].total) || 0;
+      } catch {
+        // Fallback if table not present
+      }
+      const metrics = calculatePortfolioMetrics(history, holdings, totalDividends);
 
       return {
         metrics,

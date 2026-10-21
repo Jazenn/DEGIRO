@@ -80,7 +80,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     () => getAssetPortfolioHistory(data.history, selectedAsset),
     [data.history, selectedAsset]
   );
-  const filteredHistory = filterPortfolioHistory(assetFilteredHistory, timeframe);
+  const filteredHistory = useMemo(() => {
+    const refDate = data.lastUpdated ? new Date(data.lastUpdated) : new Date();
+    return filterPortfolioHistory(assetFilteredHistory, timeframe, refDate, {
+      transactions: data.transactions,
+      selectedAsset,
+    });
+  }, [assetFilteredHistory, timeframe, data.lastUpdated, data.transactions, selectedAsset]);
 
   const handleSaveSettings = async (updatedSettings: PortfolioAssetSetting[]) => {
     // Persist settings (to Neon Serverless DB or localStorage)

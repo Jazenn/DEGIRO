@@ -333,7 +333,22 @@ export function calculateDashboardFromTransactions(
   // 2. Compute Cash Balance
   const latestCashBalance = calculateCashBalance(sorted);
 
-  // 3. Compute Net Invested Capital
+  // 3. Compute Net Invested Capital & Dividends
+  let totalDividendsEur = 0;
+  for (const tx of sorted) {
+    if (isInternalCashTransaction(tx)) continue;
+    const desc = normalizeString(tx.description);
+    if (desc.includes('dividend')) {
+      const amt =
+        tx.amount !== null && !isNaN(tx.amount)
+          ? tx.amount
+          : tx.value !== null && !isNaN(tx.value)
+          ? tx.value
+          : 0;
+      totalDividendsEur += amt;
+    }
+  }
+
   let totalDeposits = 0;
   let totalWithdrawals = 0;
   let hasExternalFlow = false;
@@ -958,7 +973,7 @@ export function calculateDashboardFromTransactions(
     });
   }
 
-  const metrics = calculatePortfolioMetrics(history, activeHoldingsList);
+  const metrics = calculatePortfolioMetrics(history, activeHoldingsList, totalDividendsEur);
 
   return {
     metrics,
@@ -967,5 +982,6 @@ export function calculateDashboardFromTransactions(
     assetSettings,
     isDemo: false,
     lastUpdated: new Date().toISOString(),
+    transactions: sorted,
   };
 }

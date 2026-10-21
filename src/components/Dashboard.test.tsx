@@ -25,6 +25,10 @@ describe('Dashboard Component', () => {
     // Free Cash
     expect(screen.getByText(/Free Cash/i)).toBeInTheDocument();
     expect(screen.getByText('€1,420.50')).toBeInTheDocument();
+
+    // Dividends Paid
+    expect(screen.getByText(/Dividends Paid/i)).toBeInTheDocument();
+    expect(screen.getByText(/\+€384\.50/i)).toBeInTheDocument();
   });
 
   it('renders timeframe selector buttons with 24H, 1W, 1M, 3M, 1Y, ALL', () => {

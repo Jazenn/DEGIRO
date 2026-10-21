@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { filterPortfolioHistory, getAssetPortfolioHistory } from './timeframe';
+import { filterPortfolioHistory, getAssetPortfolioHistory, parseTransactionDateTime } from './timeframe';
 import { PortfolioDailyHistoryRecord } from '../types/portfolio';
 
 describe('Timeframe Filter Logic', () => {
@@ -124,10 +124,84 @@ describe('Timeframe Filter Logic', () => {
     expect(result.map((r) => r.date)).toEqual(['2026-10-19']);
   });
 
-  it('generates 24-hour hourly points for 24H timeframe', () => {
-    const result = filterPortfolioHistory(sampleHistory, '24H', refDate);
-    expect(result.length).toBe(25);
-    expect(result[result.length - 1].total_equity_eur).toBe(48250);
+  it('generates 15-minute interval points across 24H timeframe ending at reference time', () => {
+    const nowRef = new Date('2026-10-21T11:22:00.000Z');
+    const result = filterPortfolioHistory(sampleHistory, '24H', nowRef);
+
+    expect(result.length).toBe(98);
+
+    const lastPoint = result[result.length - 1];
+    expect(new Date(lastPoint.date).toISOString()).toBe('2026-10-21T11:22:00.000Z');
+    expect(lastPoint.total_equity_eur).toBe(48250);
+
+    const secondLastPoint = result[result.length - 2];
+    expect(new Date(secondLastPoint.date).toISOString()).toBe('2026-10-21T11:15:00.000Z');
+
+    const firstPoint = result[0];
+    expect(new Date(firstPoint.date).toISOString()).toBe('2026-10-20T11:15:00.000Z');
+
+    for (let i = 0; i < 96; i++) {
+      const diff = new Date(result[i + 1].date).getTime() - new Date(result[i].date).getTime();
+      expect(diff).toBe(15 * 60 * 1000);
+    }
+  });
+
+  it('renders an instant drop-off (step change) when an asset sell occurs instead of a gradual decline', () => {
+    const btcSellHistory: PortfolioDailyHistoryRecord[] = [
+      {
+        date: '2026-10-20',
+        total_equity_eur: 800,
+        invested_capital_eur: 700,
+        cash_balance_eur: 100,
+        unrealized_pnl_eur: 100,
+        unrealized_pnl_pct: 14.29,
+      },
+      {
+        date: '2026-10-21',
+        total_equity_eur: 600,
+        invested_capital_eur: 500,
+        cash_balance_eur: 300,
+        unrealized_pnl_eur: 100,
+        unrealized_pnl_pct: 20.0,
+      },
+    ];
+
+    const nowRef = new Date('2026-10-21T11:22:00.000Z');
+    const sellTransaction = {
+      date: '21-10-2026',
+      time: '09:30',
+      product: 'BITCOIN',
+      isin: null,
+      description: 'Verkoop Bitcoin 0.003 @ 66666.67',
+      amount: 200,
+      quantity: -0.003,
+      price: 66666.67,
+    };
+
+    const result = filterPortfolioHistory(btcSellHistory, '24H', nowRef, {
+      transactions: [sellTransaction as any],
+      selectedAsset: 'BTC-EUR',
+    });
+
+    const sellTime = parseTransactionDateTime('21-10-2026', '09:30')!.getTime();
+
+    const pointsBeforeSell = result.filter(
+      (p) => new Date(p.date).getTime() < sellTime
+    );
+    expect(pointsBeforeSell.length).toBeGreaterThan(0);
+    for (const p of pointsBeforeSell) {
+      expect(p.total_equity_eur).toBeGreaterThan(790);
+      expect(p.total_equity_eur).toBeLessThan(810);
+    }
+
+    const pointsAfterSell = result.filter(
+      (p) => new Date(p.date).getTime() >= sellTime
+    );
+    expect(pointsAfterSell.length).toBeGreaterThan(0);
+    for (const p of pointsAfterSell) {
+      expect(p.total_equity_eur).toBeGreaterThan(590);
+      expect(p.total_equity_eur).toBeLessThan(610);
+    }
   });
 });
 

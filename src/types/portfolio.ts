@@ -40,6 +40,7 @@ export interface PortfolioMetrics {
   totalGainLossPct: number;
   freeCashBalance: number;
   totalHoldingsCount: number;
+  totalDividendsEur: number;
 }
 
 export type Timeframe = '24H' | '1W' | '1M' | '3M' | '1Y' | 'ALL';
@@ -64,4 +65,5 @@ export interface DashboardData {
   assetSettings?: PortfolioAssetSetting[];
   isDemo: boolean;
   lastUpdated: string | null;
+  transactions?: any[];
 }

@@ -108,6 +108,16 @@ describe('Portfolio Metrics Calculation', () => {
     const metrics = calculatePortfolioMetrics(zeroCapitalHistory, []);
     expect(metrics.totalGainLossPct).toBe(0);
   });
+
+  it('includes total dividends paid out when provided', () => {
+    const metrics = calculatePortfolioMetrics(sampleHistory, sampleHoldings, 384.5);
+    expect(metrics.totalDividendsEur).toBe(384.5);
+  });
+
+  it('defaults total dividends to 0 when not provided', () => {
+    const metrics = calculatePortfolioMetrics(sampleHistory, sampleHoldings);
+    expect(metrics.totalDividendsEur).toBe(0);
+  });
 });
 
 describe('Formatting Utilities', () => {

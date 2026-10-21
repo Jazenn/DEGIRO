@@ -9,9 +9,11 @@ import {
  */
 export function calculatePortfolioMetrics(
   history: PortfolioDailyHistoryRecord[],
-  holdings: CurrentAssetHoldingRecord[]
+  holdings: CurrentAssetHoldingRecord[],
+  totalDividendsEur = 0
 ): PortfolioMetrics {
   const totalHoldingsCount = holdings.length;
+  const dividends = Number(totalDividendsEur.toFixed(2));
 
   if (history && history.length > 0) {
     const sorted = [...history].sort(
@@ -33,6 +35,7 @@ export function calculatePortfolioMetrics(
       totalGainLossPct,
       freeCashBalance,
       totalHoldingsCount,
+      totalDividendsEur: dividends,
     };
   }
 
@@ -57,6 +60,7 @@ export function calculatePortfolioMetrics(
       totalGainLossPct,
       freeCashBalance: 0,
       totalHoldingsCount,
+      totalDividendsEur: dividends,
     };
   }
 
@@ -67,6 +71,7 @@ export function calculatePortfolioMetrics(
     totalGainLossPct: 0,
     freeCashBalance: 0,
     totalHoldingsCount: 0,
+    totalDividendsEur: dividends,
   };
 }
 
