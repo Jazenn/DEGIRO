@@ -1,6 +1,6 @@
 # Private hosted dashboard feasibility
 
-Checked 2026-10-21. Fact-finding for [Choose the technical foundation for the overhaul](https://github.com/Jazenn/DEGIRO/issues/36), not a deployment or a resolved architecture decision.
+Checked 2026-10-21. Fact-finding for [Choose the frontend and backend overhaul boundaries](https://github.com/Jazenn/DEGIRO/issues/36), not a deployment or a resolved architecture decision.
 
 ## Recommended candidate
 
