@@ -13,3 +13,7 @@ Triage roles map 1:1 to GitHub labels (`needs-triage`, `needs-info`, `ready-for-
 ### Domain docs
 
 Single-context layout (`GLOSSARY.md` + `docs/adr/` at the repo root). See `docs/agents/domain.md`.
+
+### Git workflow
+
+Always standardly commit and push all verified fixes and features directly to main once tests and builds pass.
