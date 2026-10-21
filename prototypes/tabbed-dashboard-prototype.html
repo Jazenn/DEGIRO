@@ -1,0 +1,1570 @@
+<!DOCTYPE html>
+<html lang="nl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEGIRO Executive Dashboard - Tabbed UI Prototype v2</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              500: '#0284c7',
+              600: '#0369a1',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-sky-500 selection:text-white pb-32 md:pb-16">
+
+  <!-- ========================================================================= -->
+  <!-- TOP APP HEADER WITH 5 DESKTOP TABS -->
+  <!-- ========================================================================= -->
+  <header class="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center font-black text-white shadow-md shadow-sky-600/20 text-base">
+          D
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold tracking-tight text-white text-base">DEGIRO</span>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-sky-950 border border-sky-800 text-sky-400 font-medium">v2 Prototype</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Executive Portfolio & Wealth Dashboard</p>
+        </div>
+      </div>
+
+      <!-- Desktop Tabs Navigation (5 Tabs) -->
+      <nav class="hidden lg:flex items-center bg-slate-950/80 border border-slate-800/80 p-1 rounded-xl">
+        <button onclick="switchTab('overview')" id="nav-btn-overview" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 bg-sky-600 text-white shadow-sm">
+          <i data-lucide="layout-dashboard" class="w-3.5 h-3.5"></i>
+          <span>Overzicht</span>
+        </button>
+        <button onclick="switchTab('performance')" id="nav-btn-performance" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-1.5">
+          <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+          <span>Prestaties & Grafiek</span>
+        </button>
+        <button onclick="switchTab('allocation')" id="nav-btn-allocation" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-1.5">
+          <i data-lucide="pie-chart" class="w-3.5 h-3.5"></i>
+          <span>Allocatie & Herbalanceren</span>
+        </button>
+        <button onclick="switchTab('crypto')" id="nav-btn-crypto" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-1.5">
+          <i data-lucide="zap" class="w-3.5 h-3.5 text-amber-400"></i>
+          <span>Crypto Strategie</span>
+        </button>
+        <button onclick="switchTab('insights')" id="nav-btn-insights" class="tab-btn px-3.5 py-1.5 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-1.5">
+          <i data-lucide="sparkles" class="w-3.5 h-3.5 text-purple-400"></i>
+          <span>Inzichten & Fees</span>
+        </button>
+      </nav>
+
+      <!-- Right Actions -->
+      <div class="flex items-center gap-2.5">
+        <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 text-xs font-mono">
+          <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Live Synced</span>
+        </div>
+        <button onclick="simulateRefresh()" id="refresh-btn" class="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition flex items-center gap-1.5">
+          <i data-lucide="rotate-cw" id="refresh-icon" class="w-3.5 h-3.5 text-sky-400"></i>
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN CONTAINER -->
+  <!-- ========================================================================= -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+
+    <!-- ======================================================================= -->
+    <!-- TAB 1: OVERZICHT (LANDING SCREEN) -->
+    <!-- ======================================================================= -->
+    <div id="tab-overview" class="tab-content space-y-6">
+
+      <!-- Hero KPI Banner -->
+      <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div class="absolute -right-12 -top-12 w-64 h-64 bg-sky-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        <!-- Top Row: Main Portfolio Value & Live Status -->
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6 pb-6 border-b border-slate-800/80">
+          <div>
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <i data-lucide="wallet" class="w-4 h-4 text-sky-400"></i>
+              <span>Totale Portefeuillewaarde</span>
+            </div>
+            <div class="flex flex-wrap items-baseline gap-3">
+              <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black font-mono text-white tracking-tight whitespace-nowrap">
+                €48.250,82
+              </h1>
+              
+              <!-- 24H Daily Gain/Loss Badge -->
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-sm font-mono font-bold whitespace-nowrap">
+                <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+                +€184,20 (+0,38%) Vandaag
+              </span>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-2.5 flex items-center gap-2 flex-wrap">
+              <span>Laatste live update: <strong class="text-slate-300 font-mono">14:42 CET</strong></span>
+              <span class="text-slate-600">•</span>
+              <span class="text-emerald-400 font-medium flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                TradeGate BSX & Crypto Live Synced
+              </span>
+            </p>
+          </div>
+
+          <!-- Quick All-Time Return Pill on Desktop -->
+          <div class="hidden lg:flex items-center gap-4 bg-slate-950/60 border border-slate-800/80 rounded-2xl px-5 py-3.5">
+            <div class="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-400 shrink-0">
+              <i data-lucide="trending-up" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider font-sans">All-Time Netto Rendement</div>
+              <div class="text-xl font-black font-mono text-emerald-400 whitespace-nowrap">+14,23% <span class="text-xs font-normal text-emerald-500/80">(+€6.012,40)</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bottom Row: 4 Full-Width Executive Metric Cards (Spacious, uncrowded, zero-wrap guarantee) -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 pt-6">
+          <!-- 1. Totaal Winst -->
+          <div class="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700/80 transition group">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="text-[11px] font-semibold uppercase tracking-wider font-sans">Totaal Winst</span>
+              <div class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition">
+                <i data-lucide="trending-up" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+            <div class="mt-2.5">
+              <span class="text-lg sm:text-xl font-bold font-mono text-emerald-400 block whitespace-nowrap leading-tight">+€6.012,40</span>
+              <span class="text-[11px] font-mono text-emerald-500/80 font-medium block whitespace-nowrap mt-1">+14,23% all-time</span>
+            </div>
+          </div>
+
+          <!-- 2. Netto Inleg -->
+          <div class="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700/80 transition group">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="text-[11px] font-semibold uppercase tracking-wider font-sans">Netto Inleg</span>
+              <div class="p-1.5 rounded-lg bg-sky-500/10 text-sky-400 group-hover:bg-sky-500/20 transition">
+                <i data-lucide="arrow-down-left" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+            <div class="mt-2.5">
+              <span class="text-lg sm:text-xl font-bold font-mono text-white block whitespace-nowrap leading-tight">€42.238,42</span>
+              <span class="text-[11px] text-slate-400 mt-1 block whitespace-nowrap">Gedeponeerd kapitaal</span>
+            </div>
+          </div>
+
+          <!-- 3. Uitgekeerd Dividend -->
+          <div class="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700/80 transition group">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="text-[11px] font-semibold uppercase tracking-wider font-sans">Dividend</span>
+              <div class="p-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition">
+                <i data-lucide="piggy-bank" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+            <div class="mt-2.5">
+              <span class="text-lg sm:text-xl font-bold font-mono text-emerald-400 block whitespace-nowrap leading-tight">+€182,45</span>
+              <span class="text-[11px] text-slate-400 mt-1 block whitespace-nowrap">Passief inkomen</span>
+            </div>
+          </div>
+
+          <!-- 4. Cash & Dry Powder -->
+          <div class="bg-slate-950/70 border border-slate-800/90 rounded-2xl p-4 flex flex-col justify-between hover:border-slate-700/80 transition group">
+            <div class="flex items-center justify-between text-slate-400">
+              <span class="text-[11px] font-semibold uppercase tracking-wider font-sans">Vrije Cash</span>
+              <div class="p-1.5 rounded-lg bg-amber-500/10 text-amber-400 group-hover:bg-amber-500/20 transition">
+                <i data-lucide="coins" class="w-3.5 h-3.5"></i>
+              </div>
+            </div>
+            <div class="mt-2.5">
+              <span class="text-lg sm:text-xl font-bold font-mono text-white block whitespace-nowrap leading-tight">€5,96</span>
+              <span class="text-[11px] text-slate-400 mt-1 block whitespace-nowrap">Flatex Cash Fund</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Benchmark Pulse Banner -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="p-2.5 rounded-xl bg-sky-500/10 text-sky-400 shrink-0">
+            <i data-lucide="scale" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">Benchmark Snelle Vergelijking</h3>
+            <p class="text-xs text-slate-400">Hoe doet jouw portefeuille het vandaag en YTD ten opzichte van de markt?</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 text-center font-mono text-xs">
+          <div class="px-2 sm:px-3 py-2 rounded-xl bg-slate-950/80 border border-sky-500/30">
+            <span class="text-[10px] text-sky-400 uppercase tracking-wider block font-sans font-semibold">Portfolio</span>
+            <span class="text-emerald-400 font-bold block mt-0.5 whitespace-nowrap text-xs">+0,38% <span class="text-[10px] font-normal text-slate-400 hidden sm:inline">vandaag</span></span>
+            <span class="text-slate-300 text-[11px] whitespace-nowrap block mt-0.5">+14,2% YTD</span>
+          </div>
+          <div class="px-2 sm:px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-semibold truncate">VWCE World</span>
+            <span class="text-emerald-400 font-bold block mt-0.5 whitespace-nowrap text-xs">+0,42% <span class="text-[10px] font-normal text-slate-400 hidden sm:inline">vandaag</span></span>
+            <span class="text-slate-300 text-[11px] whitespace-nowrap block mt-0.5">+13,8% YTD</span>
+          </div>
+          <div class="px-2 sm:px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-semibold truncate">S&P 500</span>
+            <span class="text-emerald-400 font-bold block mt-0.5 whitespace-nowrap text-xs">+0,61% <span class="text-[10px] font-normal text-slate-400 hidden sm:inline">vandaag</span></span>
+            <span class="text-slate-300 text-[11px] whitespace-nowrap block mt-0.5">+16,4% YTD</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Individual Holdings Performance Table / Cards (Alle 6 holdings inclusief Ethereum!) -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="layers" class="w-5 h-5 text-sky-400"></i>
+              <span>Holdings Prestaties</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Bekijk in één oogopslag de winst van vandaag en totale winst van al jouw 6 beleggingen</p>
+          </div>
+
+          <!-- Quick Filter Tabs (Interactief: Alles 6 / ETF's 4 / Crypto 2) -->
+          <div class="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+            <button onclick="filterHoldings('all')" id="filter-btn-all" class="filter-btn px-3 py-1 rounded-lg bg-sky-600 text-white font-semibold transition">Alles (6)</button>
+            <button onclick="filterHoldings('etf')" id="filter-btn-etf" class="filter-btn px-3 py-1 rounded-lg text-slate-400 hover:text-white transition">ETF's (4)</button>
+            <button onclick="filterHoldings('crypto')" id="filter-btn-crypto" class="filter-btn px-3 py-1 rounded-lg text-slate-400 hover:text-white transition">Crypto (2)</button>
+          </div>
+        </div>
+
+        <!-- Desktop Table View (Gewichten/Doelgewichten verwijderd zoals gevraagd) -->
+        <div class="hidden md:block overflow-x-auto mt-4">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="text-slate-400 border-b border-slate-800/80 pb-3">
+                <th class="py-3 px-3 font-semibold font-sans">Belegging</th>
+                <th class="py-3 px-3 font-semibold text-right">Huidige Waarde</th>
+                <th class="py-3 px-3 font-semibold text-right">Resultaat Vandaag (24h)</th>
+                <th class="py-3 px-3 font-semibold text-right">Totaal Winst / Verlies</th>
+                <th class="py-3 px-3 font-semibold text-center font-sans">Type</th>
+              </tr>
+            </thead>
+            <tbody id="holdings-table-body" class="divide-y divide-slate-800/60">
+              <!-- Dynamisch gerenderd via JS -->
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Card List View -->
+        <div id="holdings-mobile-cards" class="md:hidden space-y-3 mt-4">
+          <!-- Dynamisch gerenderd via JS -->
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 2: PRESTATIES & GRAFIEK -->
+    <!-- ======================================================================= -->
+    <div id="tab-performance" class="tab-content hidden space-y-6">
+      
+      <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+        
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-5 h-5 text-sky-400"></i>
+              <span>Portefeuille Rendement & Koersverloop</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Dynamische schaling per tijdsvenster voorkomt een platte streep</p>
+          </div>
+
+          <!-- Controls: View Mode & Timeframe Selector -->
+          <div class="flex flex-wrap items-center gap-2.5">
+            
+            <!-- View Mode Toggle: Waarde vs Rendement -->
+            <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs font-mono">
+              <button onclick="toggleChartMode('value')" id="btn-mode-value" class="px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition">
+                Waarde (€)
+              </button>
+              <button onclick="toggleChartMode('return')" id="btn-mode-return" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition">
+                Rendement (%)
+              </button>
+            </div>
+
+            <!-- Timeframe Selector (Nu 100% interactief met echte curves!) -->
+            <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs font-mono">
+              <button onclick="setTimeframe('24H')" id="tf-btn-24H" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">24H</button>
+              <button onclick="setTimeframe('1W')" id="tf-btn-1W" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">1W</button>
+              <button onclick="setTimeframe('1M')" id="tf-btn-1M" class="tf-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-sky-400 font-bold">1M</button>
+              <button onclick="setTimeframe('3M')" id="tf-btn-3M" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">3M</button>
+              <button onclick="setTimeframe('1Y')" id="tf-btn-1Y" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">1Y</button>
+              <button onclick="setTimeframe('ALL')" id="tf-btn-ALL" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">ALL</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Dynamic Chart Scaling Note Badge -->
+        <div id="scaling-info-badge" class="mt-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-950/40 border border-sky-800/40 text-sky-300 text-xs">
+          <i data-lucide="info" class="w-4 h-4 text-sky-400 shrink-0"></i>
+          <span id="scaling-info-text"><strong>1M Weergave:</strong> Y-as dynamisch geschaald tussen €47.000 en €48.600. Schommelingen zijn perfect zichtbaar zonder platte streep!</span>
+        </div>
+
+        <!-- Chart Container -->
+        <div class="mt-6 h-80 relative">
+          <canvas id="prototype-chart"></canvas>
+        </div>
+
+        <!-- Period Statistics Row (Dynamisch bijgewerkt per tijdsvenster) -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800 font-mono text-xs">
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Startwaarde Periode</span>
+            <span id="stat-start-val" class="text-white font-bold text-sm mt-0.5 block">€47.320,00</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Huidige Waarde</span>
+            <span id="stat-end-val" class="text-white font-bold text-sm mt-0.5 block">€48.250,82</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Resultaat Periode</span>
+            <span id="stat-change-val" class="text-emerald-400 font-bold text-sm mt-0.5 block">+€930,82 (+1,97%)</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Benchmark (VWCE)</span>
+            <span id="stat-bm-val" class="text-emerald-400 font-bold text-sm mt-0.5 block">+1,65% in zelfde tijd</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 3: ALLOCATIE & HERBALANCEREN -->
+    <!-- ======================================================================= -->
+    <div id="tab-allocation" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Allocation Donut met alle 5 holdings en doelgewichten -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-base font-bold text-white flex items-center gap-2">
+              <i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>
+              <span>Verdeling & Doelen</span>
+            </h2>
+            <span class="text-xs font-mono text-slate-400">Doel %</span>
+          </div>
+
+          <div class="h-56 relative flex items-center justify-center">
+            <canvas id="prototype-donut"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+              <span class="text-xs text-slate-400 font-medium">Totale Waarde</span>
+              <span class="text-lg font-bold font-mono text-white">€48.250</span>
+            </div>
+          </div>
+
+          <div class="space-y-2 mt-4 text-xs font-mono">
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span> VWCE All-World</span>
+              <span class="font-bold text-white">54,2% <span class="text-slate-500 font-normal">/ 55,5%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> EXUS ex-USA</span>
+              <span class="font-bold text-white">21,5% <span class="text-slate-500 font-normal">/ 21,0%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Bitcoin (BTC)</span>
+              <span class="font-bold text-white">9,8% <span class="text-slate-500 font-normal">/ 8,0%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> IMAE Europe Small</span>
+              <span class="font-bold text-white">8,1% <span class="text-slate-500 font-normal">/ 8,5%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-emerald-500"></span> ASWC Clean Energy</span>
+              <span class="font-bold text-white">4,4% <span class="text-slate-500 font-normal">/ 5,0%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-purple-500"></span> Ethereum (ETH)</span>
+              <span class="font-bold text-white">2,0% <span class="text-slate-500 font-normal">/ 2,0%</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 2 cols: Rebalance Simulator & Selling Toggle -->
+        <div class="lg:col-span-2 space-y-6">
+          
+          <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-5">
+              <div>
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                  <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i>
+                  <span>Herbalanceer Cockpit</span>
+                </h3>
+                <p class="text-xs text-slate-400 mt-0.5">Bereken de exacte aankooporders in hele stuks (nooit fractionele ETF's)</p>
+              </div>
+
+              <!-- Selling Toggle (Hersteld zoals gevraagd!) -->
+              <div class="flex items-center gap-2.5 bg-slate-950 p-2 rounded-2xl border border-slate-800">
+                <button type="button" role="switch" id="allow-selling-btn" onclick="toggleAllowSelling()" class="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out bg-slate-800">
+                  <span id="allow-selling-thumb" class="pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out translate-x-0"></span>
+                </button>
+                <label onclick="toggleAllowSelling()" class="text-xs font-medium text-slate-300 cursor-pointer select-none">
+                  Verkopen toestaan
+                </label>
+              </div>
+            </div>
+
+            <!-- Preset Buttons & Deposit Amount Input -->
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5">
+              <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                <span class="text-xs font-semibold text-slate-300">Geplande Storting Deze Maand:</span>
+                
+                <div class="flex items-center gap-2">
+                  <button onclick="setDepositValue(250)" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300">€250</button>
+                  <button onclick="setDepositValue(500)" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300">€500</button>
+                  <button onclick="setDepositValue(800)" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-sky-600 font-bold text-white">€800</button>
+                  <button onclick="setDepositValue(1000)" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300">€1.000</button>
+                  <button onclick="setDepositValue(1500)" class="preset-btn px-2.5 py-1 rounded-lg text-xs font-mono bg-slate-800 hover:bg-slate-700 text-slate-300">€1.500</button>
+                </div>
+              </div>
+
+              <!-- Interactive Drag Slider & Direct Input Field -->
+              <div class="flex items-center gap-4">
+                <input type="range" id="deposit-slider" min="0" max="3000" step="50" value="800" oninput="onSliderMove(this.value)" class="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+                <div class="flex items-center gap-1 font-mono text-white text-base font-bold bg-slate-900 border border-slate-700 px-3 py-1.5 rounded-xl shrink-0">
+                  <span>€</span>
+                  <input type="number" id="deposit-number-box" value="800" min="0" step="50" onchange="onSliderMove(this.value)" class="w-20 bg-transparent text-white focus:outline-none">
+                </div>
+              </div>
+
+              <div class="flex justify-between text-[11px] font-mono text-slate-500 mt-2">
+                <span>€0</span>
+                <span>€1.000</span>
+                <span>€2.000</span>
+                <span>€3.000</span>
+              </div>
+            </div>
+
+            <!-- Current Strategy Mode Banner -->
+            <div id="rebalance-mode-banner" class="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 text-xs font-mono mb-4 text-emerald-300">
+              <span class="flex items-center gap-2">
+                <i data-lucide="shield-check" class="w-4 h-4 text-emerald-400"></i>
+                <span id="rebalance-mode-text"><strong>Stortingsmodus:</strong> Alleen onderwogen ETF's bijkopen. Geen verkoopkosten.</span>
+              </span>
+              <span class="text-[11px] text-slate-400 hidden sm:inline">Hele stuks voor ETF's</span>
+            </div>
+
+            <!-- Recommended Orders (In hele stuks berekend!) -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="rebalance-recommendations">
+              <!-- Dynamisch berekend en gerenderd in hele stuks via JS -->
+            </div>
+
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 4: CRYPTO STRATEGIE (VOLLEDIG EIGEN TABBLAD & UITGEBREID) -->
+    <!-- ======================================================================= -->
+    <div id="tab-crypto" class="tab-content hidden space-y-6">
+      
+      <!-- Crypto Strategy Hero Banner -->
+      <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-5 border-b border-slate-800">
+          <div class="flex items-center gap-3">
+            <div class="h-10 w-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-lg">
+              ₿
+            </div>
+            <div>
+              <h2 class="text-lg font-bold text-white flex items-center gap-2">
+                <span>Crypto Accumulatie & Winstneming Ladder</span>
+                <span class="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold">
+                  Discipline Bands
+                </span>
+              </h2>
+              <p class="text-xs text-slate-400 mt-0.5">Voorgedefinieerde koopzones bij marktdips en gestructureerd winst afromen bij pieken</p>
+            </div>
+          </div>
+
+          <!-- Multi-Crypto Selector -->
+          <div class="flex items-center bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-mono">
+            <button onclick="switchCryptoAsset('BTC')" id="crypto-btn-BTC" class="px-3.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold transition">
+              Bitcoin (BTC)
+            </button>
+            <button onclick="switchCryptoAsset('ETH')" id="crypto-btn-ETH" class="px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition">
+              Ethereum (ETH)
+            </button>
+          </div>
+        </div>
+
+        <!-- Main Status & Metrics Strip -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 p-4 rounded-2xl bg-slate-950/70 border border-slate-800 mt-5">
+          <div>
+            <span class="text-xs text-slate-400 font-mono block" id="crypto-asset-title">Huidige Live Koers (BTC-EUR):</span>
+            <div class="flex items-baseline gap-2 mt-1">
+              <span id="crypto-live-price" class="text-2xl sm:text-3xl font-extrabold font-mono text-white">€64.390</span>
+              <span id="crypto-live-24h" class="text-xs font-mono text-emerald-400 font-bold">+2,13% (24h)</span>
+            </div>
+          </div>
+
+          <div>
+            <span class="text-xs text-slate-400 font-mono block">Discipline Status:</span>
+            <div class="mt-1">
+              <span id="crypto-status-badge" class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-mono font-bold bg-amber-500/15 text-amber-400 border border-amber-500/30">
+                <i data-lucide="activity" class="w-3.5 h-3.5"></i>
+                <span>NEUTRAAL (Tussen zones)</span>
+              </span>
+            </div>
+          </div>
+
+          <div class="text-xs font-mono text-slate-400 space-y-1">
+            <div class="flex justify-between">
+              <span>Doelallocatie:</span>
+              <span class="text-slate-200 font-semibold" id="crypto-target-alloc">8,0% van portefeuille</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Huidige Positie:</span>
+              <span class="text-slate-200 font-semibold" id="crypto-current-holding">€4.720,00 (9,8%)</span>
+            </div>
+            <div class="flex justify-between">
+              <span>Gemiddelde Inkoopprijs:</span>
+              <span class="text-emerald-400 font-semibold" id="crypto-avg-cost">€43.600 (+47,5% winst)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Visual Position Scale Bar -->
+        <div class="space-y-2 mt-6">
+          <div class="flex justify-between text-[11px] font-mono text-slate-400">
+            <span class="flex items-center gap-1 text-emerald-400 font-medium">
+              <i data-lucide="arrow-down-right" class="w-3 h-3"></i>
+              Koopzone: <span id="bar-buy-target">€58.500</span> (-9,1%)
+            </span>
+            <span class="text-slate-200 font-semibold">
+              Huidig: <span id="bar-current-price">€64.390</span>
+            </span>
+            <span class="flex items-center gap-1 text-rose-400 font-medium">
+              <i data-lucide="arrow-up-right" class="w-3 h-3"></i>
+              Winstzone: <span id="bar-sell-target">€75.420</span> (+17,1%)
+            </span>
+          </div>
+
+          <div class="w-full bg-slate-950 h-3 rounded-full overflow-hidden border border-slate-800 p-0.5">
+            <div id="crypto-progress-bar" class="h-full rounded-full bg-gradient-to-r from-emerald-500 via-amber-500 to-rose-500 transition-all duration-500" style="width: 35%"></div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Detailed 2-Column Action Grid: Dip Accumulatie & Profit Taking -->
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Dip Accumulatie Ladder (Bijkopen bij daling) -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2.5">
+              <div class="p-2 rounded-xl bg-emerald-500/10 text-emerald-400">
+                <i data-lucide="trending-down" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-white">Dip Accumulatie Ladder</h3>
+                <p class="text-xs text-slate-400">Kopen wanneer de markt panikeert</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-lg border border-emerald-500/20 font-bold">Limit Orders</span>
+          </div>
+
+          <div class="space-y-3 font-mono text-xs" id="dip-tiers-container">
+            <!-- Tier 1 -->
+            <div class="p-4 rounded-2xl bg-slate-950 border border-emerald-500/30 flex justify-between items-center">
+              <div>
+                <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block font-sans">Tier 1 Dip Koopzone (-9%)</span>
+                <span class="text-lg font-bold text-white mt-0.5 block">€58.500 / coin</span>
+                <span class="text-[11px] text-slate-400 font-sans">Order: Koop €350 (0,0060 BTC)</span>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl bg-emerald-500/15 text-emerald-400 text-xs font-bold font-sans">
+                Gereed
+              </span>
+            </div>
+
+            <!-- Tier 2 -->
+            <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex justify-between items-center opacity-80">
+              <div>
+                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block font-sans">Tier 2 Zware Dip (-19%)</span>
+                <span class="text-lg font-bold text-white mt-0.5 block">€52.000 / coin</span>
+                <span class="text-[11px] text-slate-400 font-sans">Order: Koop €500 (0,0096 BTC)</span>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-400 text-xs font-sans">
+                Stand-by
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Profit Taking Ladder (Winst afromen bij pieken) -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-4">
+          <div class="flex items-center justify-between pb-3 border-b border-slate-800">
+            <div class="flex items-center gap-2.5">
+              <div class="p-2 rounded-xl bg-rose-500/10 text-rose-400">
+                <i data-lucide="trending-up" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="text-base font-bold text-white">Staged Profit-Taking</h3>
+                <p class="text-xs text-slate-400">Winst afromen naar veilige cash</p>
+              </div>
+            </div>
+            <span class="text-xs font-mono text-rose-400 bg-rose-500/10 px-2 py-0.5 rounded-lg border border-rose-500/20 font-bold">Lock Profit</span>
+          </div>
+
+          <div class="space-y-3 font-mono text-xs" id="profit-tiers-container">
+            <!-- Tier 1 Take Profit -->
+            <div class="p-4 rounded-2xl bg-slate-950 border border-rose-500/30 flex justify-between items-center">
+              <div>
+                <span class="text-[10px] text-rose-400 font-bold uppercase tracking-wider block font-sans">Tier 1 Target (+17%)</span>
+                <span class="text-lg font-bold text-white mt-0.5 block">€75.420 / coin</span>
+                <span class="text-[11px] text-slate-400 font-sans">Actie: Verkoop 15% positie (€708)</span>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl bg-rose-500/15 text-rose-400 text-xs font-bold font-sans">
+                Doel 1
+              </span>
+            </div>
+
+            <!-- Tier 2 Take Profit -->
+            <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800 flex justify-between items-center opacity-80">
+              <div>
+                <span class="text-[10px] text-slate-400 font-bold uppercase tracking-wider block font-sans">Tier 2 Blow-Off Target (+36%)</span>
+                <span class="text-lg font-bold text-white mt-0.5 block">€88.000 / coin</span>
+                <span class="text-[11px] text-slate-400 font-sans">Actie: Verkoop 20% van restant (€802)</span>
+              </div>
+              <span class="px-2.5 py-1 rounded-xl bg-slate-800 text-slate-400 text-xs font-sans">
+                Doel 2
+              </span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 5: INZICHTEN & FEES -->
+    <!-- ======================================================================= -->
+    <div id="tab-insights" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Insight Card 1: DEGIRO Fee Drag Tracker -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 rounded-2xl bg-rose-500/10 text-rose-400">
+              <i data-lucide="receipt" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">DEGIRO Kosten & Fee Drag</h3>
+              <p class="text-xs text-slate-400">Transparant inzicht in transactie- en wisselkoerskosten</p>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-4">
+            <div class="flex justify-between items-baseline">
+              <span class="text-xs text-slate-400">Totale Betaalde Kosten (All-Time):</span>
+              <span class="text-2xl font-bold font-mono text-rose-400">€64,20</span>
+            </div>
+            <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+              <div class="bg-rose-500 h-full rounded-full" style="width: 1.1%"></div>
+            </div>
+            <div class="flex justify-between items-center text-[11px] font-mono text-slate-400 mt-2">
+              <span>Totale Fee Drag: <strong class="text-slate-200">0,15%</strong> van inleg</span>
+              <span class="text-emerald-400 font-medium">Zeer Kostenefficiënt</span>
+            </div>
+          </div>
+
+          <div class="space-y-2 text-xs font-mono">
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">Transactiekosten (Kernselectie €1 + Overig):</span>
+              <span class="text-white font-bold">€42,00</span>
+            </div>
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">AutoFX Valutakosten (0,25% spread):</span>
+              <span class="text-white font-bold">€14,70</span>
+            </div>
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">Aansluitingskosten Beurzen (per jaar):</span>
+              <span class="text-white font-bold">€7,50</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insight Card 2: Compounding / Wealth Projector -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 rounded-2xl bg-sky-500/10 text-sky-400">
+              <i data-lucide="sparkles" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">Vermogensprojectie & Compounding</h3>
+              <p class="text-xs text-slate-400">Wat levert maandelijks beleggen op over 10 en 20 jaar?</p>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-xs text-slate-300">Maandelijkse Inleg:</span>
+                <span class="text-base font-bold font-mono text-sky-400" id="compound-inleg">€800 / mnd</span>
+              </div>
+              <input type="range" min="200" max="2500" step="50" value="800" oninput="updateCompounding(this.value)" class="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+            </div>
+
+            <!-- Projections 10y & 20y -->
+            <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider block">Over 10 Jaar (bij 7% p/j)</span>
+                <span class="text-xl font-bold text-white mt-1 block" id="proj-10y">€201.500</span>
+                <span class="text-[10px] text-emerald-400 font-sans mt-1 block">Rendement: +€57.500</span>
+              </div>
+              <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider block">Over 20 Jaar (bij 7% p/j)</span>
+                <span class="text-xl font-bold text-emerald-400 mt-1 block" id="proj-20y">€512.000</span>
+                <span class="text-[10px] text-emerald-400 font-sans mt-1 block">Rendement: +€272.000</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MOBILE BOTTOM NAVIGATION BAR (5 TABS) -->
+  <!-- ========================================================================= -->
+  <nav class="lg:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-2 py-2 flex items-center justify-around">
+    <button onclick="switchTab('overview')" id="mobile-nav-overview" class="mobile-tab-btn flex flex-col items-center gap-1 text-sky-400 font-semibold py-1 px-1">
+      <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+      <span class="text-[9px]">Overzicht</span>
+    </button>
+    <button onclick="switchTab('performance')" id="mobile-nav-performance" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-1">
+      <i data-lucide="trending-up" class="w-4 h-4"></i>
+      <span class="text-[9px]">Prestaties</span>
+    </button>
+    <button onclick="switchTab('allocation')" id="mobile-nav-allocation" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-1">
+      <i data-lucide="pie-chart" class="w-4 h-4"></i>
+      <span class="text-[9px]">Allocatie</span>
+    </button>
+    <button onclick="switchTab('crypto')" id="mobile-nav-crypto" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-1">
+      <i data-lucide="zap" class="w-4 h-4"></i>
+      <span class="text-[9px]">Crypto</span>
+    </button>
+    <button onclick="switchTab('insights')" id="mobile-nav-insights" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-1">
+      <i data-lucide="sparkles" class="w-4 h-4"></i>
+      <span class="text-[9px]">Inzichten</span>
+    </button>
+  </nav>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT CONTROLLERS (100% INTERACTIEF) -->
+  <!-- ========================================================================= -->
+  <script>
+    // --- 1. Portfolio Dataset (Alle 6 Holdings: 4 ETFs + 2 Crypto) ---
+    const HOLDINGS = [
+      {
+        symbol: 'VWCE.DE',
+        ticker: 'VWCE',
+        name: 'Vanguard FTSE All-World UCITS ETF',
+        isin: 'IE00BK5BQT80',
+        type: 'etf',
+        shares: 209,
+        price: 125.12,
+        value: 26150.40,
+        dayGainEur: 156.90,
+        dayGainPct: 0.60,
+        totalGainEur: 3412.00,
+        totalGainPct: 15.00,
+        targetPct: 55.5,
+        actualPct: 54.2,
+      },
+      {
+        symbol: 'EXUS.DE',
+        ticker: 'EXUS',
+        name: 'iShares MSCI World ex-USA UCITS ETF',
+        isin: 'IE0006WW1TQ4',
+        type: 'etf',
+        shares: 241,
+        price: 43.07,
+        value: 10380.20,
+        dayGainEur: -31.20,
+        dayGainPct: -0.30,
+        totalGainEur: 780.40,
+        totalGainPct: 8.13,
+        targetPct: 21.0,
+        actualPct: 21.5,
+      },
+      {
+        symbol: 'BTC-EUR',
+        ticker: 'BTC',
+        name: 'Bitcoin',
+        isin: 'Crypto ETN',
+        type: 'crypto',
+        shares: 0.0733,
+        price: 64390,
+        value: 4720.00,
+        dayGainEur: 98.40,
+        dayGainPct: 2.13,
+        totalGainEur: 1520.00,
+        totalGainPct: 47.50,
+        targetPct: 8.0,
+        actualPct: 9.8,
+      },
+      {
+        symbol: 'IMAE.AS',
+        ticker: 'IMAE',
+        name: 'iShares Europe Small-Cap ETF',
+        isin: 'IE00B4K48X80',
+        type: 'etf',
+        shares: 49,
+        price: 79.80,
+        value: 3910.22,
+        dayGainEur: 12.10,
+        dayGainPct: 0.31,
+        totalGainEur: 300.00,
+        totalGainPct: 8.31,
+        targetPct: 8.5,
+        actualPct: 8.1,
+      },
+      {
+        symbol: 'ASWC.DE',
+        ticker: 'ASWC',
+        name: 'Clean Energy & Technology ETF',
+        isin: 'IE000OJ5TQP4',
+        type: 'etf',
+        shares: 103,
+        price: 20.68,
+        value: 2130.00,
+        dayGainEur: -48.16,
+        dayGainPct: -2.21,
+        totalGainEur: 62.40,
+        totalGainPct: 3.02,
+        targetPct: 5.0,
+        actualPct: 4.4,
+      },
+      {
+        symbol: 'ETH-EUR',
+        ticker: 'ETH',
+        name: 'Ethereum',
+        isin: 'Crypto ETN',
+        type: 'crypto',
+        shares: 0.2991,
+        price: 3210.00,
+        value: 960.00,
+        dayGainEur: -3.84,
+        dayGainPct: -0.40,
+        totalGainEur: 137.60,
+        totalGainPct: 16.73,
+        targetPct: 2.0,
+        actualPct: 2.0,
+      }
+    ];
+
+    // --- State Variables ---
+    let currentTab = 'overview';
+    let currentFilter = 'all';
+    let chartMode = 'value'; // 'value' or 'return'
+    let currentTf = '1M';
+    let allowSelling = false;
+    let currentDeposit = 800;
+    let selectedCrypto = 'BTC';
+    let myChart = null;
+
+    // --- Tab Switching ---
+    function switchTab(tabId) {
+      currentTab = tabId;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+      // Desktop Nav update
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-sky-600', 'text-white', 'shadow-sm');
+        btn.classList.add('text-slate-400');
+      });
+      const activeDesktop = document.getElementById('nav-btn-' + tabId);
+      if (activeDesktop) {
+        activeDesktop.classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+        activeDesktop.classList.remove('text-slate-400');
+      }
+
+      // Mobile Nav update
+      document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+        btn.classList.remove('text-sky-400', 'font-semibold');
+        btn.classList.add('text-slate-400');
+      });
+      const activeMobile = document.getElementById('mobile-nav-' + tabId);
+      if (activeMobile) {
+        activeMobile.classList.add('text-sky-400', 'font-semibold');
+        activeMobile.classList.remove('text-slate-400');
+      }
+
+      if (tabId === 'performance' && myChart) {
+        setTimeout(() => myChart.resize(), 50);
+      }
+    }
+
+    // --- Holdings Filter (Alles / ETF's / Crypto) ---
+    function filterHoldings(filterType) {
+      currentFilter = filterType;
+      document.querySelectorAll('.filter-btn').forEach(b => {
+        b.classList.remove('bg-sky-600', 'text-white', 'font-semibold');
+        b.classList.add('text-slate-400');
+      });
+      const activeBtn = document.getElementById('filter-btn-' + filterType);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-sky-600', 'text-white', 'font-semibold');
+        activeBtn.classList.remove('text-slate-400');
+      }
+      renderHoldings();
+    }
+
+    function renderHoldings() {
+      const filtered = HOLDINGS.filter(h => {
+        if (currentFilter === 'etf') return h.type === 'etf';
+        if (currentFilter === 'crypto') return h.type === 'crypto';
+        return true;
+      });
+
+      // Desktop Table rows
+      const tableBody = document.getElementById('holdings-table-body');
+      tableBody.innerHTML = filtered.map(h => {
+        const isPosDay = h.dayGainEur >= 0;
+        const isPosTotal = h.totalGainEur >= 0;
+        const isCrypto = h.type === 'crypto';
+        const typeBadge = isCrypto
+          ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 whitespace-nowrap">Crypto</span>'
+          : '<span class="px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20 whitespace-nowrap">ETF</span>';
+        const iconStyle = isCrypto
+          ? (h.ticker === 'ETH' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20')
+          : 'bg-sky-500/10 text-sky-400 border border-sky-500/20';
+
+        return `
+          <tr class="hover:bg-slate-800/40 transition group">
+            <td class="py-4 px-3 font-sans">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-xl ${iconStyle} flex items-center justify-center font-bold text-xs shrink-0">
+                  ${h.ticker.slice(0, 2)}
+                </div>
+                <div>
+                  <div class="font-bold text-white text-sm whitespace-nowrap">${h.name}</div>
+                  <div class="text-[11px] text-slate-400 font-mono whitespace-nowrap">${h.ticker} • ${h.isin}</div>
+                </div>
+              </div>
+            </td>
+            <td class="py-4 px-3 text-right">
+              <div class="font-bold text-white text-sm whitespace-nowrap">€${h.value.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</div>
+              <div class="text-[11px] text-slate-400 whitespace-nowrap">${h.shares} stuks @ €${h.price.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</div>
+            </td>
+            <td class="py-4 px-3 text-right">
+              <div class="${isPosDay ? 'text-emerald-400' : 'text-rose-400'} font-bold text-sm whitespace-nowrap">
+                ${isPosDay ? '+' : ''}€${h.dayGainEur.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}
+              </div>
+              <div class="text-[11px] ${isPosDay ? 'text-emerald-500/80' : 'text-rose-500/80'} whitespace-nowrap">
+                ${isPosDay ? '+' : ''}${h.dayGainPct.toFixed(2)}%
+              </div>
+            </td>
+            <td class="py-4 px-3 text-right">
+              <div class="${isPosTotal ? 'text-emerald-400' : 'text-rose-400'} font-bold text-sm whitespace-nowrap">
+                ${isPosTotal ? '+' : ''}€${h.totalGainEur.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}
+              </div>
+              <div class="text-[11px] ${isPosTotal ? 'text-emerald-500/80' : 'text-rose-500/80'} whitespace-nowrap">
+                ${isPosTotal ? '+' : ''}${h.totalGainPct.toFixed(2)}%
+              </div>
+            </td>
+            <td class="py-4 px-3 text-center font-sans">
+              ${typeBadge}
+            </td>
+          </tr>
+        `;
+      }).join('');
+
+      // Mobile Cards
+      const mobileContainer = document.getElementById('holdings-mobile-cards');
+      mobileContainer.innerHTML = filtered.map(h => {
+        const isPosDay = h.dayGainEur >= 0;
+        const isPosTotal = h.totalGainEur >= 0;
+        const isCrypto = h.type === 'crypto';
+        const iconStyle = isCrypto
+          ? (h.ticker === 'ETH' ? 'bg-purple-500/10 text-purple-400 border border-purple-500/20' : 'bg-amber-500/10 text-amber-400 border border-amber-500/20')
+          : 'bg-sky-500/10 text-sky-400 border border-sky-500/20';
+
+        return `
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between gap-3">
+              <div class="flex items-center gap-2.5 min-w-0">
+                <div class="w-8 h-8 rounded-xl ${iconStyle} flex items-center justify-center font-bold text-xs shrink-0">
+                  ${h.ticker.slice(0, 2)}
+                </div>
+                <div class="min-w-0">
+                  <h4 class="font-bold text-white text-sm truncate">${h.name}</h4>
+                  <span class="text-[11px] text-slate-400 font-mono whitespace-nowrap">${h.ticker} • ${h.shares} stuks</span>
+                </div>
+              </div>
+              <div class="text-right shrink-0">
+                <span class="font-bold font-mono text-white text-sm block whitespace-nowrap">€${h.value.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</span>
+                <span class="text-[10px] text-slate-400 font-sans font-medium whitespace-nowrap">@ €${h.price.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}</span>
+              </div>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-900 font-mono text-xs">
+              <div class="bg-slate-900/60 p-2.5 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans uppercase tracking-wider mb-1">Vandaag</span>
+                <div class="${isPosDay ? 'text-emerald-400' : 'text-rose-400'} font-bold text-xs whitespace-nowrap">
+                  ${isPosDay ? '+' : ''}€${h.dayGainEur.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}
+                </div>
+                <div class="text-[10px] ${isPosDay ? 'text-emerald-500/80' : 'text-rose-500/80'} whitespace-nowrap mt-0.5">
+                  ${isPosDay ? '+' : ''}${h.dayGainPct.toFixed(2)}%
+                </div>
+              </div>
+              <div class="bg-slate-900/60 p-2.5 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans uppercase tracking-wider mb-1">Totaal Winst</span>
+                <div class="${isPosTotal ? 'text-emerald-400' : 'text-rose-400'} font-bold text-xs whitespace-nowrap">
+                  ${isPosTotal ? '+' : ''}€${h.totalGainEur.toLocaleString('nl-NL', { minimumFractionDigits: 2 })}
+                </div>
+                <div class="text-[10px] ${isPosTotal ? 'text-emerald-500/80' : 'text-rose-500/80'} whitespace-nowrap mt-0.5">
+                  ${isPosTotal ? '+' : ''}${h.totalGainPct.toFixed(2)}%
+                </div>
+              </div>
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    // --- 2. Timeframe-Aware Dynamic Chart Data & Scaling ---
+    const TIMEFRAME_CONFIG = {
+      '24H': {
+        labels: ['09:00', '10:30', '12:00', '13:30', '14:45', '16:00', '17:30'],
+        valueData: [48066, 48110, 48090, 48180, 48140, 48210, 48250],
+        bmData: [48066, 48095, 48080, 48150, 48120, 48180, 48215],
+        startVal: '€48.066,62',
+        endVal: '€48.250,82',
+        changeVal: '+€184,20 (+0,38%)',
+        bmVal: '+0,42% vandaag',
+        info: '<strong>24H Weergave:</strong> Y-as strak geschaald tussen €47.950 en €48.350. Intraday bewegingen van de handelsdag zijn direct zichtbaar!',
+        yMin: 47950,
+        yMax: 48350,
+      },
+      '1W': {
+        labels: ['Do', 'Vr', 'Za', 'Zo', 'Ma', 'Di', 'Vandaag'],
+        valueData: [47890, 47950, 48020, 48010, 47930, 48100, 48250],
+        bmData: [47890, 47920, 47980, 47970, 47910, 48050, 48180],
+        startVal: '€47.890,00',
+        endVal: '€48.250,82',
+        changeVal: '+€360,82 (+0,75%)',
+        bmVal: '+0,61% deze week',
+        info: '<strong>1W Weergave:</strong> Y-as geschaald tussen €47.700 en €48.400. De wekelijkse trend is kraakhelder zonder platte lijn.',
+        yMin: 47700,
+        yMax: 48400,
+      },
+      '1M': {
+        labels: ['1 Okt', '5 Okt', '9 Okt', '13 Okt', '17 Okt', '19 Okt', '21 Okt'],
+        valueData: [47320, 47510, 47415, 47700, 47680, 48020, 48250],
+        bmData: [47320, 47460, 47365, 47600, 47580, 47900, 48100],
+        startVal: '€47.320,00',
+        endVal: '€48.250,82',
+        changeVal: '+€930,82 (+1,97%)',
+        bmVal: '+1,65% in zelfde tijd',
+        info: '<strong>1M Weergave:</strong> Y-as geschaald tussen €47.000 en €48.600. Schommelingen per week springen direct in het oog.',
+        yMin: 47000,
+        yMax: 48600,
+      },
+      '3M': {
+        labels: ['Aug W1', 'Aug W3', 'Sep W1', 'Sep W3', 'Okt W1', 'Okt W3'],
+        valueData: [45400, 45900, 46350, 46100, 47200, 48250],
+        bmData: [45400, 45800, 46150, 45950, 46900, 47800],
+        startVal: '€45.400,00',
+        endVal: '€48.250,82',
+        changeVal: '+€2.850,82 (+6,28%)',
+        bmVal: '+5,29% in zelfde tijd',
+        info: '<strong>3M Weergave:</strong> Y-as geschaald tussen €44.800 en €48.800. Duidelijk verloop van het kwartaal.',
+        yMin: 44800,
+        yMax: 48800,
+      },
+      '1Y': {
+        labels: ['Nov 25', 'Jan 26', 'Mrt 26', 'Mei 26', 'Jul 26', 'Sep 26', 'Okt 26'],
+        valueData: [40200, 41500, 43100, 42900, 45600, 47200, 48250],
+        bmData: [40200, 41200, 42700, 42400, 44900, 46400, 47300],
+        startVal: '€40.200,00',
+        endVal: '€48.250,82',
+        changeVal: '+€8.050,82 (+20,02%)',
+        bmVal: '+17,66% in zelfde tijd',
+        info: '<strong>1Y Weergave:</strong> Y-as geschaald tussen €39.000 en €49.000. Jaartrend inclusief herbelegging en maandelijkse inleg.',
+        yMin: 39000,
+        yMax: 49000,
+      },
+      'ALL': {
+        labels: ['Q1 2024', 'Q3 2024', 'Q1 2025', 'Q3 2025', 'Q1 2026', 'Heden'],
+        valueData: [26000, 31000, 36500, 41000, 44500, 48250],
+        bmData: [26000, 30200, 35000, 39100, 42800, 46100],
+        startVal: '€26.000,00',
+        endVal: '€48.250,82',
+        changeVal: '+€22.250,82 (+85,58%)',
+        bmVal: '+77,31% all-time',
+        info: '<strong>ALL Weergave:</strong> Volledige historische vermogensgroei vanaf eerste DEGIRO storting.',
+        yMin: 24000,
+        yMax: 50000,
+      }
+    };
+
+    function setTimeframe(tf) {
+      currentTf = tf;
+      document.querySelectorAll('.tf-btn').forEach(b => {
+        b.classList.remove('bg-slate-800', 'text-sky-400', 'font-bold');
+        b.classList.add('text-slate-400');
+      });
+      const activeBtn = document.getElementById('tf-btn-' + tf);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-slate-800', 'text-sky-400', 'font-bold');
+        activeBtn.classList.remove('text-slate-400');
+      }
+
+      const conf = TIMEFRAME_CONFIG[tf];
+      document.getElementById('stat-start-val').innerText = conf.startVal;
+      document.getElementById('stat-end-val').innerText = conf.endVal;
+      document.getElementById('stat-change-val').innerText = conf.changeVal;
+      document.getElementById('stat-bm-val').innerText = conf.bmVal;
+      document.getElementById('scaling-info-text').innerHTML = conf.info;
+
+      updateChartVisuals();
+    }
+
+    function toggleChartMode(mode) {
+      chartMode = mode;
+      const btnVal = document.getElementById('btn-mode-value');
+      const btnRet = document.getElementById('btn-mode-return');
+
+      if (mode === 'value') {
+        btnVal.className = 'px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition';
+        btnRet.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+      } else {
+        btnRet.className = 'px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition';
+        btnVal.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+      }
+      updateChartVisuals();
+    }
+
+    function updateChartVisuals() {
+      if (!myChart) return;
+      const conf = TIMEFRAME_CONFIG[currentTf];
+      myChart.data.labels = conf.labels;
+
+      if (chartMode === 'return') {
+        const baseVal = conf.valueData[0];
+        const baseBm = conf.bmData[0];
+        const pctData = conf.valueData.map(v => Number(((v - baseVal) / baseVal * 100).toFixed(2)));
+        const pctBm = conf.bmData.map(v => Number(((v - baseBm) / baseBm * 100).toFixed(2)));
+
+        myChart.data.datasets[0].label = 'Portefeuille Rendement (%)';
+        myChart.data.datasets[0].data = pctData;
+        myChart.data.datasets[1].data = pctBm;
+
+        const maxPct = Math.max(...pctData, ...pctBm);
+        const minPct = Math.min(...pctData, ...pctBm);
+        const padding = (maxPct - minPct) * 0.15 || 0.5;
+
+        myChart.options.scales.y.suggestedMin = Number((minPct - padding).toFixed(1));
+        myChart.options.scales.y.suggestedMax = Number((maxPct + padding).toFixed(1));
+        myChart.options.scales.y.ticks.callback = val => val + '%';
+      } else {
+        myChart.data.datasets[0].label = 'Portefeuillewaarde (€)';
+        myChart.data.datasets[0].data = conf.valueData;
+        myChart.data.datasets[1].data = conf.bmData;
+        myChart.options.scales.y.suggestedMin = conf.yMin;
+        myChart.options.scales.y.suggestedMax = conf.yMax;
+        myChart.options.scales.y.ticks.callback = val => '€' + val.toLocaleString('nl-NL');
+      }
+      myChart.update();
+    }
+
+    // --- 3. Rebalance Cockpit (Whole ETF Shares Calculation & Selling Toggle) ---
+    function toggleAllowSelling() {
+      allowSelling = !allowSelling;
+      const thumb = document.getElementById('allow-selling-thumb');
+      const btn = document.getElementById('allow-selling-btn');
+      const banner = document.getElementById('rebalance-mode-banner');
+      const bannerText = document.getElementById('rebalance-mode-text');
+
+      if (allowSelling) {
+        btn.classList.remove('bg-slate-800');
+        btn.classList.add('bg-sky-500');
+        thumb.classList.remove('translate-x-0');
+        thumb.classList.add('translate-x-5');
+        banner.className = 'flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-amber-950/30 border border-amber-500/30 text-xs font-mono mb-4 text-amber-300';
+        bannerText.innerHTML = '<strong>Volledige Herbalancering:</strong> Overwogen ETF (EXUS) wordt deels verkocht om direct op 100% doelgewichten te komen.';
+      } else {
+        btn.classList.remove('bg-sky-500');
+        btn.classList.add('bg-slate-800');
+        thumb.classList.remove('translate-x-5');
+        thumb.classList.add('translate-x-0');
+        banner.className = 'flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-emerald-950/30 border border-emerald-500/30 text-xs font-mono mb-4 text-emerald-300';
+        bannerText.innerHTML = '<strong>Stortingsmodus:</strong> Alleen onderwogen ETF\'s bijkopen met nieuwe inleg. Geen verkoopkosten!';
+      }
+
+      calculateRebalanceOrders();
+    }
+
+    function setDepositValue(val) {
+      currentDeposit = val;
+      document.getElementById('deposit-slider').value = val;
+      document.getElementById('deposit-number-box').value = val;
+      calculateRebalanceOrders();
+    }
+
+    function onSliderMove(val) {
+      currentDeposit = parseInt(val, 10) || 0;
+      document.getElementById('deposit-slider').value = currentDeposit;
+      document.getElementById('deposit-number-box').value = currentDeposit;
+      calculateRebalanceOrders();
+    }
+
+    function calculateRebalanceOrders() {
+      const container = document.getElementById('rebalance-recommendations');
+      const totalVal = 48250.82;
+      const newTotal = totalVal + currentDeposit;
+
+      // Prices
+      const vwcePrice = 125.12;
+      const imaePrice = 79.80;
+      const aswcPrice = 20.60;
+      const exusPrice = 43.07;
+
+      if (!allowSelling) {
+        // Deposit-Only Mode: Allocate strictly to underweight assets
+        // VWCE Target: 55.5% (Target val: 0.555 * newTotal), Current: 26150.40
+        // IMAE Target: 8.5% (Target val: 0.085 * newTotal), Current: 3910.22
+        // ASWC Target: 5.0% (Target val: 0.050 * newTotal), Current: 2130.00
+        const vwceShortfall = Math.max(0, (0.555 * newTotal) - 26150.40);
+        const imaeShortfall = Math.max(0, (0.085 * newTotal) - 3910.22);
+        const aswcShortfall = Math.max(0, (0.050 * newTotal) - 2130.00);
+        const totalShortfall = vwceShortfall + imaeShortfall + aswcShortfall || 1;
+
+        const vwceAlloc = (vwceShortfall / totalShortfall) * currentDeposit;
+        const imaeAlloc = (imaeShortfall / totalShortfall) * currentDeposit;
+        const aswcAlloc = (aswcShortfall / totalShortfall) * currentDeposit;
+
+        // HELE STUKS (Math.floor)
+        const vwceShares = Math.floor(vwceAlloc / vwcePrice);
+        const vwceSpent = vwceShares * vwcePrice;
+
+        const imaeShares = Math.floor(imaeAlloc / imaePrice);
+        const imaeSpent = imaeShares * imaePrice;
+
+        const aswcShares = Math.floor(aswcAlloc / aswcPrice);
+        const aswcSpent = aswcShares * aswcPrice;
+
+        const totalSpent = vwceSpent + imaeSpent + aswcSpent;
+        const remainingCash = currentDeposit - totalSpent;
+
+        container.innerHTML = `
+          <div class="p-4 rounded-2xl bg-slate-950 border border-sky-500/40 relative">
+            <div class="flex justify-between items-start">
+              <span class="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Prioriteit 1: Grootste Onderweging</span>
+              <span class="px-2 py-0.5 rounded text-[10px] bg-sky-500/15 text-sky-400 font-bold">Hele Stuks</span>
+            </div>
+            <h4 class="font-bold text-white text-sm mt-1">VWCE All-World</h4>
+            <div class="text-xl font-bold font-mono text-sky-400 mt-2">Koop ${vwceShares} stuks</div>
+            <p class="text-[11px] text-slate-300 mt-1 font-mono">Totale order: €${vwceSpent.toFixed(2)} (@ €${vwcePrice})</p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-indigo-500/40 relative">
+            <div class="flex justify-between items-start">
+              <span class="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">Prioriteit 2: Onderwogen</span>
+              <span class="px-2 py-0.5 rounded text-[10px] bg-indigo-500/15 text-indigo-400 font-bold">Hele Stuks</span>
+            </div>
+            <h4 class="font-bold text-white text-sm mt-1">IMAE Europe Small</h4>
+            <div class="text-xl font-bold font-mono text-indigo-400 mt-2">Koop ${imaeShares} stuks</div>
+            <p class="text-[11px] text-slate-300 mt-1 font-mono">Totale order: €${imaeSpent.toFixed(2)} (@ €${imaePrice})</p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-emerald-500/40 relative sm:col-span-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <span class="text-[10px] uppercase font-bold text-emerald-400 tracking-wider">Restant & Cash Discipline</span>
+              <h4 class="font-bold text-white text-sm mt-0.5">Vrije Cash na orders: €${remainingCash.toFixed(2)}</h4>
+              <p class="text-[11px] text-slate-400">Doordat DEGIRO ETF's in hele stuks gaan, blijft dit restant netjes op je Flatex geldrekening staan.</p>
+            </div>
+            <span class="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-3 py-1.5 rounded-xl border border-emerald-500/20">
+              100% Hele Aantallen
+            </span>
+          </div>
+        `;
+      } else {
+        // Allow Selling Mode: Sell overweight EXUS
+        const exusExcess = 10380.20 - (0.210 * totalVal); // ~ €247 overweight
+        const exusSellShares = Math.floor(exusExcess / exusPrice); // 5 stuks
+        const exusSellProceeds = exusSellShares * exusPrice; // ~ €215.35
+
+        const totalAvailable = currentDeposit + exusSellProceeds;
+        const vwceShares = Math.floor((totalAvailable * 0.8) / vwcePrice);
+        const imaeShares = Math.floor((totalAvailable * 0.2) / imaePrice);
+
+        container.innerHTML = `
+          <div class="p-4 rounded-2xl bg-slate-950 border border-rose-500/40 relative">
+            <span class="text-[10px] uppercase font-bold text-rose-400 tracking-wider">Actie 1: Verkoop Overweging</span>
+            <h4 class="font-bold text-white text-sm mt-1">EXUS ex-USA</h4>
+            <div class="text-xl font-bold font-mono text-rose-400 mt-2">Verkoop ${exusSellShares} stuks</div>
+            <p class="text-[11px] text-slate-300 mt-1 font-mono">Opbrengst: +€${exusSellProceeds.toFixed(2)} (@ €${exusPrice})</p>
+          </div>
+
+          <div class="p-4 rounded-2xl bg-slate-950 border border-sky-500/40 relative">
+            <span class="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Actie 2: Herinvesteren</span>
+            <h4 class="font-bold text-white text-sm mt-1">VWCE All-World</h4>
+            <div class="text-xl font-bold font-mono text-sky-400 mt-2">Koop ${vwceShares} stuks</div>
+            <p class="text-[11px] text-slate-300 mt-1 font-mono">Totale order: €${(vwceShares * vwcePrice).toFixed(2)}</p>
+          </div>
+        `;
+      }
+    }
+
+    // --- 4. Crypto Strategy Manager (BTC & ETH Multi-Selector) ---
+    const CRYPTO_CONFIG = {
+      'BTC': {
+        name: 'Bitcoin (BTC)',
+        title: 'Huidige Live Koers (BTC-EUR):',
+        price: '€64.390',
+        change24h: '+2,13% (24h)',
+        targetAlloc: '8,0% van portefeuille',
+        currentHolding: '€4.720,00 (9,8%)',
+        avgCost: '€43.600 (+47,5% winst)',
+        buyTarget: '€58.500',
+        sellTarget: '€75.420',
+        progressWidth: '35%',
+        dipTiers: [
+          { title: 'Tier 1 Dip Koopzone (-9%)', price: '€58.500 / coin', order: 'Koop €350 (0,0060 BTC)', status: 'Gereed', active: true },
+          { title: 'Tier 2 Zware Dip (-19%)', price: '€52.000 / coin', order: 'Koop €500 (0,0096 BTC)', status: 'Stand-by', active: false }
+        ],
+        profitTiers: [
+          { title: 'Tier 1 Target (+17%)', price: '€75.420 / coin', order: 'Actie: Verkoop 15% positie (€708)', status: 'Doel 1', active: true },
+          { title: 'Tier 2 Blow-Off Target (+36%)', price: '€88.000 / coin', order: 'Actie: Verkoop 20% van restant (€802)', status: 'Doel 2', active: false }
+        ]
+      },
+      'ETH': {
+        name: 'Ethereum (ETH)',
+        title: 'Huidige Live Koers (ETH-EUR):',
+        price: '€3.210',
+        change24h: '-0,40% (24h)',
+        targetAlloc: '2,0% van portefeuille',
+        currentHolding: '€960,00 (2,0%)',
+        avgCost: '€2.750 (+16,7% winst)',
+        buyTarget: '€2.800',
+        sellTarget: '€3.800',
+        progressWidth: '42%',
+        dipTiers: [
+          { title: 'Tier 1 Dip Koopzone (-12%)', price: '€2.800 / coin', order: 'Koop €150 (0,053 ETH)', status: 'Gereed', active: true },
+          { title: 'Tier 2 Zware Dip (-22%)', price: '€2.500 / coin', order: 'Koop €250 (0,100 ETH)', status: 'Stand-by', active: false }
+        ],
+        profitTiers: [
+          { title: 'Tier 1 Target (+18%)', price: '€3.800 / coin', order: 'Actie: Verkoop 15% positie (€144)', status: 'Doel 1', active: true },
+          { title: 'Tier 2 Target (+37%)', price: '€4.400 / coin', order: 'Actie: Verkoop 25% van restant (€204)', status: 'Doel 2', active: false }
+        ]
+      }
+    };
+
+    function switchCryptoAsset(sym) {
+      selectedCrypto = sym;
+      document.querySelectorAll('#tab-crypto button[id^="crypto-btn-"]').forEach(b => {
+        b.className = 'px-3.5 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+      });
+      document.getElementById('crypto-btn-' + sym).className = 'px-3.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 border border-amber-500/30 font-bold transition';
+
+      const data = CRYPTO_CONFIG[sym];
+      document.getElementById('crypto-asset-title').innerText = data.title;
+      document.getElementById('crypto-live-price').innerText = data.price;
+      document.getElementById('crypto-live-24h').innerText = data.change24h;
+      document.getElementById('crypto-target-alloc').innerText = data.targetAlloc;
+      document.getElementById('crypto-current-holding').innerText = data.currentHolding;
+      document.getElementById('crypto-avg-cost').innerText = data.avgCost;
+      document.getElementById('bar-buy-target').innerText = data.buyTarget;
+      document.getElementById('bar-sell-target').innerText = data.sellTarget;
+      document.getElementById('bar-current-price').innerText = data.price;
+      document.getElementById('crypto-progress-bar').style.width = data.progressWidth;
+
+      document.getElementById('dip-tiers-container').innerHTML = data.dipTiers.map(t => `
+        <div class="p-4 rounded-2xl bg-slate-950 ${t.active ? 'border border-emerald-500/30' : 'border border-slate-800 opacity-80'} flex justify-between items-center">
+          <div>
+            <span class="text-[10px] text-emerald-400 font-bold uppercase tracking-wider block font-sans">${t.title}</span>
+            <span class="text-lg font-bold text-white mt-0.5 block">${t.price}</span>
+            <span class="text-[11px] text-slate-400 font-sans">${t.order}</span>
+          </div>
+          <span class="px-2.5 py-1 rounded-xl ${t.active ? 'bg-emerald-500/15 text-emerald-400 font-bold' : 'bg-slate-800 text-slate-400'} text-xs font-sans">
+            ${t.status}
+          </span>
+        </div>
+      `).join('');
+
+      document.getElementById('profit-tiers-container').innerHTML = data.profitTiers.map(t => `
+        <div class="p-4 rounded-2xl bg-slate-950 ${t.active ? 'border border-rose-500/30' : 'border border-slate-800 opacity-80'} flex justify-between items-center">
+          <div>
+            <span class="text-[10px] text-rose-400 font-bold uppercase tracking-wider block font-sans">${t.title}</span>
+            <span class="text-lg font-bold text-white mt-0.5 block">${t.price}</span>
+            <span class="text-[11px] text-slate-400 font-sans">${t.order}</span>
+          </div>
+          <span class="px-2.5 py-1 rounded-xl ${t.active ? 'bg-rose-500/15 text-rose-400 font-bold' : 'bg-slate-800 text-slate-400'} text-xs font-sans">
+            ${t.status}
+          </span>
+        </div>
+      `).join('');
+    }
+
+    // --- 5. Compounding Calculator ---
+    function updateCompounding(inleg) {
+      document.getElementById('compound-inleg').innerText = '€' + inleg + ' / mnd';
+      const m = parseInt(inleg, 10);
+      const r = 0.07 / 12;
+      const pv = 48250;
+      const fv10 = Math.round(pv * Math.pow(1+r, 120) + m * ((Math.pow(1+r, 120)-1)/r));
+      const fv20 = Math.round(pv * Math.pow(1+r, 240) + m * ((Math.pow(1+r, 240)-1)/r));
+
+      document.getElementById('proj-10y').innerText = '€' + fv10.toLocaleString('nl-NL');
+      document.getElementById('proj-20y').innerText = '€' + fv20.toLocaleString('nl-NL');
+    }
+
+    function simulateRefresh() {
+      const icon = document.getElementById('refresh-icon');
+      icon.classList.add('animate-spin');
+      setTimeout(() => {
+        icon.classList.remove('animate-spin');
+      }, 700);
+    }
+
+    // --- DOM Initialisation ---
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      renderHoldings();
+      calculateRebalanceOrders();
+
+      // Donut Chart
+      const ctxDonut = document.getElementById('prototype-donut').getContext('2d');
+      new Chart(ctxDonut, {
+        type: 'doughnut',
+        data: {
+          labels: ['VWCE', 'EXUS', 'BTC', 'IMAE', 'ASWC', 'ETH'],
+          datasets: [{
+            data: [54.2, 21.5, 9.8, 8.1, 4.4, 2.0],
+            backgroundColor: ['#0ea5e9', '#14b8a6', '#f59e0b', '#6366f1', '#10b981', '#a855f7'],
+            borderWidth: 0,
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '76%',
+          plugins: { legend: { display: false } }
+        }
+      });
+
+      // Line Chart (1M default)
+      const ctxLine = document.getElementById('prototype-chart').getContext('2d');
+      const conf1M = TIMEFRAME_CONFIG['1M'];
+      myChart = new Chart(ctxLine, {
+        type: 'line',
+        data: {
+          labels: conf1M.labels,
+          datasets: [
+            {
+              label: 'Portefeuillewaarde (€)',
+              data: conf1M.valueData,
+              borderColor: '#0284c7',
+              backgroundColor: 'rgba(2, 132, 199, 0.1)',
+              borderWidth: 2.5,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 3,
+              pointBackgroundColor: '#0284c7'
+            },
+            {
+              label: 'Benchmark (VWCE)',
+              data: conf1M.bmData,
+              borderColor: '#64748b',
+              borderWidth: 1.5,
+              borderDash: [4, 4],
+              pointRadius: 0,
+              tension: 0.35,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(51, 65, 85, 0.3)' },
+              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            y: {
+              suggestedMin: conf1M.yMin,
+              suggestedMax: conf1M.yMax,
+              grid: { color: 'rgba(51, 65, 85, 0.3)' },
+              ticks: {
+                color: '#64748b',
+                font: { family: 'JetBrains Mono', size: 10 },
+                callback: val => '€' + val.toLocaleString('nl-NL')
+              }
+            }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
