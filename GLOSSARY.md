@@ -27,3 +27,11 @@ _Avoid_: Goal, quota, target weight
 **Crypto Scale**:
 A tiered price-threshold strategy for taking profits or accumulating crypto allocations based on predefined price bands.
 _Avoid_: Ladder, scaling diagram
+
+**Long-Term Crypto Core**:
+The portion of a cryptocurrency holding retained for long-term exposure and excluded from Crypto Scale sales.
+_Avoid_: Guaranteed holding, risk-free portion
+
+**Tactical Crypto Portion**:
+The portion of a cryptocurrency holding available for staged Crypto Scale sales, separate from the Long-Term Crypto Core.
+_Avoid_: Entire crypto holding, remaining core
