@@ -1,5 +1,7 @@
 # Pre-Aggregated Read Snapshots for Sub-100ms Dashboard Loads
 
+Amended by [ADR-0003](0003-authenticated-shared-state-and-fast-valuation.md): retain background Snapshots, replace direct browser database access, and separate fast current valuation from history rebuilds. The latency figures below are original design targets, not verified end-to-end measurements.
+
 ## Context & Decision
 
 Calculating portfolio valuation, historical equity curves, and asset allocation drift requires running FIFO cost-basis math across thousands of historical DEGIRO transactions. Running these calculations dynamically on page request introduces perceptible UI latency and cold-start overhead.
