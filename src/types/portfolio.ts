@@ -30,6 +30,7 @@ export interface CurrentAssetHoldingRecord {
   target_pct: number;
   drift_pct: number;
   recommended_action_eur: number;
+  is_crypto?: boolean;
 }
 
 export interface PortfolioMetrics {

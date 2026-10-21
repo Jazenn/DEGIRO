@@ -129,11 +129,6 @@ describe('Rebalance Calculation Seam', () => {
         'IMAE.AS': 200.0,
       };
 
-      // When deposit = 0 or when already perfectly balanced with zero gap
-      // If deposit = 300, projected total = 1300.
-      // Target values: 780, 260, 260.
-      // All assets are underweight relative to the new capital!
-      // But if deposit = 0, no buys:
       const resultNoDeposit = calculateDepositPlan({
         depositAmount: 0,
         portfolioValue: 1000.0,
@@ -143,7 +138,6 @@ describe('Rebalance Calculation Seam', () => {
       });
       expect(resultNoDeposit.totalBuyEur).toBe(0);
 
-      // If all targets are 0 or empty:
       const resultZeroTargets = calculateDepositPlan({
         depositAmount: 500.0,
         portfolioValue: 1000.0,
@@ -155,18 +149,6 @@ describe('Rebalance Calculation Seam', () => {
     });
 
     it('handles single underweight asset by allocating 100% of deposit to it', () => {
-      // VWCE is at 600 (target 60%), BTC is at 300 (target 20% -> 200, so overweight)
-      // IMAE is at 100 (target 20% -> 200, so underweight)
-      // Deposit = 200. Projected = 1200.
-      // Targets: VWCE = 720 (gap = 120), BTC = 240 (gap = 0), IMAE = 240 (gap = 140).
-      // Here two are underweight. Let's construct a true single underweight case:
-      // VWCE: 800 (target 60% of 1000 is 600, of 1100 is 660 -> overweight)
-      // BTC: 250 (target 20% of 1000 is 200, of 1100 is 220 -> overweight)
-      // IMAE: 50 (target 20% of 1000 is 200, of 1100 is 220 -> underweight)
-      // Deposit: 100. Projected: 1200.
-      // VWCE target: 720 (< 800) -> overweight
-      // BTC target: 240 (< 250) -> overweight
-      // IMAE target: 240 (> 50) -> underweight (gap = 190)
       const currentValues = {
         'VWCE.DE': 800.0,
         'BTC-EUR': 250.0,
@@ -190,8 +172,6 @@ describe('Rebalance Calculation Seam', () => {
     });
 
     it('handles deposit larger than drift without breaking non-negative constraints', () => {
-      // Small drift: VWCE shortfall is 20, IMAE shortfall is 10.
-      // Deposit is huge: 5000 EUR!
       const currentValues = {
         'VWCE.DE': 580.0,
         'BTC-EUR': 250.0,
@@ -207,7 +187,6 @@ describe('Rebalance Calculation Seam', () => {
       });
 
       expect(result.totalBuyEur).toBeCloseTo(5000.0, 2);
-      // All buys must be non-negative
       for (const buyEur of Object.values(result.recommendedBuys)) {
         expect(buyEur).toBeGreaterThanOrEqual(0);
       }
@@ -215,7 +194,6 @@ describe('Rebalance Calculation Seam', () => {
     });
 
     it('normalizes rebalancing targets regardless of scale (decimal vs percent vs custom)', () => {
-      // 0.60, 0.20, 0.20 vs 60, 20, 20
       const currentValues = {
         'VWCE.DE': 400.0,
         'BTC-EUR': 400.0,
@@ -255,7 +233,7 @@ describe('Rebalance Calculation Seam', () => {
     });
   });
 
-  describe('calculateRebalancePlan - High-Level Holdings Seam', () => {
+  describe('calculateRebalancePlan - Whole Shares & Selling Options', () => {
     const mockHoldings: CurrentAssetHoldingRecord[] = [
       {
         symbol: 'VWCE.DE',
@@ -270,6 +248,7 @@ describe('Rebalance Calculation Seam', () => {
         target_pct: 60.0,
         drift_pct: -10.0,
         recommended_action_eur: 0,
+        is_crypto: false,
       },
       {
         symbol: 'BTC-EUR',
@@ -284,6 +263,7 @@ describe('Rebalance Calculation Seam', () => {
         target_pct: 20.0,
         drift_pct: 10.0,
         recommended_action_eur: 0,
+        is_crypto: true,
       },
       {
         symbol: 'IMAE.AS',
@@ -298,27 +278,30 @@ describe('Rebalance Calculation Seam', () => {
         target_pct: 20.0,
         drift_pct: 0.0,
         recommended_action_eur: 0,
+        is_crypto: false,
       },
     ];
 
-    it('generates rich RebalanceAsset records with drift indicators and estimated shares', () => {
+    it('enforces whole shares for stocks (e.g. 6 whole shares for VWCE, not 6.2)', () => {
       // Total value = 50,000 EUR. Deposit = 800 EUR.
+      // VWCE shortfall = ~777.30 EUR -> 6 whole shares @ 125 = 750 EUR.
+      // Remaining 50 EUR cannot buy 1 share of IMAE (80 EUR), so stays unallocated.
       const plan = calculateRebalancePlan(800, mockHoldings);
 
       expect(plan.depositAmount).toBe(800);
       expect(plan.portfolioValueBefore).toBe(50000);
       expect(plan.portfolioValueAfter).toBe(50800);
-      expect(plan.totalBuyEur).toBeCloseTo(800, 2);
+      expect(plan.totalBuyEur).toBe(750.0);
+      expect(plan.unallocatedCashEur).toBe(50.0);
 
       expect(plan.assets).toHaveLength(3);
 
       const vwce = plan.assets.find((i) => i.symbol === 'VWCE.DE')!;
       expect(vwce).toBeDefined();
       expect(vwce.status).toBe('underweight');
-      expect(vwce.recommendedBuyEur).toBeCloseTo(777.30, 2);
-      expect(vwce.estimatedShares).toBeCloseTo(777.30 / 125.0, 2);
-      expect(vwce.driftPct).toBeCloseTo(-10.0, 1);
-      expect(vwce.projectedPct).toBeGreaterThan(vwce.actualPct);
+      expect(vwce.estimatedShares).toBe(6); // whole integer!
+      expect(vwce.recommendedBuyEur).toBe(750.0);
+      expect(vwce.action).toBe('BUY');
 
       const btc = plan.assets.find((i) => i.symbol === 'BTC-EUR')!;
       expect(btc.status).toBe('overweight');
@@ -326,8 +309,115 @@ describe('Rebalance Calculation Seam', () => {
       expect(btc.estimatedShares).toBe(0);
 
       const imae = plan.assets.find((i) => i.symbol === 'IMAE.AS')!;
-      expect(imae.recommendedBuyEur).toBeCloseTo(22.70, 2);
-      expect(imae.estimatedShares).toBeCloseTo(22.70 / 80.0, 2);
+      expect(imae.recommendedBuyEur).toBe(0);
+      expect(imae.estimatedShares).toBe(0);
+    });
+
+    it('resolves fractional bug: recommends 1 whole share instead of 0.8 when deposit is near share price', () => {
+      // Vanguard price is 124.80. Deposit is 100.
+      // Continuous math gave 100 / 124.80 = 0.801 shares.
+      // Whole share calculation yields 1 whole share (124.80 EUR).
+      const singleHolding: CurrentAssetHoldingRecord[] = [
+        {
+          symbol: 'VWCE.DE',
+          name: 'Vanguard FTSE All-World UCITS ETF',
+          isin: 'IE00BK5BQT80',
+          shares_held: 10,
+          current_price_eur: 124.8,
+          total_value_eur: 1248.0,
+          total_cost_eur: 1200.0,
+          unrealized_pnl_eur: 48.0,
+          actual_pct: 100.0,
+          target_pct: 100.0,
+          drift_pct: 0.0,
+          recommended_action_eur: 0,
+          is_crypto: false,
+        },
+      ];
+
+      const plan = calculateRebalancePlan(100, singleHolding);
+      const vwce = plan.assets[0];
+      expect(vwce.estimatedShares).toBe(1);
+      expect(vwce.recommendedBuyEur).toBe(124.8);
+    });
+
+    it('allows continuous math when roundToWholeShares is explicitly set to false', () => {
+      const plan = calculateRebalancePlan(800, mockHoldings, undefined, {
+        roundToWholeShares: false,
+      });
+
+      expect(plan.totalBuyEur).toBeCloseTo(800.0, 2);
+      const vwce = plan.assets.find((i) => i.symbol === 'VWCE.DE')!;
+      expect(vwce.recommendedBuyEur).toBeCloseTo(777.30, 2);
+      expect(vwce.estimatedShares).toBeCloseTo(777.30 / 125.0, 2);
+    });
+
+    it('allocates exact fractional amounts to underweight crypto assets', () => {
+      const cryptoUnderweightHoldings: CurrentAssetHoldingRecord[] = [
+        {
+          symbol: 'VWCE.DE',
+          name: 'Vanguard FTSE All-World',
+          isin: 'IE00BK5BQT80',
+          shares_held: 200,
+          current_price_eur: 125.0,
+          total_value_eur: 25000.0,
+          total_cost_eur: 20000.0,
+          unrealized_pnl_eur: 5000.0,
+          actual_pct: 70.0,
+          target_pct: 50.0,
+          drift_pct: 20.0,
+          recommended_action_eur: 0,
+          is_crypto: false,
+        },
+        {
+          symbol: 'BTC-EUR',
+          name: 'Bitcoin',
+          isin: 'XFC000A2YY6Q',
+          shares_held: 0.1,
+          current_price_eur: 60000.0,
+          total_value_eur: 6000.0,
+          total_cost_eur: 5000.0,
+          unrealized_pnl_eur: 1000.0,
+          actual_pct: 30.0,
+          target_pct: 50.0,
+          drift_pct: -20.0,
+          recommended_action_eur: 0,
+          is_crypto: true,
+        },
+      ];
+
+      // Deposit = 500 EUR. BTC is underweight, VWCE is overweight.
+      const plan = calculateRebalancePlan(500, cryptoUnderweightHoldings);
+      const btc = plan.assets.find((i) => i.symbol === 'BTC-EUR')!;
+
+      expect(btc.recommendedBuyEur).toBe(500);
+      expect(btc.estimatedShares).toBeCloseTo(500 / 60000.0, 6); // exact fractional!
+    });
+
+    it('rebalances with sells when allowSelling is true (sells overweight BTC to buy Vanguard)', () => {
+      // BTC is overweight by ~4,840 EUR.
+      // With allowSelling: true, BTC is sold to fund whole share purchases of VWCE!
+      const plan = calculateRebalancePlan(800, mockHoldings, undefined, {
+        allowSelling: true,
+      });
+
+      expect(plan.allowSelling).toBe(true);
+      expect(plan.totalSellEur).toBeGreaterThan(4000);
+
+      const btc = plan.assets.find((i) => i.symbol === 'BTC-EUR')!;
+      expect(btc.action).toBe('SELL');
+      expect(btc.recommendedSellEur).toBeGreaterThan(4000);
+      expect(btc.sharesToSell).toBeCloseTo(btc.recommendedSellEur! / 60000.0, 4);
+
+      const vwce = plan.assets.find((i) => i.symbol === 'VWCE.DE')!;
+      expect(vwce.action).toBe('BUY');
+      // VWCE receives many whole shares funded by the BTC sell proceeds + deposit!
+      expect(Number.isInteger(vwce.estimatedShares)).toBe(true);
+      expect(vwce.estimatedShares).toBeGreaterThan(40);
+      expect(vwce.recommendedBuyEur).toBe(vwce.estimatedShares * 125.0);
+
+      // Max post-rebalance drift should be dramatically minimized
+      expect(plan.postRebalanceMaxDriftPct).toBeLessThan(1.0);
     });
 
     it('calculates post-rebalance drift and detects convergence towards target', () => {

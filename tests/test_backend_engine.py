@@ -78,3 +78,40 @@ def test_rebalance_calculator_proportional_deposit():
     assert plan["estimated_shares"]["A"] == 1.0
     assert plan["estimated_shares"]["B"] == 8.0
     assert plan["total_buy_eur"] == 500.0
+
+
+def test_rebalance_calculator_whole_shares_for_stocks_and_exact_for_crypto():
+    calc = RebalanceCalculator()
+    # Deposit 100 EUR into stock priced at 124.8 EUR (previously gave 0.8 shares)
+    plan = calc.calculate_deposit_plan(
+        deposit_amount=100.0,
+        portfolio_value=1248.0,
+        rebalancing_targets={"VWCE": 100.0},
+        current_values={"VWCE": 1248.0},
+        prices={"VWCE": 124.8},
+        round_to_whole_shares=True,
+        is_crypto={"VWCE": False},
+    )
+    assert plan["estimated_shares"]["VWCE"] == 1.0
+    assert plan["recommended_buys"]["VWCE"] == 124.8
+
+
+def test_rebalance_calculator_allow_selling_overweight_crypto_to_buy_stock():
+    calc = RebalanceCalculator()
+    # BTC is overweight (800 vs 200 target). VWCE is underweight (200 vs 800 target).
+    # Deposit is 0 EUR. With allow_selling=True, BTC is sold to buy VWCE whole shares.
+    plan = calc.calculate_deposit_plan(
+        deposit_amount=0.0,
+        portfolio_value=1000.0,
+        rebalancing_targets={"VWCE": 80.0, "BTC": 20.0},
+        current_values={"VWCE": 200.0, "BTC": 800.0},
+        prices={"VWCE": 100.0, "BTC": 50000.0},
+        allow_selling=True,
+        round_to_whole_shares=True,
+        is_crypto={"VWCE": False, "BTC": True},
+    )
+    assert plan["total_sell_eur"] > 0
+    assert plan["recommended_sells"]["BTC"] == 600.0
+    assert plan["estimated_shares_to_sell"]["BTC"] == 600.0 / 50000.0
+    assert plan["recommended_buys"]["VWCE"] == 600.0
+    assert plan["estimated_shares"]["VWCE"] == 6.0

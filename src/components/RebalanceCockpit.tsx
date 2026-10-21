@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { CurrentAssetHoldingRecord } from '../types/portfolio';
+import { CurrentAssetHoldingRecord, PortfolioAssetSetting } from '../types/portfolio';
 import { calculateRebalancePlan, RebalanceAsset } from '../utils/rebalance';
 import { formatEur } from '../utils/metrics';
 import {
@@ -7,12 +7,14 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  ArrowDownRight,
 } from 'lucide-react';
 
 export interface RebalanceCockpitProps {
   holdings: CurrentAssetHoldingRecord[];
   totalPortfolioValue: number;
   initialDeposit?: number;
+  assetSettings?: PortfolioAssetSetting[];
 }
 
 const PRESETS = [250, 500, 800, 1000, 1500];
@@ -21,12 +23,18 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
   holdings,
   totalPortfolioValue,
   initialDeposit = 800,
+  assetSettings,
 }) => {
   const [depositAmount, setDepositAmount] = useState<number>(initialDeposit);
+  const [allowSelling, setAllowSelling] = useState<boolean>(false);
 
   const plan = useMemo(() => {
-    return calculateRebalancePlan(depositAmount, holdings, totalPortfolioValue);
-  }, [depositAmount, holdings, totalPortfolioValue]);
+    return calculateRebalancePlan(depositAmount, holdings, totalPortfolioValue, {
+      allowSelling,
+      roundToWholeShares: true,
+      assetSettings,
+    });
+  }, [depositAmount, holdings, totalPortfolioValue, allowSelling, assetSettings]);
 
   // Identify highest allocation among underweight assets for "Primary Fill" tag
   const highestBuySymbol = useMemo(() => {
@@ -63,6 +71,15 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
       );
     }
 
+    if (asset.recommendedSellEur && asset.recommendedSellEur > 0) {
+      return (
+        <span className="px-2 py-0.5 rounded text-[11px] font-mono font-semibold bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1 shadow-sm">
+          <ArrowDownRight className="w-3 h-3" />
+          Sell to Rebalance
+        </span>
+      );
+    }
+
     if (asset.status === 'overweight') {
       return (
         <span className="px-2 py-0.5 rounded text-[11px] font-mono font-medium bg-amber-500/10 text-amber-400 border border-amber-500/20">
@@ -92,9 +109,9 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
               Interactive Rebalancing Cockpit
             </h2>
             <p className="text-xs sm:text-sm text-slate-400 mt-1 leading-relaxed">
-              Move the slider or type an amount. The engine dynamically calculates the exact buy
-              distribution to bring underweight assets back to their targets without selling any
-              holdings or incurring capital gains tax.
+              {allowSelling
+                ? 'Move the slider or type an amount. The engine calculates whole-share stock orders and exact crypto allocations, selling overweight holdings to bring the portfolio as close to target distribution as possible.'
+                : 'Move the slider or type an amount. The engine dynamically calculates whole-share stock orders and exact crypto buys to bring underweight assets back to target distribution without selling any holdings.'}
             </p>
           </div>
 
@@ -124,7 +141,7 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
             <input
               type="range"
               data-testid="deposit-slider"
-              min="100"
+              min="0"
               max="2500"
               step="50"
               value={depositAmount}
@@ -133,7 +150,7 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
               className="w-full h-2.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/40"
             />
             <div className="flex justify-between text-[11px] font-mono text-slate-500 mt-2">
-              <span>€100</span>
+              <span>€0</span>
               <span>€1,000</span>
               <span>€2,500</span>
             </div>
@@ -153,16 +170,70 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
             />
           </div>
         </div>
+
+        {/* Selling Toggle & Constraint Information */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mt-5 pt-4 border-t border-slate-800/80">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              role="switch"
+              id="allow-selling-toggle"
+              data-testid="allow-selling-toggle"
+              aria-checked={allowSelling}
+              onClick={() => setAllowSelling((prev) => !prev)}
+              className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-sky-500 ${
+                allowSelling ? 'bg-sky-500' : 'bg-slate-800'
+              }`}
+            >
+              <span
+                className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                  allowSelling ? 'translate-x-5' : 'translate-x-0'
+                }`}
+              />
+            </button>
+            <label
+              htmlFor="allow-selling-toggle"
+              onClick={() => setAllowSelling((prev) => !prev)}
+              className="text-xs sm:text-sm font-medium text-slate-300 cursor-pointer select-none"
+            >
+              Allow selling overweight assets
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+            <span className="inline-block w-2 h-2 rounded-full bg-emerald-400" />
+            <span>Whole shares for stocks &bull; Exact for crypto</span>
+          </div>
+        </div>
       </div>
 
       {/* Target Distribution Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
-          <span>Target Distribution for</span>
-          <span data-testid="current-deposit-label" className="text-white font-mono font-extrabold text-base">
-            {formatEur(depositAmount)}
-          </span>
-        </h3>
+        <div className="flex flex-wrap items-center gap-3">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+            <span>Target Distribution for</span>
+            <span data-testid="current-deposit-label" className="text-white font-mono font-extrabold text-base">
+              {formatEur(depositAmount)}
+            </span>
+          </h3>
+
+          {allowSelling && (plan.totalSellEur ?? 0) > 0 && (
+            <div className="flex items-center gap-2 text-xs font-mono">
+              <span
+                data-testid="total-sells-badge"
+                className="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 border border-rose-500/20"
+              >
+                Sells: -{formatEur(plan.totalSellEur || 0)}
+              </span>
+              <span
+                data-testid="total-buys-badge"
+                className="px-2 py-0.5 rounded-md bg-sky-500/10 text-sky-400 border border-sky-500/20"
+              >
+                Buys: +{formatEur(plan.totalBuyEur)}
+              </span>
+            </div>
+          )}
+        </div>
 
         <div className="flex items-center gap-3">
           <span
@@ -184,6 +255,19 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {plan.assets.map((asset) => {
             const hasBuy = asset.recommendedBuyEur > 0;
+            const hasSell = Boolean(asset.recommendedSellEur && asset.recommendedSellEur > 0);
+
+            const buySharesFormatted = asset.isCrypto
+              ? asset.estimatedShares < 1
+                ? asset.estimatedShares.toFixed(4)
+                : asset.estimatedShares.toFixed(2)
+              : Math.round(asset.estimatedShares).toString();
+
+            const sellSharesFormatted = asset.isCrypto
+              ? (asset.sharesToSell || 0) < 1
+                ? (asset.sharesToSell || 0).toFixed(4)
+                : (asset.sharesToSell || 0).toFixed(2)
+              : Math.round(asset.sharesToSell || 0).toString();
 
             return (
               <div
@@ -192,6 +276,8 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                 className={`rounded-2xl p-5 border flex flex-col justify-between transition-all duration-150 ${
                   hasBuy
                     ? 'bg-slate-900/90 border-slate-800 hover:border-slate-700 shadow-lg shadow-black/20'
+                    : hasSell
+                    ? 'bg-slate-900/90 border-rose-900/40 hover:border-rose-700/60 shadow-lg shadow-black/20'
                     : 'bg-slate-900/50 border-slate-800/60 opacity-80'
                 }`}
               >
@@ -208,6 +294,11 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                             {asset.isin}
                           </span>
                         )}
+                        {asset.isCrypto && (
+                          <span className="text-[10px] font-mono text-amber-400 bg-amber-500/10 px-1.5 py-0.2 rounded border border-amber-500/20">
+                            Crypto
+                          </span>
+                        )}
                       </div>
                       <h4 className="font-bold text-white text-base truncate mt-0.5" title={asset.name}>
                         {asset.name}
@@ -219,15 +310,24 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                     </div>
                   </div>
 
-                  {/* Purchase Amount & Share Quantity */}
+                  {/* Purchase / Sell Amount & Share Quantity */}
                   <div className="mt-4 pt-3 border-t border-slate-800/80">
                     <div className="flex items-baseline gap-2">
                       <span
+                        data-testid={`amount-${asset.symbol}`}
                         className={`text-2xl sm:text-3xl font-extrabold font-mono tracking-tight ${
-                          hasBuy ? 'text-sky-400' : 'text-slate-500'
+                          hasBuy
+                            ? 'text-sky-400'
+                            : hasSell
+                            ? 'text-rose-400'
+                            : 'text-slate-500'
                         }`}
                       >
-                        {formatEur(asset.recommendedBuyEur)}
+                        {hasBuy
+                          ? `+${formatEur(asset.recommendedBuyEur)}`
+                          : hasSell
+                          ? `-${formatEur(asset.recommendedSellEur || 0)}`
+                          : '€0.00'}
                       </span>
                     </div>
 
@@ -236,7 +336,15 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                         <>
                           Approx.{' '}
                           <span className="text-slate-200 font-semibold">
-                            {asset.estimatedShares.toFixed(1)}
+                            {buySharesFormatted}
+                          </span>{' '}
+                          shares @ {formatEur(asset.currentPriceEur)}
+                        </>
+                      ) : hasSell ? (
+                        <>
+                          Sell approx.{' '}
+                          <span className="text-rose-200 font-semibold">
+                            {sellSharesFormatted}
                           </span>{' '}
                           shares @ {formatEur(asset.currentPriceEur)}
                         </>
@@ -257,7 +365,11 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                       <ArrowRight className="w-3 h-3 text-slate-600" />
                       Target: <strong className="text-slate-300">{asset.targetPct.toFixed(1)}%</strong>
                     </span>
-                    <span className="text-sky-400 font-semibold">
+                    <span
+                      className={`font-semibold ${
+                        hasBuy ? 'text-sky-400' : hasSell ? 'text-rose-400' : 'text-slate-400'
+                      }`}
+                    >
                       New: {asset.projectedPct.toFixed(1)}%
                     </span>
                   </div>
@@ -266,16 +378,36 @@ export const RebalanceCockpit: React.FC<RebalanceCockpitProps> = ({
                   <div className="w-full bg-slate-950 h-2 rounded-full overflow-hidden flex border border-slate-800">
                     <div
                       className="bg-slate-600 transition-all duration-300"
-                      style={{ width: `${Math.min(100, asset.actualPct)}%` }}
-                      title={`Current ${asset.actualPct.toFixed(1)}%`}
+                      style={{
+                        width: `${Math.min(
+                          100,
+                          hasSell ? asset.projectedPct : asset.actualPct
+                        )}%`,
+                      }}
+                      title={`Holdings: ${(hasSell ? asset.projectedPct : asset.actualPct).toFixed(1)}%`}
                     />
                     {hasBuy && (
                       <div
                         className="bg-sky-500 transition-all duration-300 animate-pulse"
                         style={{
-                          width: `${Math.max(0, Math.min(100 - asset.actualPct, asset.projectedPct - asset.actualPct))}%`,
+                          width: `${Math.max(
+                            0,
+                            Math.min(100 - asset.actualPct, asset.projectedPct - asset.actualPct)
+                          )}%`,
                         }}
                         title={`Projected Inflow +${(asset.projectedPct - asset.actualPct).toFixed(1)}%`}
+                      />
+                    )}
+                    {hasSell && (
+                      <div
+                        className="bg-rose-500/50 transition-all duration-300"
+                        style={{
+                          width: `${Math.max(
+                            0,
+                            Math.min(100, asset.actualPct - asset.projectedPct)
+                          )}%`,
+                        }}
+                        title={`Projected Sell -${(asset.actualPct - asset.projectedPct).toFixed(1)}%`}
                       />
                     )}
                   </div>

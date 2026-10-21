@@ -268,6 +268,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         <RebalanceCockpit
           holdings={data.holdings}
           totalPortfolioValue={data.metrics.totalPortfolioValue}
+          assetSettings={data.assetSettings}
         />
       </section>
 

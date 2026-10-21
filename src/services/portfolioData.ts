@@ -294,6 +294,7 @@ export function getDemoDashboardData(): DashboardData {
       target_pct: 55.5,
       drift_pct: -1.3,
       recommended_action_eur: 625.0,
+      is_crypto: false,
     },
     {
       symbol: 'EXUS.DE',
@@ -308,6 +309,7 @@ export function getDemoDashboardData(): DashboardData {
       target_pct: 21.0,
       drift_pct: 0.5,
       recommended_action_eur: 0.0,
+      is_crypto: false,
     },
     {
       symbol: 'BTC-EUR',
@@ -322,6 +324,7 @@ export function getDemoDashboardData(): DashboardData {
       target_pct: 8.0,
       drift_pct: 1.8,
       recommended_action_eur: 0.0,
+      is_crypto: true,
     },
     {
       symbol: 'IMAE.AS',
@@ -336,6 +339,7 @@ export function getDemoDashboardData(): DashboardData {
       target_pct: 8.5,
       drift_pct: -0.4,
       recommended_action_eur: 190.0,
+      is_crypto: false,
     },
     {
       symbol: 'ASWC.DE',
@@ -350,6 +354,7 @@ export function getDemoDashboardData(): DashboardData {
       target_pct: 5.0,
       drift_pct: 1.4,
       recommended_action_eur: 0.0,
+      is_crypto: false,
     },
   ];
 
@@ -365,6 +370,7 @@ export function getDemoDashboardData(): DashboardData {
       ...h,
       target_pct,
       drift_pct,
+      is_crypto: typeof s.is_crypto === 'boolean' ? s.is_crypto : h.is_crypto,
     };
   });
 
@@ -568,6 +574,7 @@ export async function fetchDashboardData(
           target_pct: Number(r.target_pct) || 0,
           drift_pct: Number(r.drift_pct) || 0,
           recommended_action_eur: Number(r.recommended_action_eur) || 0,
+          is_crypto: Boolean(r.is_crypto || symUpper.includes('BTC') || symUpper.includes('ETH') || symUpper.includes('BITCOIN')),
         };
       });
 
@@ -951,6 +958,7 @@ export function applySettingsToDashboardData(
       ...h,
       target_pct,
       drift_pct,
+      is_crypto: typeof s.is_crypto === 'boolean' ? s.is_crypto : h.is_crypto,
     };
   });
 

@@ -18,6 +18,7 @@ describe('RebalanceCockpit Component', () => {
       target_pct: 55.5,
       drift_pct: -1.3,
       recommended_action_eur: 625.0,
+      is_crypto: false,
     },
     {
       symbol: 'EXUS.DE',
@@ -32,6 +33,7 @@ describe('RebalanceCockpit Component', () => {
       target_pct: 21.0,
       drift_pct: 0.5,
       recommended_action_eur: 0.0,
+      is_crypto: false,
     },
     {
       symbol: 'IMAE.AS',
@@ -46,11 +48,27 @@ describe('RebalanceCockpit Component', () => {
       target_pct: 8.5,
       drift_pct: -0.4,
       recommended_action_eur: 175.0,
+      is_crypto: false,
+    },
+    {
+      symbol: 'BTC-EUR',
+      name: 'Bitcoin',
+      isin: 'XFC000A2YY6Q',
+      shares_held: 0.071,
+      current_price_eur: 66500.0,
+      total_value_eur: 4721.5,
+      total_cost_eur: 3800.0,
+      unrealized_pnl_eur: 921.5,
+      actual_pct: 9.8,
+      target_pct: 8.0,
+      drift_pct: 1.8,
+      recommended_action_eur: 0.0,
+      is_crypto: true,
     },
   ];
 
   it('renders rebalance cockpit header and default deposit amount of €800', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     expect(screen.getByText(/Monthly Inflow Rebalancing/i)).toBeInTheDocument();
     expect(screen.getAllByDisplayValue('800')).toHaveLength(2);
@@ -60,7 +78,7 @@ describe('RebalanceCockpit Component', () => {
   });
 
   it('renders rebalancing recommendations with exact EUR amounts and estimated share quantities', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     // Underweight assets should show recommended EUR amounts and share estimates
     expect(screen.getByText('VWCE.DE')).toBeInTheDocument();
@@ -72,11 +90,45 @@ describe('RebalanceCockpit Component', () => {
     expect(screen.getByText(/shares @ €78.45/)).toBeInTheDocument();
 
     // Overweight asset (EXUS.DE) receives €0.00 and no purchase notice
-    expect(screen.getByText(/Overweight \/ on target: no purchase needed/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/Overweight \/ on target: no purchase needed/i).length).toBeGreaterThan(0);
+  });
+
+  it('enforces whole shares for stocks (e.g. whole number of shares, not 0.8)', () => {
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} initialDeposit={100} />);
+
+    // For deposit of €100, VWCE (€124.80) should recommend 1 whole share, not 0.8
+    const card = screen.getByTestId('rebalance-card-VWCE.DE');
+    expect(card).toBeInTheDocument();
+    expect(card).toHaveTextContent('Approx. 1 shares @ €124.80');
+    expect(card).toHaveTextContent('+€124.80');
+  });
+
+  it('renders optional allow-selling toggle and activates sell recommendations when toggled on', () => {
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} initialDeposit={100} />);
+
+    const toggle = screen.getByTestId('allow-selling-toggle');
+    expect(toggle).toBeInTheDocument();
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+
+    // Before toggling: BTC is overweight, no sells
+    expect(screen.queryByText(/Sell to Rebalance/i)).not.toBeInTheDocument();
+
+    // Click toggle to enable selling
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute('aria-checked', 'true');
+
+    // After toggling: overweight assets should show sell recommendations
+    expect(screen.getAllByText(/Sell to Rebalance/i).length).toBeGreaterThan(0);
+    const btcCard = screen.getByTestId('rebalance-card-BTC-EUR');
+    expect(btcCard).toHaveTextContent(/Sell approx\./);
+
+    // Badges in header
+    expect(screen.getByTestId('total-sells-badge')).toBeInTheDocument();
+    expect(screen.getByTestId('total-buys-badge')).toBeInTheDocument();
   });
 
   it('dynamically recalculates recommendations when changing deposit amount via number input', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     const numberInput = screen.getByTestId('deposit-number-input');
 
@@ -87,7 +139,7 @@ describe('RebalanceCockpit Component', () => {
   });
 
   it('dynamically recalculates recommendations when moving deposit slider', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     const slider = screen.getByTestId('deposit-slider');
 
@@ -98,7 +150,7 @@ describe('RebalanceCockpit Component', () => {
   });
 
   it('allows quick preset selection', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     const presetBtn = screen.getByRole('button', { name: '€1,000' });
     fireEvent.click(presetBtn);
@@ -107,7 +159,7 @@ describe('RebalanceCockpit Component', () => {
   });
 
   it('displays post-rebalance drift indicator', () => {
-    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={40430.91} />);
+    render(<RebalanceCockpit holdings={mockHoldings} totalPortfolioValue={45152.41} />);
 
     expect(screen.getByTestId('post-rebalance-drift')).toBeInTheDocument();
   });
