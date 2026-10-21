@@ -1,0 +1,992 @@
+<!DOCTYPE html>
+<html lang="nl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DEGIRO Executive Dashboard - Tabbed UI Prototype</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <!-- Chart.js CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              500: '#0284c7',
+              600: '#0369a1',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body { font-family: 'Inter', sans-serif; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(148, 163, 184, 0.25); border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.4); }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen antialiased selection:bg-sky-500 selection:text-white pb-28 md:pb-12">
+
+  <!-- ========================================================================= -->
+  <!-- TOP APP HEADER -->
+  <!-- ========================================================================= -->
+  <header class="border-b border-slate-800/80 bg-slate-900/90 backdrop-blur sticky top-0 z-40">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      
+      <!-- Brand & Title -->
+      <div class="flex items-center gap-3">
+        <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-sky-600 to-cyan-500 flex items-center justify-center font-black text-white shadow-md shadow-sky-600/20 text-base">
+          D
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="font-bold tracking-tight text-white text-base">DEGIRO</span>
+            <span class="text-[11px] font-mono px-2 py-0.5 rounded-full bg-sky-950 border border-sky-800 text-sky-400 font-medium">Overzicht v2</span>
+          </div>
+          <p class="text-[11px] text-slate-400 hidden sm:block">Executive Portfolio & Wealth Dashboard</p>
+        </div>
+      </div>
+
+      <!-- Desktop Tabs Navigation -->
+      <nav class="hidden md:flex items-center bg-slate-950/80 border border-slate-800/80 p-1 rounded-xl">
+        <button onclick="switchTab('overview')" id="nav-btn-overview" class="tab-btn px-4 py-2 rounded-lg text-xs font-semibold transition flex items-center gap-2 bg-sky-600 text-white shadow-sm">
+          <i data-lucide="layout-dashboard" class="w-4 h-4"></i>
+          <span>Overzicht</span>
+        </button>
+        <button onclick="switchTab('performance')" id="nav-btn-performance" class="tab-btn px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="trending-up" class="w-4 h-4"></i>
+          <span>Prestaties & Grafiek</span>
+        </button>
+        <button onclick="switchTab('allocation')" id="nav-btn-allocation" class="tab-btn px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="pie-chart" class="w-4 h-4"></i>
+          <span>Allocatie & Herbalanceer</span>
+        </button>
+        <button onclick="switchTab('insights')" id="nav-btn-insights" class="tab-btn px-4 py-2 rounded-lg text-xs font-medium text-slate-400 hover:text-white transition flex items-center gap-2">
+          <i data-lucide="sparkles" class="w-4 h-4"></i>
+          <span>Inzichten & Fees</span>
+        </button>
+      </nav>
+
+      <!-- Right Actions -->
+      <div class="flex items-center gap-2.5">
+        <div class="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-950/40 border border-emerald-800/40 text-emerald-400 text-xs font-mono">
+          <span class="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span>Live Synced</span>
+        </div>
+        <button class="px-3 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700 text-xs font-medium text-slate-200 border border-slate-700/60 transition flex items-center gap-1.5">
+          <i data-lucide="rotate-cw" class="w-3.5 h-3.5 text-sky-400"></i>
+          <span class="hidden sm:inline">Refresh</span>
+        </button>
+      </div>
+
+    </div>
+  </header>
+
+  <!-- ========================================================================= -->
+  <!-- MAIN CONTAINER -->
+  <!-- ========================================================================= -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6">
+
+    <!-- ======================================================================= -->
+    <!-- TAB 1: OVERZICHT (LANDING SCREEN) -->
+    <!-- ======================================================================= -->
+    <div id="tab-overview" class="tab-content space-y-6">
+
+      <!-- Hero KPI Banner -->
+      <div class="bg-gradient-to-b from-slate-900 to-slate-900/90 border border-slate-800 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
+        <div class="absolute -right-12 -top-12 w-64 h-64 bg-sky-500/5 rounded-full blur-3xl pointer-events-none"></div>
+
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div>
+            <div class="flex items-center gap-2 text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">
+              <i data-lucide="wallet" class="w-4 h-4 text-sky-400"></i>
+              <span>Totale Portefeuillewaarde</span>
+            </div>
+            <div class="flex flex-wrap items-baseline gap-3">
+              <h1 class="text-3xl sm:text-4xl lg:text-5xl font-black font-mono text-white tracking-tight">
+                €48.250,82
+              </h1>
+              
+              <!-- 24H Daily Gain/Loss Badge -->
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-sm font-mono font-bold">
+                <i data-lucide="arrow-up-right" class="w-4 h-4"></i>
+                +€184,20 (+0,38%) Vandaag
+              </span>
+            </div>
+
+            <p class="text-xs text-slate-400 mt-2 flex items-center gap-2">
+              <span>Laatste update: <strong class="text-slate-300 font-mono">14:24 CET</strong></span>
+              <span>•</span>
+              <span class="text-emerald-400 font-medium">Beurzen Geopend</span>
+            </p>
+          </div>
+
+          <!-- Secondary Quick Stats Grid -->
+          <div class="grid grid-cols-2 sm:grid-cols-3 gap-3 border-t lg:border-t-0 lg:border-l border-slate-800 pt-4 lg:pt-0 lg:pl-8">
+            <!-- Totaal Rendement -->
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5">
+              <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">Totaal Winst</span>
+              <span class="text-base sm:text-lg font-bold font-mono text-emerald-400 block mt-1">+€6.012,40</span>
+              <span class="text-[11px] font-mono text-emerald-500/80 font-medium">+14,23% all-time</span>
+            </div>
+
+            <!-- Netto Inleg -->
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5">
+              <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider block">Netto Inleg</span>
+              <span class="text-base sm:text-lg font-bold font-mono text-white block mt-1">€42.238,42</span>
+              <span class="text-[11px] text-slate-400">Gedeponeerd kapitaal</span>
+            </div>
+
+            <!-- Cash & Dry Powder -->
+            <div class="bg-slate-950/60 border border-slate-800/80 rounded-2xl p-3.5 col-span-2 sm:col-span-1">
+              <div class="flex items-center justify-between">
+                <span class="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Vrije Cash</span>
+                <i data-lucide="coins" class="w-3.5 h-3.5 text-amber-400"></i>
+              </div>
+              <span class="text-base sm:text-lg font-bold font-mono text-white block mt-1">€5,96</span>
+              <span class="text-[11px] text-slate-400">Flatex Cash Fund</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Benchmark Pulse Banner -->
+      <div class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div class="flex items-center gap-3">
+          <div class="p-2.5 rounded-xl bg-sky-500/10 text-sky-400">
+            <i data-lucide="scale" class="w-5 h-5"></i>
+          </div>
+          <div>
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-200">Benchmark Snelle Vergelijking</h3>
+            <p class="text-xs text-slate-400">Hoe doet jouw portefeuille het vandaag en YTD ten opzichte van de markt?</p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-3 gap-2 sm:gap-4 text-center font-mono text-xs">
+          <div class="px-3 py-2 rounded-xl bg-slate-950/80 border border-sky-500/30">
+            <span class="text-[10px] text-sky-400 uppercase tracking-wider block font-sans font-semibold">Jouw Portefeuille</span>
+            <span class="text-emerald-400 font-bold block mt-0.5">+0,38% <span class="text-[10px] font-normal text-slate-400">vandaag</span></span>
+            <span class="text-slate-300 text-[11px]">+14,2% YTD</span>
+          </div>
+          <div class="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-semibold">VWCE All-World</span>
+            <span class="text-emerald-400 font-bold block mt-0.5">+0,42% <span class="text-[10px] font-normal text-slate-400">vandaag</span></span>
+            <span class="text-slate-300 text-[11px]">+13,8% YTD</span>
+          </div>
+          <div class="px-3 py-2 rounded-xl bg-slate-950/80 border border-slate-800">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans font-semibold">S&P 500 (EUR)</span>
+            <span class="text-emerald-400 font-bold block mt-0.5">+0,61% <span class="text-[10px] font-normal text-slate-400">vandaag</span></span>
+            <span class="text-slate-300 text-[11px]">+16,4% YTD</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Individual Holdings Performance Table / Cards -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-5 sm:p-6 shadow-sm">
+        
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="layers" class="w-5 h-5 text-sky-400"></i>
+              <span>Holdings Prestaties (Los van elkaar)</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Bekijk in één oogopslag de winst en 24-uurs beweging van elk individueel aandeel en crypto</p>
+          </div>
+
+          <!-- Quick Filter Tabs -->
+          <div class="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs font-medium">
+            <button class="px-3 py-1 rounded-lg bg-slate-800 text-white font-semibold">Alles (5)</button>
+            <button class="px-3 py-1 rounded-lg text-slate-400 hover:text-white transition">ETF's (3)</button>
+            <button class="px-3 py-1 rounded-lg text-slate-400 hover:text-white transition">Crypto (1)</button>
+          </div>
+        </div>
+
+        <!-- Desktop Table View -->
+        <div class="hidden lg:block overflow-x-auto mt-4">
+          <table class="w-full text-left text-xs font-mono">
+            <thead>
+              <tr class="text-slate-400 border-b border-slate-800/80 pb-3">
+                <th class="py-3 px-3 font-semibold font-sans">Asset</th>
+                <th class="py-3 px-3 font-semibold text-right">Huidige Waarde</th>
+                <th class="py-3 px-3 font-semibold text-right">Gewicht / Doel</th>
+                <th class="py-3 px-3 font-semibold text-right">Resultaat Vandaag (24h)</th>
+                <th class="py-3 px-3 font-semibold text-right">Totaal Winst / Verlies</th>
+                <th class="py-3 px-3 font-semibold text-center font-sans">Status</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-slate-800/60">
+              
+              <!-- Row 1: VWCE -->
+              <tr class="hover:bg-slate-800/40 transition group">
+                <td class="py-4 px-3 font-sans">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-sky-500/10 border border-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-xs">
+                      VW
+                    </div>
+                    <div>
+                      <div class="font-bold text-white text-sm">Vanguard FTSE All-World</div>
+                      <div class="text-[11px] text-slate-400 font-mono">VWCE • IE00BK5BQT80</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="font-bold text-white text-sm">€26.150,40</div>
+                  <div class="text-[11px] text-slate-400">209.5 stuks @ €124,82</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-white font-medium">54,2%</div>
+                  <div class="text-[11px] text-slate-400">Doel: 60,0%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€156,90</div>
+                  <div class="text-[11px] text-emerald-500/80">+0,60%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€3.412,00</div>
+                  <div class="text-[11px] text-emerald-500/80">+15,00%</div>
+                </td>
+                <td class="py-4 px-3 text-center font-sans">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    Onderwogen (-5,8%)
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Row 2: BTC -->
+              <tr class="hover:bg-slate-800/40 transition group">
+                <td class="py-4 px-3 font-sans">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xs">
+                      ₿
+                    </div>
+                    <div>
+                      <div class="font-bold text-white text-sm flex items-center gap-1.5">
+                        <span>Bitcoin</span>
+                        <span class="text-[10px] px-1.5 py-0.2 rounded bg-amber-950 text-amber-400 border border-amber-800 font-mono">Crypto</span>
+                      </div>
+                      <div class="text-[11px] text-slate-400 font-mono">BTC • DEGIRO ETN</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="font-bold text-white text-sm">€4.720,00</div>
+                  <div class="text-[11px] text-slate-400">0.0733 BTC @ €64.390</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-white font-medium">9,8%</div>
+                  <div class="text-[11px] text-slate-400">Doel: 10,0%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€98,40</div>
+                  <div class="text-[11px] text-emerald-500/80">+2,13%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€1.520,00</div>
+                  <div class="text-[11px] text-emerald-500/80">+47,50%</div>
+                </td>
+                <td class="py-4 px-3 text-center font-sans">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                    Op Doel (-0,2%)
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Row 3: EXUS -->
+              <tr class="hover:bg-slate-800/40 transition group">
+                <td class="py-4 px-3 font-sans">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-teal-500/10 border border-teal-500/20 text-teal-400 flex items-center justify-center font-bold text-xs">
+                      EX
+                    </div>
+                    <div>
+                      <div class="font-bold text-white text-sm">Xtrackers World ex-USA</div>
+                      <div class="text-[11px] text-slate-400 font-mono">EXUS • IE0006WW1TQ4</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="font-bold text-white text-sm">€10.380,20</div>
+                  <div class="text-[11px] text-slate-400">241.4 stuks @ €43,00</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-white font-medium">21,5%</div>
+                  <div class="text-[11px] text-slate-400">Doel: 20,0%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-rose-400 font-bold text-sm">-€31,20</div>
+                  <div class="text-[11px] text-rose-500/80">-0,30%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€780,40</div>
+                  <div class="text-[11px] text-emerald-500/80">+8,13%</div>
+                </td>
+                <td class="py-4 px-3 text-center font-sans">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+                    Overwogen (+1,5%)
+                  </span>
+                </td>
+              </tr>
+
+              <!-- Row 4: IMAE -->
+              <tr class="hover:bg-slate-800/40 transition group">
+                <td class="py-4 px-3 font-sans">
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-xs">
+                      IM
+                    </div>
+                    <div>
+                      <div class="font-bold text-white text-sm">iShares Europe Small-Cap</div>
+                      <div class="text-[11px] text-slate-400 font-mono">IMAE • IE00B02KXM00</div>
+                    </div>
+                  </div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="font-bold text-white text-sm">€3.910,22</div>
+                  <div class="text-[11px] text-slate-400">49.8 stuks @ €78,52</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-white font-medium">8,1%</div>
+                  <div class="text-[11px] text-slate-400">Doel: 10,0%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€12,10</div>
+                  <div class="text-[11px] text-emerald-500/80">+0,31%</div>
+                </td>
+                <td class="py-4 px-3 text-right">
+                  <div class="text-emerald-400 font-bold text-sm">+€300,00</div>
+                  <div class="text-[11px] text-emerald-500/80">+8,31%</div>
+                </td>
+                <td class="py-4 px-3 text-center font-sans">
+                  <span class="inline-flex items-center px-2.5 py-1 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                    Onderwogen (-1,9%)
+                  </span>
+                </td>
+              </tr>
+
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Mobile Card List View -->
+        <div class="lg:hidden space-y-3 mt-4">
+          <!-- Mobile Card 1: VWCE -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-sky-500/10 text-sky-400 flex items-center justify-center font-bold text-xs">VW</div>
+                <div>
+                  <h4 class="font-bold text-white text-sm">Vanguard All-World</h4>
+                  <span class="text-[11px] text-slate-400 font-mono">VWCE • 54,2%</span>
+                </div>
+              </div>
+              <span class="text-right">
+                <span class="font-bold font-mono text-white text-sm block">€26.150,40</span>
+                <span class="text-[10px] text-amber-400 font-sans font-medium">Onderwogen (-5,8%)</span>
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-900 font-mono text-xs">
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Vandaag</span>
+                <span class="text-emerald-400 font-bold">+€156,90 (+0,60%)</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Totaal Winst</span>
+                <span class="text-emerald-400 font-bold">+€3.412,00 (+15%)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile Card 2: BTC -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-amber-500/10 text-amber-400 flex items-center justify-center font-bold text-xs">₿</div>
+                <div>
+                  <h4 class="font-bold text-white text-sm">Bitcoin (Crypto)</h4>
+                  <span class="text-[11px] text-slate-400 font-mono">BTC • 9,8%</span>
+                </div>
+              </div>
+              <span class="text-right">
+                <span class="font-bold font-mono text-white text-sm block">€4.720,00</span>
+                <span class="text-[10px] text-emerald-400 font-sans font-medium">Op Doel (-0,2%)</span>
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-900 font-mono text-xs">
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Vandaag</span>
+                <span class="text-emerald-400 font-bold">+€98,40 (+2,13%)</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Totaal Winst</span>
+                <span class="text-emerald-400 font-bold">+€1.520,00 (+47,5%)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Mobile Card 3: EXUS -->
+          <div class="bg-slate-950/70 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2.5">
+                <div class="w-7 h-7 rounded-lg bg-teal-500/10 text-teal-400 flex items-center justify-center font-bold text-xs">EX</div>
+                <div>
+                  <h4 class="font-bold text-white text-sm">World ex-USA</h4>
+                  <span class="text-[11px] text-slate-400 font-mono">EXUS • 21,5%</span>
+                </div>
+              </div>
+              <span class="text-right">
+                <span class="font-bold font-mono text-white text-sm block">€10.380,20</span>
+                <span class="text-[10px] text-sky-400 font-sans font-medium">Overwogen (+1,5%)</span>
+              </span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 pt-2 border-t border-slate-900 font-mono text-xs">
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Vandaag</span>
+                <span class="text-rose-400 font-bold">-€31,20 (-0,30%)</span>
+              </div>
+              <div class="bg-slate-900/60 p-2 rounded-xl">
+                <span class="text-[10px] text-slate-400 block font-sans">Totaal Winst</span>
+                <span class="text-emerald-400 font-bold">+€780,40 (+8,1%)</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 2: PRESTATIES & GRAFIEK -->
+    <!-- ======================================================================= -->
+    <div id="tab-performance" class="tab-content hidden space-y-6">
+      
+      <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+        
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-6 border-b border-slate-800">
+          <div>
+            <h2 class="text-lg font-bold text-white flex items-center gap-2">
+              <i data-lucide="trending-up" class="w-5 h-5 text-sky-400"></i>
+              <span>Portefeuille Rendement & Koersverloop</span>
+            </h2>
+            <p class="text-xs text-slate-400 mt-0.5">Dynamische schaling per tijdsvenster voorkomt een platte streep</p>
+          </div>
+
+          <!-- Controls: View Mode & Timeframe Selector -->
+          <div class="flex flex-wrap items-center gap-2.5">
+            
+            <!-- View Mode Toggle: Waarde vs Rendement -->
+            <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs font-mono">
+              <button onclick="toggleChartMode('value')" id="btn-mode-value" class="px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition">
+                Waarde (€)
+              </button>
+              <button onclick="toggleChartMode('return')" id="btn-mode-return" class="px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition">
+                Rendement (%)
+              </button>
+            </div>
+
+            <!-- Timeframe Selector -->
+            <div class="bg-slate-950 p-1 rounded-xl border border-slate-800 flex items-center text-xs font-mono">
+              <button onclick="setTimeframe('24H')" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">24H</button>
+              <button onclick="setTimeframe('1W')" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">1W</button>
+              <button onclick="setTimeframe('1M')" class="tf-btn px-2.5 py-1.5 rounded-lg bg-slate-800 text-sky-400 font-bold">1M</button>
+              <button onclick="setTimeframe('3M')" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">3M</button>
+              <button onclick="setTimeframe('1Y')" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">1Y</button>
+              <button onclick="setTimeframe('ALL')" class="tf-btn px-2.5 py-1.5 rounded-lg text-slate-400 hover:text-white">ALL</button>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- Dynamic Chart Scaling Note Badge -->
+        <div class="mt-4 flex items-center gap-2 px-3 py-2 rounded-xl bg-sky-950/40 border border-sky-800/40 text-sky-300 text-xs">
+          <i data-lucide="info" class="w-4 h-4 text-sky-400 shrink-0"></i>
+          <span><strong>Opgelost in dit ontwerp:</strong> De Y-as gebruikt nu een dynamische bandbreedte (voor 1M bijv. €47.000 - €49.000). Hierdoor zie je de dagelijkse beweging haarscherp in plaats van een platte horizontale streep!</span>
+        </div>
+
+        <!-- Chart Container -->
+        <div class="mt-6 h-80 relative">
+          <canvas id="prototype-chart"></canvas>
+        </div>
+
+        <!-- Period Statistics Row -->
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-slate-800 font-mono text-xs">
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Startwaarde Periode</span>
+            <span class="text-white font-bold text-sm mt-0.5 block">€47.320,00</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Huidige Waarde</span>
+            <span class="text-white font-bold text-sm mt-0.5 block">€48.250,82</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Resultaat Periode</span>
+            <span class="text-emerald-400 font-bold text-sm mt-0.5 block">+€930,82 (+1,97%)</span>
+          </div>
+          <div class="bg-slate-950 p-3 rounded-2xl border border-slate-800/80">
+            <span class="text-[10px] text-slate-400 uppercase tracking-wider block font-sans">Benchmark (VWCE)</span>
+            <span class="text-emerald-400 font-bold text-sm mt-0.5 block">+1,65% in zelfde tijd</span>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 3: ALLOCATIE & HERBALANCEREN -->
+    <!-- ======================================================================= -->
+    <div id="tab-allocation" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        <!-- Left: Allocation Donut -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <h2 class="text-base font-bold text-white flex items-center gap-2 mb-4">
+            <i data-lucide="pie-chart" class="w-4 h-4 text-sky-400"></i>
+            <span>Verdeling Portefeuille</span>
+          </h2>
+
+          <div class="h-56 relative flex items-center justify-center">
+            <canvas id="prototype-donut"></canvas>
+            <div class="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center">
+              <span class="text-xs text-slate-400 font-medium">Totale Waarde</span>
+              <span class="text-lg font-bold font-mono text-white">€48.250</span>
+            </div>
+          </div>
+
+          <div class="space-y-2 mt-4 text-xs font-mono">
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-sky-500"></span> VWCE All-World</span>
+              <span class="font-bold text-white">54,2% <span class="text-slate-500 font-normal">/ 60%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-teal-500"></span> EXUS ex-USA</span>
+              <span class="font-bold text-white">21,5% <span class="text-slate-500 font-normal">/ 20%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-amber-500"></span> Bitcoin (BTC)</span>
+              <span class="font-bold text-white">9,8% <span class="text-slate-500 font-normal">/ 10%</span></span>
+            </div>
+            <div class="flex items-center justify-between p-2 rounded-xl bg-slate-950 border border-slate-800">
+              <span class="flex items-center gap-2"><span class="w-2.5 h-2.5 rounded-full bg-indigo-500"></span> IMAE Europe</span>
+              <span class="font-bold text-white">8,1% <span class="text-slate-500 font-normal">/ 10%</span></span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Right 2 cols: Rebalance Simulator & Crypto Scale -->
+        <div class="lg:col-span-2 space-y-6">
+          
+          <!-- Rebalance Cockpit Simulator -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+            <div class="flex items-center justify-between mb-4">
+              <div>
+                <h3 class="text-base font-bold text-white flex items-center gap-2">
+                  <i data-lucide="sliders" class="w-4 h-4 text-emerald-400"></i>
+                  <span>Maandelijkse Inleg Simulator</span>
+                </h3>
+                <p class="text-xs text-slate-400 mt-0.5">Bereken hoe je met nieuwe stortingen je doelen bereikt zonder te verkopen</p>
+              </div>
+              <span class="px-3 py-1 rounded-xl bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 text-xs font-mono font-bold">
+                Geen Verkoopkosten
+              </span>
+            </div>
+
+            <!-- Deposit Input -->
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-5">
+              <div class="flex justify-between items-center mb-2">
+                <label class="text-xs font-semibold text-slate-300">Geplande Storting Deze Maand:</label>
+                <span class="text-xl font-bold font-mono text-emerald-400" id="deposit-val-display">€800</span>
+              </div>
+              <input type="range" min="100" max="3000" step="50" value="800" oninput="updateDepositSim(this.value)" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-emerald-500">
+            </div>
+
+            <!-- Recommended Buy Orders -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3" id="deposit-recommendations">
+              <div class="p-4 rounded-2xl bg-slate-950 border border-sky-500/30 relative">
+                <span class="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Prioriteit 1: Grootste Onderweging</span>
+                <h4 class="font-bold text-white text-sm mt-1">VWCE All-World</h4>
+                <div class="text-xl font-bold font-mono text-sky-400 mt-2">Koop voor €650</div>
+                <p class="text-[11px] text-slate-400 mt-0.5 font-mono">Ca. 5,2 stuks @ €124,82</p>
+              </div>
+
+              <div class="p-4 rounded-2xl bg-slate-950 border border-indigo-500/30 relative">
+                <span class="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">Prioriteit 2: Onderwogen</span>
+                <h4 class="font-bold text-white text-sm mt-1">IMAE Europe Small</h4>
+                <div class="text-xl font-bold font-mono text-indigo-400 mt-2">Koop voor €150</div>
+                <p class="text-[11px] text-slate-400 mt-0.5 font-mono">Ca. 1,9 stuks @ €78,52</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Crypto Scale Ladder Card -->
+          <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+            <h3 class="text-base font-bold text-white flex items-center gap-2 mb-2">
+              <i data-lucide="zap" class="w-4 h-4 text-amber-400"></i>
+              <span>Crypto Accumulatie & Winst-Ladder</span>
+            </h3>
+            <p class="text-xs text-slate-400 mb-4">Gedisciplineerd bijkopen bij dips en winst afromen bij pieken</p>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs font-mono">
+              <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-emerald-400 uppercase tracking-wider block">Dip Koopzone</span>
+                <span class="text-base font-bold text-white mt-1 block">€55.000 / BTC</span>
+                <span class="text-[11px] text-slate-400 font-sans">Activeer extra inleg bij -15% daling</span>
+              </div>
+              <div class="p-3.5 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-amber-400 uppercase tracking-wider block">Winstneming Target</span>
+                <span class="text-base font-bold text-white mt-1 block">€85.000 / BTC</span>
+                <span class="text-[11px] text-slate-400 font-sans">Verkoop 20% van BTC positie naar cash</span>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    <!-- ======================================================================= -->
+    <!-- TAB 4: INZICHTEN & TOOLS -->
+    <!-- ======================================================================= -->
+    <div id="tab-insights" class="tab-content hidden space-y-6">
+      
+      <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        
+        <!-- Insight Card 1: DEGIRO Fee Drag Tracker -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 rounded-2xl bg-rose-500/10 text-rose-400">
+              <i data-lucide="receipt" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">DEGIRO Kosten & Fee Drag</h3>
+              <p class="text-xs text-slate-400">Transparant inzicht in transactie- en wisselkoerskosten</p>
+            </div>
+          </div>
+
+          <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800 mb-4">
+            <div class="flex justify-between items-baseline">
+              <span class="text-xs text-slate-400">Totale Betaalde Kosten (All-Time):</span>
+              <span class="text-2xl font-bold font-mono text-rose-400">€64,20</span>
+            </div>
+            <div class="w-full bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
+              <div class="bg-rose-500 h-full rounded-full" style="width: 1.1%"></div>
+            </div>
+            <div class="flex justify-between items-center text-[11px] font-mono text-slate-400 mt-2">
+              <span>Totale Fee Drag: <strong class="text-slate-200">0,15%</strong> van inleg</span>
+              <span class="text-emerald-400 font-medium">Zeer Kostenefficiënt</span>
+            </div>
+          </div>
+
+          <div class="space-y-2 text-xs font-mono">
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">Transactiekosten (Kernselectie €1 + Overig):</span>
+              <span class="text-white font-bold">€42,00</span>
+            </div>
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">AutoFX Valutakosten (0,25% spread):</span>
+              <span class="text-white font-bold">€14,70</span>
+            </div>
+            <div class="flex justify-between p-2.5 rounded-xl bg-slate-950 border border-slate-800/80">
+              <span class="text-slate-400 font-sans">Aansluitingskosten Beurzen (per jaar):</span>
+              <span class="text-white font-bold">€7,50</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Insight Card 2: Compounding / Wealth Projector -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-3xl p-6 shadow-sm">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="p-2.5 rounded-2xl bg-sky-500/10 text-sky-400">
+              <i data-lucide="sparkles" class="w-5 h-5"></i>
+            </div>
+            <div>
+              <h3 class="text-base font-bold text-white">Vermogensprojectie & Compounding</h3>
+              <p class="text-xs text-slate-400">Wat levert maandelijks beleggen op over 10 en 20 jaar?</p>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="bg-slate-950 p-4 rounded-2xl border border-slate-800">
+              <div class="flex justify-between items-center mb-2">
+                <span class="text-xs text-slate-300">Maandelijkse Inleg:</span>
+                <span class="text-base font-bold font-mono text-sky-400" id="compound-inleg">€800 / mnd</span>
+              </div>
+              <input type="range" min="200" max="2500" step="50" value="800" oninput="updateCompounding(this.value)" class="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-sky-500">
+            </div>
+
+            <!-- Projections 10y & 20y -->
+            <div class="grid grid-cols-2 gap-3 text-xs font-mono">
+              <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider block">Over 10 Jaar (bij 7% p/j)</span>
+                <span class="text-xl font-bold text-white mt-1 block" id="proj-10y">€201.500</span>
+                <span class="text-[10px] text-emerald-400 font-sans mt-1 block">Winst: +€57.500</span>
+              </div>
+              <div class="p-4 rounded-2xl bg-slate-950 border border-slate-800">
+                <span class="text-[10px] font-sans font-semibold text-slate-400 uppercase tracking-wider block">Over 20 Jaar (bij 7% p/j)</span>
+                <span class="text-xl font-bold text-emerald-400 mt-1 block" id="proj-20y">€512.000</span>
+                <span class="text-[10px] text-emerald-400 font-sans mt-1 block">Winst: +€272.000</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- ========================================================================= -->
+  <!-- MOBILE BOTTOM NAVIGATION BAR -->
+  <!-- ========================================================================= -->
+  <nav class="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-slate-950/95 backdrop-blur border-t border-slate-800 px-3 py-2 flex items-center justify-around">
+    <button onclick="switchTab('overview')" id="mobile-nav-overview" class="mobile-tab-btn flex flex-col items-center gap-1 text-sky-400 font-semibold py-1 px-2">
+      <i data-lucide="layout-dashboard" class="w-5 h-5"></i>
+      <span class="text-[10px]">Overzicht</span>
+    </button>
+    <button onclick="switchTab('performance')" id="mobile-nav-performance" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-2">
+      <i data-lucide="trending-up" class="w-5 h-5"></i>
+      <span class="text-[10px]">Prestaties</span>
+    </button>
+    <button onclick="switchTab('allocation')" id="mobile-nav-allocation" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-2">
+      <i data-lucide="pie-chart" class="w-5 h-5"></i>
+      <span class="text-[10px]">Allocatie</span>
+    </button>
+    <button onclick="switchTab('insights')" id="mobile-nav-insights" class="mobile-tab-btn flex flex-col items-center gap-1 text-slate-400 hover:text-white py-1 px-2">
+      <i data-lucide="sparkles" class="w-5 h-5"></i>
+      <span class="text-[10px]">Inzichten</span>
+    </button>
+  </nav>
+
+  <!-- ========================================================================= -->
+  <!-- JAVASCRIPT CONTROLLERS -->
+  <!-- ========================================================================= -->
+  <script>
+    let currentTab = 'overview';
+    let chartMode = 'value'; // 'value' or 'return'
+    let currentTf = '1M';
+    let myChart = null;
+
+    function switchTab(tabId) {
+      currentTab = tabId;
+      document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+      document.getElementById('tab-' + tabId).classList.remove('hidden');
+
+      // Update desktop nav
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('bg-sky-600', 'text-white', 'shadow-sm');
+        btn.classList.add('text-slate-400');
+      });
+      const activeDesktop = document.getElementById('nav-btn-' + tabId);
+      if (activeDesktop) {
+        activeDesktop.classList.add('bg-sky-600', 'text-white', 'shadow-sm');
+        activeDesktop.classList.remove('text-slate-400');
+      }
+
+      // Update mobile nav
+      document.querySelectorAll('.mobile-tab-btn').forEach(btn => {
+        btn.classList.remove('text-sky-400', 'font-semibold');
+        btn.classList.add('text-slate-400');
+      });
+      const activeMobile = document.getElementById('mobile-nav-' + tabId);
+      if (activeMobile) {
+        activeMobile.classList.add('text-sky-400', 'font-semibold');
+        activeMobile.classList.remove('text-slate-400');
+      }
+
+      if (tabId === 'performance' && myChart) {
+        myChart.resize();
+      }
+    }
+
+    function toggleChartMode(mode) {
+      chartMode = mode;
+      const btnVal = document.getElementById('btn-mode-value');
+      const btnRet = document.getElementById('btn-mode-return');
+
+      if (mode === 'value') {
+        btnVal.className = 'px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition';
+        btnRet.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+        updateChartData(false);
+      } else {
+        btnRet.className = 'px-3 py-1.5 rounded-lg bg-sky-600 text-white font-bold transition';
+        btnVal.className = 'px-3 py-1.5 rounded-lg text-slate-400 hover:text-white transition';
+        updateChartData(true);
+      }
+    }
+
+    function setTimeframe(tf) {
+      currentTf = tf;
+      document.querySelectorAll('.tf-btn').forEach(btn => {
+        btn.classList.remove('bg-slate-800', 'text-sky-400', 'font-bold');
+        btn.classList.add('text-slate-400');
+        if (btn.innerText.trim() === tf) {
+          btn.classList.add('bg-slate-800', 'text-sky-400', 'font-bold');
+          btn.classList.remove('text-slate-400');
+        }
+      });
+      updateChartData(chartMode === 'return');
+    }
+
+    function updateDepositSim(val) {
+      document.getElementById('deposit-val-display').innerText = '€' + val;
+      const num = parseInt(val, 10);
+      const vwceBuy = Math.round(num * 0.75);
+      const imaeBuy = Math.round(num * 0.25);
+
+      document.getElementById('deposit-recommendations').innerHTML = `
+        <div class="p-4 rounded-2xl bg-slate-950 border border-sky-500/30 relative">
+          <span class="text-[10px] uppercase font-bold text-sky-400 tracking-wider">Prioriteit 1: Grootste Onderweging</span>
+          <h4 class="font-bold text-white text-sm mt-1">VWCE All-World</h4>
+          <div class="text-xl font-bold font-mono text-sky-400 mt-2">Koop voor €${vwceBuy}</div>
+          <p class="text-[11px] text-slate-400 mt-0.5 font-mono">Ca. ${(vwceBuy / 124.82).toFixed(1)} stuks @ €124,82</p>
+        </div>
+        <div class="p-4 rounded-2xl bg-slate-950 border border-indigo-500/30 relative">
+          <span class="text-[10px] uppercase font-bold text-indigo-400 tracking-wider">Prioriteit 2: Onderwogen</span>
+          <h4 class="font-bold text-white text-sm mt-1">IMAE Europe Small</h4>
+          <div class="text-xl font-bold font-mono text-indigo-400 mt-2">Koop voor €${imaeBuy}</div>
+          <p class="text-[11px] text-slate-400 mt-0.5 font-mono">Ca. ${(imaeBuy / 78.52).toFixed(1)} stuks @ €78,52</p>
+        </div>
+      `;
+    }
+
+    function updateCompounding(inleg) {
+      document.getElementById('compound-inleg').innerText = '€' + inleg + ' / mnd';
+      const m = parseInt(inleg, 10);
+      // Rough compounding at 7% p.a.
+      // FV = PV*(1+r)^n + PMT * (((1+r)^n - 1)/r)
+      const r = 0.07 / 12;
+      const pv = 48250;
+      const fv10 = Math.round(pv * Math.pow(1+r, 120) + m * ((Math.pow(1+r, 120)-1)/r));
+      const fv20 = Math.round(pv * Math.pow(1+r, 240) + m * ((Math.pow(1+r, 240)-1)/r));
+
+      document.getElementById('proj-10y').innerText = '€' + fv10.toLocaleString('nl-NL');
+      document.getElementById('proj-20y').innerText = '€' + fv20.toLocaleString('nl-NL');
+    }
+
+    function updateChartData(isPercent) {
+      if (!myChart) return;
+      if (isPercent) {
+        myChart.data.datasets[0].label = 'Portefeuille Rendement (%)';
+        myChart.data.datasets[0].data = [0, 0.4, 0.2, 0.8, 0.5, 1.2, 0.9, 1.4, 1.1, 1.6, 1.97];
+        myChart.data.datasets[1].data = [0, 0.3, 0.1, 0.6, 0.4, 0.9, 0.8, 1.1, 1.0, 1.4, 1.65];
+        myChart.options.scales.y.ticks.callback = val => val + '%';
+        myChart.options.scales.y.suggestedMin = -0.5;
+        myChart.options.scales.y.suggestedMax = 2.5;
+      } else {
+        myChart.data.datasets[0].label = 'Portefeuillewaarde (€)';
+        myChart.data.datasets[0].data = [47320, 47510, 47415, 47700, 47560, 47890, 47750, 47980, 47840, 48080, 48250];
+        myChart.data.datasets[1].data = [47320, 47460, 47365, 47600, 47510, 47745, 47700, 47840, 47790, 47980, 48100];
+        myChart.options.scales.y.ticks.callback = val => '€' + val.toLocaleString('nl-NL');
+        myChart.options.scales.y.suggestedMin = 47000;
+        myChart.options.scales.y.suggestedMax = 48600;
+      }
+      myChart.update();
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+
+      // Donut Chart
+      const ctxDonut = document.getElementById('prototype-donut').getContext('2d');
+      new Chart(ctxDonut, {
+        type: 'doughnut',
+        data: {
+          labels: ['VWCE', 'EXUS', 'BTC', 'IMAE'],
+          datasets: [{
+            data: [54.2, 21.5, 9.8, 8.1],
+            backgroundColor: ['#0ea5e9', '#14b8a6', '#f59e0b', '#6366f1'],
+            borderWidth: 0,
+            hoverOffset: 6
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '76%',
+          plugins: { legend: { display: false } }
+        }
+      });
+
+      // Performance Line Chart
+      const ctxLine = document.getElementById('prototype-chart').getContext('2d');
+      myChart = new Chart(ctxLine, {
+        type: 'line',
+        data: {
+          labels: ['1 Okt', '4 Okt', '7 Okt', '10 Okt', '13 Okt', '16 Okt', '18 Okt', '19 Okt', '20 Okt', '21 Okt'],
+          datasets: [
+            {
+              label: 'Portefeuillewaarde (€)',
+              data: [47320, 47510, 47415, 47700, 47560, 47890, 47750, 47980, 47840, 48250],
+              borderColor: '#0284c7',
+              backgroundColor: 'rgba(2, 132, 199, 0.1)',
+              borderWidth: 2.5,
+              tension: 0.35,
+              fill: true,
+              pointRadius: 3,
+              pointBackgroundColor: '#0284c7'
+            },
+            {
+              label: 'Benchmark (VWCE)',
+              data: [47320, 47460, 47365, 47600, 47510, 47745, 47700, 47840, 47790, 48100],
+              borderColor: '#64748b',
+              borderWidth: 1.5,
+              borderDash: [4, 4],
+              pointRadius: 0,
+              tension: 0.35,
+              fill: false
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          plugins: {
+            legend: {
+              position: 'top',
+              labels: { color: '#94a3b8', font: { family: 'JetBrains Mono', size: 11 } }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: 'rgba(51, 65, 85, 0.3)' },
+              ticks: { color: '#64748b', font: { family: 'JetBrains Mono', size: 10 } }
+            },
+            y: {
+              suggestedMin: 47000,
+              suggestedMax: 48600,
+              grid: { color: 'rgba(51, 65, 85, 0.3)' },
+              ticks: {
+                color: '#64748b',
+                font: { family: 'JetBrains Mono', size: 10 },
+                callback: val => '€' + val.toLocaleString('nl-NL')
+              }
+            }
+          }
+        }
+      });
+    });
+  </script>
+</body>
+</html>
