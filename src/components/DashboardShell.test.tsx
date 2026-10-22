@@ -6,6 +6,8 @@ describe('replacement dashboard demonstration', () => {
   it('keeps synthetic data explicit while navigating every destination', () => {
     render(<DashboardShell />);
     expect(screen.getByText(/Synthetic demonstration/)).toBeInTheDocument();
+    expect(screen.getAllByText('\u20ac1,100').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('+\u20ac95').length).toBeGreaterThan(0);
     expect(screen.getByRole('heading', { name: 'Your money, clearly explained.' })).toBeInTheDocument();
     for (const [destination, heading] of [
       ['Performance', 'What changed over time?'],
