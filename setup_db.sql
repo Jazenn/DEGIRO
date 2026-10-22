@@ -181,3 +181,7 @@ AFTER INSERT OR UPDATE ON portfolio_asset_settings
 FOR EACH ROW
 EXECUTE FUNCTION sync_portfolio_settings_to_degiro_assets();
 
+
+-- Preserve normalized identity, currencies, source records and diagnostics.
+-- Additive migration: legacy generations remain available for reconciliation.
+ALTER TABLE degiro_transactions ADD COLUMN IF NOT EXISTS normalized_record JSONB;

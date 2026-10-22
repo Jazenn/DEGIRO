@@ -18,12 +18,12 @@ def sort_transactions_chronologically(df: pd.DataFrame) -> pd.DataFrame:
 
     df_out = df.copy()
     if "date" in df_out.columns:
-        date_str = df_out["date"].astype(str)
+        date_str = df_out.get("normalized_date", df_out["date"]).astype(str)
         time_str = df_out["time"].astype(str) if "time" in df_out.columns else "00:00"
         # Parse day-first dates (e.g. 15-10-2026)
         df_out["_dt"] = pd.to_datetime(
             date_str + " " + time_str,
-            dayfirst=True,
+            dayfirst="normalized_date" not in df_out,
             errors="coerce",
         )
     else:
@@ -84,7 +84,7 @@ def build_cumulative_cash_series(df: pd.DataFrame) -> pd.Series:
     is_sweep = df_sorted["is_cash_sweep"] if "is_cash_sweep" in df_sorted.columns else False
     df_ledger = df_sorted[~is_sweep].copy()
 
-    df_ledger["parsed_date"] = pd.to_datetime(df_ledger["date"], dayfirst=True, errors="coerce")
+    df_ledger["parsed_date"] = pd.to_datetime(df_ledger.get("normalized_date", df_ledger["date"]), dayfirst="normalized_date" not in df_ledger, errors="coerce")
     df_ledger = df_ledger.dropna(subset=["parsed_date"])
 
     daily_mutation = df_ledger.groupby("parsed_date")["amount"].sum()

@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 import pandas as pd
 
+from backend.ingestion.identity import finalize_records
 from backend.ingestion.normalizer import compute_row_hash, parse_degiro_number, shorten_name
 
 
@@ -51,6 +52,8 @@ def is_internal_cash_sweep(description: str, product: str) -> bool:
         return True
     if "transfer" in d and ("cash account" in d or "flatex" in d):
         return True
+    if any(word in d for word in ("deposit", "storting", "withdrawal", "reservation")):
+        return False
     if "flatex euro bankaccount" in p or "nlflatexacnt" in p:
         return True
     return False
@@ -73,7 +76,7 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
     else:
         buffer = file_bytes_or_buffer
 
-    df_raw = pd.read_csv(buffer, sep=None, engine="python", index_col=False)
+    df_raw = pd.read_csv(buffer, sep=None, engine="python", index_col=False, dtype=str, keep_default_na=False)
     # Clean and lower header strings
     df_raw.columns = [str(c).strip().lower() for c in df_raw.columns]
 
@@ -99,7 +102,7 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
     idx_mut = None
     idx_saldo = None
     for i, c in enumerate(cols):
-        if c in ("mutatie", "change"):
+        if c in ("mutatie", "change", "amount"):
             idx_mut = i
         elif c in ("saldo", "balance"):
             idx_saldo = i
@@ -116,28 +119,37 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
         fx = parse_degiro_number(row[c_fx]) if c_fx and pd.notna(row[c_fx]) else 0.0
 
         # Resolve mutation (amount) handling currency shift
-        amount = 0.0
+        amount = None
+        amount_currency = ""
         if idx_mut is not None:
             mut_val = row.iloc[idx_mut]
             # If Mutatie column contains currency code (EUR, USD, etc.), amount is in next column
-            if isinstance(mut_val, str) and len(mut_val.strip()) <= 3 and mut_val.strip().isalpha():
+            if isinstance(mut_val, str) and mut_val.strip().upper() in {"EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "CAD", "AUD", "JPY", "HKD"}:
                 if idx_mut + 1 < len(row):
-                    amount = parse_degiro_number(row.iloc[idx_mut + 1]) or 0.0
+                    amount = parse_degiro_number(row.iloc[idx_mut + 1])
+                    amount_currency = mut_val.strip().upper()
             else:
-                amount = parse_degiro_number(mut_val) or 0.0
+                amount = parse_degiro_number(mut_val)
 
         # Resolve balance handling currency shift
         balance = 0.0
         if idx_saldo is not None:
             saldo_val = row.iloc[idx_saldo]
-            if isinstance(saldo_val, str) and len(saldo_val.strip()) <= 3 and saldo_val.strip().isalpha():
+            if isinstance(saldo_val, str) and saldo_val.strip().upper() in {"EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "CAD", "AUD", "JPY", "HKD"}:
                 if idx_saldo + 1 < len(row):
-                    balance = parse_degiro_number(row.iloc[idx_saldo + 1]) or 0.0
+                    balance = parse_degiro_number(row.iloc[idx_saldo + 1])
             else:
-                balance = parse_degiro_number(saldo_val) or 0.0
+                balance = parse_degiro_number(saldo_val)
+
+        if amount is None:
+            raise ValueError(f"Invalid Transaction amount at source row {row_idx + 2}")
+        quote_currency_match = re.search(r"@.*?\b([A-Z]{3})\b", desc)
+        quote_currency = quote_currency_match.group(1) if quote_currency_match else ""
 
         # Extract trade details
         action, signed_qty, price = parse_trade_description(desc)
+        if re.match(r"^(koop|verkoop|buy|sell)\b", desc, re.IGNORECASE) and (action is None or not signed_qty or price <= 0):
+            raise ValueError(f"Invalid Transaction quantity or price at source row {row_idx + 2}")
         is_sweep = is_internal_cash_sweep(desc, prod)
 
         # Categorize transaction type
@@ -146,10 +158,12 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             tx_type = "CASH_SWEEP"
         elif action in ("BUY", "SELL"):
             tx_type = action
-        elif any(w in desc.lower() for w in ("ideal", "deposit", "storting")):
-            tx_type = "DEPOSIT"
+        elif any(w in desc.lower() for w in ("reservation", "reservering")):
+            tx_type = "RESERVATION"
         elif any(w in desc.lower() for w in ("terugstorting", "withdrawal")):
             tx_type = "WITHDRAWAL"
+        elif any(w in desc.lower() for w in ("ideal", "deposit", "storting")):
+            tx_type = "DEPOSIT"
         elif any(w in desc.lower() for w in ("transactiekosten", "aansluitingskosten", "kosten van derden", "fee")):
             tx_type = "FEE"
         elif any(w in desc.lower() for w in ("dividend", "dividendbelasting")):
@@ -171,6 +185,10 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             "isin": isin,
             "description": desc,
             "fx": fx or 0.0,
+            "amount_currency": amount_currency,
+            "quote_currency": quote_currency,
+            "balance_reported": idx_saldo is not None,
+            "source_record": {str(k): (None if pd.isna(v) else str(v)) for k, v in row.items()},
             "amount": amount,
             "balance": balance,
             "order_id": order_id,
@@ -183,4 +201,4 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             "row_hash": row_hash,
         })
 
-    return pd.DataFrame(records)
+    return finalize_records(records, "account")

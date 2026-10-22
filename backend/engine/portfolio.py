@@ -124,7 +124,7 @@ def build_daily_equity_history(
         return pd.DataFrame()
 
     df_sorted = sort_transactions_chronologically(df)
-    df_sorted["parsed_date"] = pd.to_datetime(df_sorted["date"], dayfirst=True, errors="coerce")
+    df_sorted["parsed_date"] = pd.to_datetime(df_sorted.get("normalized_date", df_sorted["date"]), dayfirst="normalized_date" not in df_sorted, errors="coerce")
     df_sorted = df_sorted.dropna(subset=["parsed_date"]).copy()
 
     if df_sorted.empty:

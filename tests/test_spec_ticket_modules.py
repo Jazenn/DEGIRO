@@ -47,13 +47,13 @@ def test_transaction_ingestion_service_returns_normalized_rows_with_stable_hashe
     result = TransactionIngestionService().ingest_csv(csv_content)
 
     assert result.rows_processed == 2
-    assert result.new_rows == 1
-    assert result.duplicates_skipped == 1
-    assert len(result.transactions) == 1
+    assert result.new_rows == 2
+    assert result.duplicates_skipped == 0
+    assert len(result.transactions) == 2
     transaction = result.transactions.iloc[0]
     assert transaction["isin"] == "IE00TEST1234"
-    assert transaction["amount"] == pytest.approx(100.0)
-    assert transaction["row_hash"] == TransactionIngestionService._row_hash(transaction)
+    assert transaction["amount"] == pytest.approx(-100.0)
+    assert result.transactions["row_hash"].nunique() == 2
     repeated = TransactionIngestionService().ingest_csv(csv_content)
     assert repeated.transactions.iloc[0]["row_hash"] == transaction["row_hash"]
 
@@ -131,13 +131,13 @@ def test_database_storage_uses_ingestion_hashes_to_skip_reuploads():
         assert storage.save_transactions(transactions) == 0
 
 
-def test_database_storage_skips_rows_with_legacy_hashes():
+def test_database_storage_requires_review_of_collapsed_legacy_identities():
     csv_content = (
         "Date;Time;Product;ISIN;Quantity;Price;Value;Order ID\n"
         "03-01-2024;09:30;Example ETF;IE00TEST1234;2;50;100;order-1\n"
     ).encode("utf-8")
     transactions = TransactionIngestionService().ingest_csv(csv_content).transactions
-    legacy_payload = {"order_id": "order-1", "amount": "100.0", "isin": "IE00TEST1234"}
+    legacy_payload = {"order_id": "order-1", "amount": "-100.0", "isin": "IE00TEST1234"}
     legacy_hash = hashlib.md5(
         json.dumps(legacy_payload, sort_keys=True).encode("utf-8")
     ).hexdigest()
@@ -174,7 +174,8 @@ def test_database_storage_skips_rows_with_legacy_hashes():
 
     storage = DBStorage.__new__(DBStorage)
     with patch.object(storage, "_conn", side_effect=connection):
-        assert storage.save_transactions(transactions) == 0
+        with pytest.raises(ValueError, match="legacy_identity_requires_review"):
+            storage.save_transactions(transactions)
     assert stored_hashes == {legacy_hash}
 
 

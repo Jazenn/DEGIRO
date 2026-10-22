@@ -31,6 +31,6 @@ def load_degiro_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
         buf = file_bytes_or_buffer
 
     # If first line contains 'aantal' or 'quantity', it's a Transactions export
-    if "aantal" in raw_head or "quantity" in raw_head:
+    if "aantal" in raw_head.splitlines()[0] or "quantity" in raw_head.splitlines()[0]:
         return parse_transactions_csv(buf)
     return parse_account_csv(buf)

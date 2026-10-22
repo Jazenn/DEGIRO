@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import csv
 import hashlib
 import io
@@ -22,6 +23,9 @@ class IngestionResult:
     duplicates_skipped: int
     rows_processed: int
     transactions: pd.DataFrame = field(default_factory=pd.DataFrame)
+    accepted: bool = True
+    diagnostics: tuple[str, ...] = ()
+    audit_transactions: pd.DataFrame = field(default_factory=pd.DataFrame)
 
 
 class TransactionIngestionService:
@@ -51,9 +55,13 @@ class TransactionIngestionService:
         "fx": ["fx", "autofx kosten", "autofx fee"],
     }
 
-    def __init__(self) -> None:
-        self.total_rows_seen: int = 0
-        self._seen_hashes: Set[str] = set()
+    def __init__(self, existing_transactions: pd.DataFrame | None = None) -> None:
+        existing = existing_transactions if existing_transactions is not None else pd.DataFrame()
+        if not existing.empty and ("identity_version" not in existing or not existing["identity_version"].eq("execution-v2").all()):
+            raise ValueError("legacy_identity_requires_review: reconcile prior collapsed executions before migration")
+        self._seen_hashes = set(existing.get("row_hash", []))
+        self._multiplicities = Counter(existing.get("identity_fingerprint", []))
+        self.total_rows_seen = len(self._seen_hashes)
 
     @staticmethod
     def _normalize_header_name(header: str) -> str:
@@ -127,12 +135,27 @@ class TransactionIngestionService:
         if not headers:
             raise ValueError("Unsupported DEGIRO CSV format: missing headers.")
         self._validate_headers(headers)
-        rows_processed = sum(1 for row in reader if any(cell.strip() for cell in row))
+        rows_processed = 0
+        for row in reader:
+            if not any(cell.strip() for cell in row):
+                continue
+            rows_processed += 1
+            if len(row) != len(headers):
+                raise ValueError(f"Invalid Transaction column count at source row {rows_processed + 1}")
 
         parsed_transactions = load_degiro_csv(file_content)
         if parsed_transactions.empty:
             return IngestionResult(0, 0, rows_processed, parsed_transactions)
 
+        counts = Counter(parsed_transactions["identity_fingerprint"])
+        diagnostics = sorted({diagnostic for values in parsed_transactions["diagnostics"] for diagnostic in values})
+        review = bool({"correction_requires_review", "cash_balance_discontinuity", "same_time_ordering_requires_review", "transaction_classification_requires_review", "non_eur_cash_requires_dated_fx"}.intersection(diagnostics))
+        if any(self._multiplicities[key] and self._multiplicities[key] != count for key, count in counts.items()):
+            diagnostics.append("ambiguous_overlap_multiplicity")
+            review = True
+        if review:
+            return IngestionResult(0, 0, rows_processed, accepted=False,
+                                   diagnostics=tuple(diagnostics), audit_transactions=parsed_transactions)
         transactions = []
         duplicates_skipped = 0
         for record in parsed_transactions.to_dict(orient="records"):
@@ -144,6 +167,7 @@ class TransactionIngestionService:
             record["row_hash"] = row_hash
             transactions.append(record)
 
+        self._multiplicities.update({key: count for key, count in counts.items() if key not in self._multiplicities})
         self.total_rows_seen = len(self._seen_hashes)
         cols = list(parsed_transactions.columns)
         if "row_hash" not in cols:
@@ -154,4 +178,5 @@ class TransactionIngestionService:
             duplicates_skipped=duplicates_skipped,
             rows_processed=rows_processed,
             transactions=unique_transactions,
+            diagnostics=tuple(diagnostics), audit_transactions=parsed_transactions,
         )

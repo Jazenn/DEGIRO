@@ -192,7 +192,7 @@ def test_audit_calculation_contract_preserves_synthetic_holdings_and_versions():
     assert holdings.loc["VWCE.DE", "total_value_eur"] == 1000
     assert holdings.loc["BTC-EUR", "total_value_eur"] == 310
     assert report.observed_prices["VWCE.DE"].provider == "synthetic"
-    assert report.diagnostics == ("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter",)
+    assert "source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter" in report.diagnostics
     pd.testing.assert_frame_equal(transactions, before)
 
 def test_audit_reports_missing_prices_and_honors_cutoff(capsys):

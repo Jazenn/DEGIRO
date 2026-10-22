@@ -7,6 +7,7 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 import psycopg2.extras
 
+from backend.db.transaction_records import pack_transaction, unpack_transactions
 from backend.db.connection import get_db_connection
 
 logger = logging.getLogger(__name__)
@@ -14,10 +15,10 @@ logger = logging.getLogger(__name__)
 INSERT_TX_SQL = """
 INSERT INTO degiro_transactions (
     row_hash, date, time, value_date, product, isin,
-    description, fx, amount, balance, order_id, csv_row_id
+    description, fx, amount, balance, order_id, csv_row_id, normalized_record
 ) VALUES (
     %(row_hash)s, %(date)s, %(time)s, %(value_date)s, %(product)s, %(isin)s,
-    %(description)s, %(fx)s, %(amount)s, %(balance)s, %(order_id)s, %(csv_row_id)s
+    %(description)s, %(fx)s, %(amount)s, %(balance)s, %(order_id)s, %(csv_row_id)s, %(normalized_record)s
 )
 ON CONFLICT (row_hash) DO NOTHING
 """
@@ -62,7 +63,7 @@ class TransactionRepository:
                     d = row.get("date")
                     vd = row.get("value_date") or d
 
-                    new_rows.append({
+                    new_rows.append(pack_transaction({**row.to_dict(),
                         "row_hash": h,
                         "date": str(d) if d else None,
                         "time": str(row.get("time") or ""),
@@ -75,7 +76,8 @@ class TransactionRepository:
                         "balance": float(row.get("balance") or 0.0),
                         "order_id": str(row.get("order_id") or ""),
                         "csv_row_id": int(row.get("csv_row_id") or 0),
-                    })
+                    }))
+                    existing_hashes.add(h)
 
                 if new_rows:
                     psycopg2.extras.execute_batch(cur, INSERT_TX_SQL, new_rows)
@@ -89,13 +91,13 @@ class TransactionRepository:
             df = pd.read_sql(
                 """
                 SELECT id, row_hash, date::text as date, time, value_date::text as value_date,
-                       product, isin, description, fx, amount, balance, order_id, csv_row_id
+                       product, isin, description, fx, amount, balance, order_id, csv_row_id, normalized_record
                 FROM degiro_transactions
                 ORDER BY date ASC, time ASC, csv_row_id DESC
                 """,
                 conn,
             )
-        return df
+        return unpack_transactions(df)
 
     def clear_transactions(self) -> None:
         """Truncate all stored transactions."""
