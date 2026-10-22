@@ -35,3 +35,15 @@ _Avoid_: Guaranteed holding, risk-free portion
 **Tactical Crypto Portion**:
 The portion of a cryptocurrency holding available for staged Crypto Scale sales, separate from the Long-Term Crypto Core.
 _Avoid_: Entire crypto holding, remaining core
+
+**Suggested Crypto Level**:
+An adjustable reference price derived from recent daily prices for considering a Crypto Scale purchase or sale.
+_Avoid_: Predicted bottom, predicted top, guaranteed opportunity
+
+**Accepted Crypto Plan**:
+The explicitly chosen Crypto Scale levels and sale quantities for one cryptocurrency, retained until a reviewed replacement is accepted.
+_Avoid_: Live suggestion, automatic strategy
+
+**Crypto Stage**:
+A single price condition and associated quantity within an Accepted Crypto Plan; reaching its price does not mean a Transaction has occurred.
+_Avoid_: Executed sale, automatic order
