@@ -1,3 +1,5 @@
+> Historical specification: conflicting requirements are superseded by the [approved useful-dashboard implementation handoff](useful-dashboard-implementation-handoff.md) and its linked decisions. In particular, earlier latency promises, direct browser credential access, UI choices and assumed free-data coverage are not current requirements or verified facts.
+
 # Technical Specification: Backend Architecture Overhaul & Clean Codebase Structure
 
 ## Problem Statement
