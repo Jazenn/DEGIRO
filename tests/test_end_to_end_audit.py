@@ -166,3 +166,71 @@ def test_cli_audit_command(capsys: pytest.CaptureFixture[str]):
         assert "Closing cash balance  : €     939.00" in captured.out
     assert "VWCE.DE" in captured.out
     assert "BTC-EUR" in captured.out
+
+def test_audit_calculation_contract_preserves_synthetic_holdings_and_versions():
+    from backend.engine.calculation import calculate_portfolio, ObservedPrice
+
+    transactions = load_degiro_csv(_resolve_synthetic_fixture_csv().read_bytes())
+    before = transactions.copy(deep=True)
+    report = calculate_portfolio(
+        transactions,
+        observed_prices={
+            "VWCE.DE": ObservedPrice(125, "2026-10-22T12:00:00Z", "synthetic"),
+            "BTC-EUR": ObservedPrice(62000, "2026-10-22T12:00:00Z", "synthetic"),
+        },
+        settings={}, ledger_version="ledger-7", settings_version="settings-2",
+        cutoff="2026-10-22T12:00:00Z",
+    )
+    assert report.ledger_version == "ledger-7"
+    assert report.settings_version == "settings-2"
+    assert report.calculation_version == "canonical-v1"
+    assert report.cutoff == "2026-10-22T12:00:00+00:00"
+    assert report.cash_balance_eur == 939
+    assert report.net_external_contributions_eur == 2000
+    holdings = report.holdings.set_index("symbol")
+    assert holdings.loc["VWCE.DE", "shares_held"] == 8
+    assert holdings.loc["VWCE.DE", "total_value_eur"] == 1000
+    assert holdings.loc["BTC-EUR", "total_value_eur"] == 310
+    assert report.observed_prices["VWCE.DE"].provider == "synthetic"
+    assert not report.diagnostics
+    pd.testing.assert_frame_equal(transactions, before)
+
+def test_audit_reports_missing_prices_and_honors_cutoff(capsys):
+    cmd_audit(str(_resolve_synthetic_fixture_csv()), cutoff="2026-10-09T23:59:59Z")
+    output = capsys.readouterr().out
+    assert "canonical-v1" in output
+    assert "10.000000 shares" in output
+    assert "999.00" in output
+    assert "missing_observed_price:VWCE.DE" in output
+    assert "BTC-EUR" not in output
+
+@pytest.mark.parametrize("price,observed_at,currency", [
+    (float("nan"), "2026-10-22T12:00:00Z", "EUR"),
+    (0, "2026-10-22T12:00:00Z", "EUR"),
+    (125, "2026-10-23T12:00:00Z", "EUR"),
+    (125, "2026-10-22T12:00:00Z", "USD"),
+])
+def test_audit_calculation_rejects_unusable_observed_prices(price, observed_at, currency):
+    from backend.engine.calculation import calculate_portfolio, ObservedPrice
+    with pytest.raises(ValueError, match="Observed price"):
+        calculate_portfolio(
+            load_degiro_csv(_resolve_synthetic_fixture_csv().read_bytes()),
+            observed_prices={"VWCE.DE": ObservedPrice(price, observed_at, "synthetic", currency)},
+            settings={}, ledger_version="ledger-7", settings_version="settings-2",
+            cutoff="2026-10-22T12:00:00Z",
+        )
+
+def test_audit_calculation_never_reads_local_settings(monkeypatch):
+    from backend.engine.calculation import calculate_portfolio
+    transactions = load_degiro_csv(_resolve_synthetic_fixture_csv().read_bytes())
+
+    def forbidden_read(*args, **kwargs):
+        raise AssertionError("Calculation attempted filesystem access")
+
+    monkeypatch.setattr(Path, "exists", forbidden_read)
+    report = calculate_portfolio(
+        transactions, observed_prices={}, settings={}, ledger_version="ledger-7",
+        settings_version="settings-2", cutoff="2026-10-22T12:00:00Z",
+    )
+    assert report.cash_balance_eur == 939
+    assert "missing_observed_price:BTC-EUR:legacy_cost_valuation" in report.diagnostics
