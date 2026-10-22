@@ -13,6 +13,7 @@ import pandas as pd
 import psycopg2
 import psycopg2.extras
 
+from backend.db.transaction_records import pack_transaction, unpack_transactions
 from backend.db.connection import get_db_connection
 from backend.ingestion.normalizer import compute_row_hash
 
@@ -27,6 +28,8 @@ def _safe_val(val: Any) -> Any:
         return float(val)
     if isinstance(val, int):
         return int(val)
+    if isinstance(val, (list, dict, tuple)):
+        return val
     if pd.isna(val):
         return None
     return val
@@ -90,13 +93,13 @@ class DBStorage:
                 df = pd.read_sql(
                     """
                     SELECT id, row_hash, date::text as date, time, value_date::text as value_date,
-                           product, isin, description, fx, amount, balance, order_id, csv_row_id
+                           product, isin, description, fx, amount, balance, order_id, csv_row_id, normalized_record
                     FROM degiro_transactions
                     ORDER BY date ASC, time ASC, csv_row_id DESC
                     """,
                     conn,
                 )
-                return df
+                return unpack_transactions(df)
         except Exception:
             return pd.DataFrame()
 
@@ -122,7 +125,7 @@ class DBStorage:
         if not records:
             return 0
 
-        cols = list(records[0].keys())
+        cols = list(pack_transaction(records[0]).keys())
         placeholders = ", ".join([f"%({c})s" for c in cols])
         col_names = ", ".join(cols)
 
@@ -150,8 +153,10 @@ class DBStorage:
 
                 for rec in records:
                     if legacy_hash_by_row_hash.get(rec["row_hash"]) in existing_legacy_hashes:
+                        if rec.get("identity_version") == "execution-v2":
+                            raise ValueError("legacy_identity_requires_review: reconcile prior collapsed executions before migration")
                         continue
-                    cur.execute(sql, rec)
+                    cur.execute(sql, pack_transaction(rec))
                     inserted += cur.rowcount
 
         return inserted

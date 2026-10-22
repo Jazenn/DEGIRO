@@ -19,7 +19,7 @@ from backend.config import BackendConfig, get_database_url
 from backend.engine.calculation import calculate_portfolio
 from backend.engine.cash import calculate_cash_balance, calculate_net_invested_capital, sort_transactions_chronologically
 from backend.engine.portfolio import compute_fifo_holdings, build_daily_equity_history
-from backend.ingestion import load_degiro_csv
+from backend.ingestion import load_degiro_csv, TransactionIngestionService
 from backend.providers import PriceService
 
 
@@ -94,9 +94,12 @@ def cmd_ingest(csv_path: str) -> None:
     with open(path, "rb") as f:
         content = f.read()
 
-    df = load_degiro_csv(content)
     tx_repo = TransactionRepository(db_url)
-    inserted, skipped = tx_repo.save_transactions(df)
+    result = TransactionIngestionService(tx_repo.load_transactions()).ingest_csv(content)
+    if not result.accepted:
+        raise ValueError("Import requires review: " + ", ".join(result.diagnostics))
+    inserted, skipped = tx_repo.save_transactions(result.transactions)
+    skipped += result.duplicates_skipped
     print(f"Ingested {path.name}: {inserted} new records stored, {skipped} duplicates skipped.")
 
     # Refresh snapshots

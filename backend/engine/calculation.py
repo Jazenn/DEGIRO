@@ -63,11 +63,16 @@ def calculate_portfolio(
         raise ValueError("ledger_version and settings_version must be nonempty")
     config = BackendConfig(dict(settings) or {"assets": {}})
     frame = transactions.copy(deep=True)
-    diagnostics = []
+    diagnostics = sorted({diagnostic for values in frame.get("diagnostics", []) for diagnostic in values})
+    blockers = {"correction_requires_review", "cash_balance_discontinuity", "same_time_ordering_requires_review", "transaction_classification_requires_review"}.intersection(diagnostics)
+    if blockers:
+        raise ValueError("Transaction review required: " + ", ".join(sorted(blockers)))
+    if "amount_currency" in frame and (~frame["amount_currency"].fillna("").isin(["", "EUR"])).any():
+        raise ValueError("non_eur_cash_requires_dated_fx: cannot publish an EUR cash balance")
     if not frame.empty:
         diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
         times = frame.get("time", pd.Series("00:00", index=frame.index))
-        dates = pd.to_datetime(frame["date"].astype(str) + " " + times.astype(str), dayfirst=True, errors="coerce")
+        dates = pd.to_datetime(frame.get("normalized_date", frame["date"]).astype(str) + " " + times.astype(str), dayfirst="normalized_date" not in frame, errors="coerce")
         if dates.isna().any():
             raise ValueError("Normalized Transactions contain invalid dates")
         frame = frame.loc[dates <= end.tz_localize(None)].copy()
