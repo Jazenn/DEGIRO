@@ -57,7 +57,7 @@ def calculate_portfolio(
     calendar until verified timezone normalization is implemented.
     """
     end = pd.Timestamp(cutoff)
-    if end.tzinfo is None:
+    if pd.isna(end) or end.tzinfo is None:
         raise ValueError("cutoff must include a timezone")
     if not ledger_version or not settings_version:
         raise ValueError("ledger_version and settings_version must be nonempty")
@@ -65,6 +65,7 @@ def calculate_portfolio(
     frame = transactions.copy(deep=True)
     diagnostics = []
     if not frame.empty:
+        diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
         times = frame.get("time", pd.Series("00:00", index=frame.index))
         dates = pd.to_datetime(frame["date"].astype(str) + " " + times.astype(str), dayfirst=True, errors="coerce")
         if dates.isna().any():
