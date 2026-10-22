@@ -1,11 +1,11 @@
-// Throwaway: three structurally different dashboard layouts on /?prototype=1&variant=A.
+// Throwaway: three alternatives plus the selected A-layout/B-navigation/C-palette combination (D).
 // Fictional fixtures only. No API calls, credentials, storage or financial mutations.
 import { useEffect, useState } from 'react';
 import { ArrowDownLeft, ArrowRight, ArrowUpRight, BarChart3, Check, ChevronLeft, ChevronRight, CircleHelp, Coins, LayoutDashboard, PieChart, Plus, RefreshCw, ShieldCheck, Wallet, X } from 'lucide-react';
 import './PrototypeDashboard.css';
 
 type Tab = 'overview' | 'performance' | 'contribute' | 'crypto' | 'exposure';
-type Variant = 'A' | 'B' | 'C';
+type Variant = 'A' | 'B' | 'C' | 'D';
 type Scenario = 'normal' | 'fees' | 'sold' | 'stale' | 'missing' | 'gap' | 'partial';
 type Period = 'ALL' | 'YTD' | '1Y' | '3M' | '1M' | '1W';
 type Asset = { symbol: string; name: string; value: number; cost: number; buyFee: number; price: number; target: number; color: string; crypto?: boolean };
@@ -32,7 +32,7 @@ const tabs: { id: Tab; label: string; icon: typeof Wallet }[] = [
   { id: 'overview', label: 'Overzicht', icon: LayoutDashboard }, { id: 'performance', label: 'Resultaat', icon: BarChart3 },
   { id: 'contribute', label: 'Inleggen', icon: Plus }, { id: 'crypto', label: 'Crypto', icon: Coins }, { id: 'exposure', label: 'Verdeling', icon: PieChart },
 ];
-const names: Record<Variant, string> = { A: 'Rustig overzicht', B: 'Actie eerst', C: 'Werkruimte' };
+const names: Record<Variant, string> = { A: 'Rustig overzicht', B: 'Actie eerst', C: 'Werkruimte', D: 'Jouw combinatie' };
 const scenarioNames: Record<Scenario, string> = { normal: 'Gewoon overzicht', fees: 'Historische aankoopkosten', sold: 'Bitcoinwinst naar ETF', stale: 'Prijzen verouderd', missing: 'Historie ontbreekt', gap: 'Meerdere verkoopniveaus geraakt', partial: 'Gedeeltelijk verkocht' };
 function quantile(values: number[], p: number) {
   const sorted = [...values].sort((a, b) => a - b);
@@ -47,7 +47,7 @@ function fictionalPrices(coin: string) {
 
 export function PrototypeDashboard() {
   const raw = new URLSearchParams(location.search).get('variant');
-  const [variant, setVariant] = useState<Variant>(raw === 'B' || raw === 'C' ? raw : 'A');
+  const [variant, setVariant] = useState<Variant>(raw === 'A' || raw === 'B' || raw === 'C' ? raw : 'D');
   const [tab, setTab] = useState<Tab>('overview');
   const [period, setPeriod] = useState<Period>('ALL');
   const [scenario, setScenario] = useState<Scenario>('normal');
@@ -85,7 +85,7 @@ export function PrototypeDashboard() {
     const url = new URL(location.href); url.searchParams.set('variant', next); history.replaceState({}, '', url);
     setVariant(next);
   };
-  const cycle = (direction: number) => changeVariant((['A', 'B', 'C'] as Variant[])[(['A', 'B', 'C'].indexOf(variant) + direction + 3) % 3]);
+  const cycle = (direction: number) => changeVariant((['A', 'B', 'C', 'D'] as Variant[])[(['A', 'B', 'C', 'D'].indexOf(variant) + direction + 4) % 4]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -225,6 +225,7 @@ export function PrototypeDashboard() {
   const body = Content();
   return <div className={`pf pf-${variant}`}>
     {variant === 'A' && <><header className="pf-header">{Brand()}<div className="pf-header-right"><span className="pf-fixture-tag">Prototype · fictieve gegevens</span>{Status()}</div></header><div className="pf-top-nav">{Navigation({})}</div><main className="pf-main">{body}</main></>}
+    {variant === 'D' && <><header className="pf-header"><>{Brand()}</><div className="pf-header-right"><span className="pf-fixture-tag">Prototype · fictieve gegevens</span>{Status()}</div></header><main className="pf-main">{body}</main>{Navigation({})}</>}
     {variant === 'B' && <><header className="pf-header">{Brand()}<span className="pf-fixture-tag">Prototype · fictieve gegevens</span>{Status()}</header><main className="pf-editorial-main">{tab === 'overview' ? <><div className="pf-editorial-title"><span className="pf-eyebrow">Een rustige blik. Een bewuste volgende stap.</span><h1>Laat je geld groeien.<br /><em>Houd zelf de regie.</em></h1><p>Je resultaat begrijpen en je volgende bijdrage kiezen, op één plek.</p></div><div className="pf-editorial-actions">{Contribution({ teaser: true })}{Crypto({ teaser: true })}</div><div className="pf-editorial-ledger"><div><span className="pf-eyebrow">De stand van zaken</span><h2>Wat staat er onder de streep?</h2></div>{Periods()}{Summary({ compact: true })}</div><div className="pf-two-columns">{Chart({ small: true })}{Breakdown({})}</div>{Holdings()}</> : body}</main>{Navigation({})}</>}
     {variant === 'C' && <><aside className="pf-sidebar">{Brand()}<span className="pf-fixture-tag">Prototype · fictieve gegevens</span>{Navigation({ rail: true })}<div className="pf-sidebar-assets"><span className="pf-eyebrow">Bezit in beeld</span>{assets.map(a => <button key={a.symbol} onClick={() => { setTab(a.crypto ? 'crypto' : 'exposure'); if (a.crypto) setCoin(a.symbol); }}><span style={{ color: a.color }}>●</span><b>{a.symbol}</b><span>{eur(a.value)}</span></button>)}</div><div className="pf-sidebar-footer"><ShieldCheck size={16} /> Je eigen beslissingen.<br />Geen automatische aankopen.</div></aside><div className="pf-workspace"><header className="pf-workspace-header"><span>Portefeuille <ChevronRight size={14} /> {heading}</span>{Status()}</header><main className="pf-main">{tab === 'overview' ? <><div className="pf-page-title"><div><span className="pf-eyebrow">De werkruimte</span><h1>Alles wat je beslissing nodig heeft.</h1></div>{Periods()}</div>{Summary({ compact: true })}<div className="pf-workspace-grid"><div>{Holdings()}{Chart({ small: true })}</div><div>{Contribution({ teaser: true })}{Breakdown({})}</div></div></> : body}</main></div></>}
     {toast && <div className="pf-toast" role="status"><Check size={17} />{toast}<button aria-label="Melding sluiten" onClick={() => setToast('')}><X size={14} /></button></div>}

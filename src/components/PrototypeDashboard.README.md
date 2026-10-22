@@ -8,6 +8,8 @@ This is a throwaway rendering experiment on the existing root route. It uses exp
 
 ## Run
 
+Latest user direction: **D combines A's layout, B's fixed bottom navigation and C's blue-grey palette**. Open [the combined direction](http://127.0.0.1:5174/?prototype=1&variant=D). The original A/B/C alternatives remain available for comparison. D is also the default when no variant is specified. The combined result still needs visual feedback; no production implementation is implied.
+
 From this branch/worktree:
 
 ```sh
@@ -20,6 +22,7 @@ If dependencies are already installed, only the second command is needed. Open:
 - [A: quiet overview](http://127.0.0.1:5174/?prototype=1&variant=A): portfolio and gain first; chart and next contribution alongside each other on desktop.
 - [B: action first](http://127.0.0.1:5174/?prototype=1&variant=B): monthly choices first, editorial hierarchy and bottom navigation.
 - [C: workspace](http://127.0.0.1:5174/?prototype=1&variant=C): holdings-first workspace with a desktop navigation rail and denser working view.
+- [D: selected combination](http://127.0.0.1:5174/?prototype=1&variant=D): A hierarchy, B bottom navigation and C palette.
 
 The bottom switcher and keyboard arrows change the URL variant. Arrows inside inputs do not switch layouts. The scenario selector exposes fee/reinvestment examples, stale prices, missing history, a jump across stages and an illustrative partial stage. The state panel exposes the full relevant in-memory state. Reloading resets it.
 
