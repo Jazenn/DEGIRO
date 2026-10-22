@@ -8,7 +8,7 @@ This is a throwaway rendering experiment on the existing root route. It uses exp
 
 ## Run
 
-Latest user direction: **D combines A's layout, B's fixed bottom navigation and C's blue-grey palette**. Open [the combined direction](http://127.0.0.1:5174/?prototype=1&variant=D). The original A/B/C alternatives remain available for comparison. D is also the default when no variant is specified. The combined result still needs visual feedback; no production implementation is implied.
+Validated user direction: **D combines A's layout, B's fixed bottom navigation and C's blue-grey palette**. The user approved keeping D, choosing BTC/ETH/both for contributions, and covering the entire Tactical Crypto Portion with adjustable sale stages. Open [the combined direction](http://127.0.0.1:5174/?prototype=1&variant=D). A/B/C remain for comparison. Production price-zone defaults and calculation contracts remain separate decisions.
 
 From this branch/worktree:
 
@@ -30,8 +30,8 @@ The bottom switcher and keyboard arrows change the URL variant. Arrows inside in
 
 1. Change the period. The gain breakdown and chart change together. Current holdings remain current and are labelled as such.
 2. Open the gain explanation and load the Bitcoin sale-to-ETF example: EUR 1,350 value and EUR 350 gain. The historical purchase-fee scenario shows EUR 1,100 value, EUR 1,005 cost and EUR 95 gain.
-3. Enter a contribution. Choose ETFs, crypto or a mix. Whole-share ETF suggestions, fictional costs, rounding cash and crypto allocation impact update. These are reviewable examples, not broker tariffs or executed purchases.
-4. Open Crypto, accept the example plan, and adjust the core slider. Existing stage prices and original quantities stay fixed until explicitly accepting a replacement plan. BTC and ETH retain separate plans and reported-stage state.
+3. Enter a contribution. Choose ETFs, crypto or a mix, then Bitcoin, Ethereum or both with an adjustable split. Whole-share ETF suggestions, per-purchase fictional costs, rounding cash and allocation impact update. Amounts too small to cover a fictional fee remain cash. These are examples, not broker tariffs or executed purchases.
+4. Open Crypto, set adjustable sale-stage percentages totaling 100%, and accept the example plan. Invalid totals cannot be accepted. Editing the core slider or stage proportions changes only the draft; accepted prices, original quantities and stage proportions stay fixed until explicitly replacing the plan. BTC/ETH drafts, plans and reported stages stay independent.
 5. Report a stage. It becomes unavailable to report again in that plan and is labelled as awaiting imported-Transaction reconciliation. Switch coin and return: the prior report remains.
 6. Switch to missing history. Existing accepted levels remain read-only; no new suggested levels appear. Stale prices disable accepting/reporting stages, and simulated refresh failure preserves prior figures.
 
@@ -39,10 +39,10 @@ The bottom switcher and keyboard arrows change the URL variant. Arrows inside in
 
 All prices and plotted paths are generated fixtures, not evidence of investing performance. Period examples assume contribution at their start, allowing a simple illustrative percentage. They do not implement the production cash-flow timing/Modified Dietz contract. No actual refresh latency is measured by the 750 ms simulation.
 
-Crypto zone candidates use linear-interpolated empirical quantiles of 365 fictional daily prices: purchase percentiles 35/20/10 and sale percentiles 75/90/95. Last-90-day extrema provide context. The 50% core and three 25%-of-original-tactical sale stages are example settings to react to, not approved personal allocations or established profitable rules. Three stages leave 25% of the original tactical portion without a sale stage. Accepted plans do not follow quote updates automatically.
+Crypto zone candidates use linear-interpolated empirical quantiles of 365 fictional daily prices: purchase percentiles 35/20/10 and sale percentiles 75/90/95. Last-90-day extrema provide context. These price parameters and the sample 50% core are not approved personal allocations or established profitable rules. Sale stages now cover 100% of the original Tactical Crypto Portion; 34/33/33 is an adjustable example, not a selected default. Accepted plans do not follow quote updates or draft changes automatically.
 
 The partial-execution scenario only illustrates status copy, not a completed import/matching workflow. Provider integration, real data coverage, production formula correctness, timestamps, timezone/DST policy, stage reconciliation, maximum exposure controls, old-plan history, storage/conflicts, authentication and automatic refresh are not implemented. Prototype feedback must not be treated as validating those systems. The final specification decision remains open.
 
 ## Review status
 
-UI source builds. Browser review covers all three variants at 390 px and 1440 px, contribution editing, accepted-stage stability, independent BTC/ETH state, duplicate-report prevention, missing-history plan visibility and both approved arithmetic examples. Screenshots are visual review artifacts, not financial correctness tests. No prototype tests are added. User verdict is pending; do not merge or promote this code to production.
+UI source builds. Browser review covers layouts at 390 px and 1440 px, contribution editing, BTC/ETH/custom splits, small-amount accounting, full stage coverage, accepted-stage stability, independent drafts/plans, duplicate-report prevention, missing-history plan visibility and both arithmetic examples. Screenshots are visual review artifacts, not financial correctness tests. No prototype tests are added. The user approved the D direction and revised interactions; do not merge or promote prototype code to production.
