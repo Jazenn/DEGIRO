@@ -9,17 +9,21 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
+import json
+from datetime import datetime, timezone
 import sys
 from pathlib import Path
 
 from backend.config import BackendConfig, get_database_url
+from backend.engine.calculation import calculate_portfolio
 from backend.engine.cash import calculate_cash_balance, calculate_net_invested_capital, sort_transactions_chronologically
 from backend.engine.portfolio import compute_fifo_holdings, build_daily_equity_history
 from backend.ingestion import load_degiro_csv
 from backend.providers import PriceService
 
 
-def cmd_audit(csv_path: str) -> None:
+def cmd_audit(csv_path: str, cutoff: str | None = None) -> None:
     """Run local audit of an Account.csv or Transactions.csv file."""
     path = Path(csv_path)
     if not path.exists():
@@ -39,16 +43,28 @@ def cmd_audit(csv_path: str) -> None:
         for t, count in df["type"].value_counts().items():
             print(f"  {t:15}: {count:4d}")
 
-    # Cash analysis
-    cash = calculate_cash_balance(df)
-    net_invested = calculate_net_invested_capital(df)
+    config = BackendConfig()
+    settings = {"mappings": config.get_mappings(), "assets": config.get_assets(), "settings": config.get_settings()}
+    report = calculate_portfolio(
+        df, observed_prices={}, settings=settings,
+        ledger_version=hashlib.sha256(content).hexdigest(),
+        settings_version=hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest(),
+        cutoff=cutoff or datetime.now(timezone.utc).isoformat(),
+    )
+    print(f"Calculation version   : {report.calculation_version}")
+    print(f"Ledger version        : {report.ledger_version}")
+    print(f"Settings version      : {report.settings_version}")
+    print(f"Valuation cutoff      : {report.cutoff}")
+    for diagnostic in report.diagnostics:
+        print(f"Coverage diagnostic   : {diagnostic}")
+    cash = report.cash_balance_eur
+    net_invested = report.net_external_contributions_eur
     print("\nCash Ledger Analysis:")
     print(f"  Net external invested : € {net_invested:10.2f}")
     print(f"  Closing cash balance  : € {cash:10.2f}")
 
     # Holdings analysis
-    config = BackendConfig()
-    holdings = compute_fifo_holdings(df, config=config)
+    holdings = report.holdings
     print("\nFIFO Asset Holdings:")
     if holdings.empty:
         print("  No active holdings found.")
@@ -135,6 +151,7 @@ def main() -> None:
 
     audit_parser = subparsers.add_parser("audit", help="Audit local DEGIRO CSV")
     audit_parser.add_argument("csv_file", help="Path to Account.csv or Transactions.csv")
+    audit_parser.add_argument("--cutoff", help="Timezone-aware valuation cutoff (ISO 8601)")
 
     ingest_parser = subparsers.add_parser("ingest", help="Ingest CSV into Neon and refresh snapshots")
     ingest_parser.add_argument("csv_file", help="Path to CSV file to ingest")
@@ -143,7 +160,7 @@ def main() -> None:
 
     args = parser.parse_args()
     if args.command == "audit":
-        cmd_audit(args.csv_file)
+        cmd_audit(args.csv_file, cutoff=args.cutoff)
     elif args.command == "ingest":
         cmd_ingest(args.csv_file)
     elif args.command == "snapshot":

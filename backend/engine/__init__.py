@@ -22,6 +22,9 @@ from backend.engine.portfolio_engine import (
 )
 
 __all__ = [
+    "calculate_portfolio",
+    "CalculationReport",
+    "ObservedPrice",
     "calculate_cash_balance",
     "calculate_net_invested_capital",
     "sort_transactions_chronologically",
@@ -35,3 +38,5 @@ __all__ = [
     "refresh_portfolio_snapshots",
     "SnapshotRefreshResult",
 ]
+
+from backend.engine.calculation import calculate_portfolio, CalculationReport, ObservedPrice
