@@ -9,6 +9,6 @@ directory = "./public"
 binding = "ASSETS"
 run_worker_first = true
 
-# Supply approved custom domain/routes and all environment values privately.
-# ACCESS_ISSUER, ACCESS_AUDIENCE, OWNER_EMAIL, APP_ORIGIN, DATABASE_URL.
+# Supply the approved free workers.dev hostname and environment values privately.
+# GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, SESSION_SECRET, OWNER_EMAIL, APP_ORIGIN, DATABASE_URL.
 # Missing values fail closed. DATABASE_URL must be a Worker secret, not a VITE_* value.

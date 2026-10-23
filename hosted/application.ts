@@ -1,8 +1,12 @@
-import { createLocalJWKSet, createRemoteJWKSet, jwtVerify, type JSONWebKeySet } from 'jose';
+import { beginLogin, finishLogin, cookie, readCookie, flowCookie, sessionCookie, month, type GoogleFetch } from './auth';
+import { AuthStore, authQuery, type AuthQuery } from './auth-store';
+import { generateRandomState } from 'oauth4webapi';
+import { loginPage } from './login-page';
 
 export interface Environment {
-  ACCESS_ISSUER: string;
-  ACCESS_AUDIENCE: string;
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  SESSION_SECRET: string;
   OWNER_EMAIL: string;
   DATABASE_URL: string;
   APP_ORIGIN: string;
@@ -17,57 +21,80 @@ export interface AcceptedSnapshot {
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
   readAccepted(env: Environment): Promise<AcceptedSnapshot | null>;
-  // Test seam is the external identity provider's public key document, never a bypass token.
-  jwks?: () => Promise<JSONWebKeySet>;
+  // External provider HTTP and database transports; no identity bypass.
+  googleFetch?: GoogleFetch;
+  authQuery?: AuthQuery;
 }
-const verifiers = new Map<string, ReturnType<typeof createRemoteJWKSet>>();
 function privateResponse(body: BodyInit | null, status: number, headers?: HeadersInit) {
   const result = new Headers(headers);
   result.set('Cache-Control', 'private, no-store');
   result.set('X-Content-Type-Options', 'nosniff');
   result.set('Referrer-Policy', 'no-referrer');
-  result.set('Vary', 'Cookie, Cf-Access-Jwt-Assertion');
+  result.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; form-action 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+  result.set('Vary', 'Cookie');
   return new Response(body, { status, headers: result });
+}
+function signInResponse(failed: boolean) {
+  const { html, nonce } = loginPage(failed);
+  const response = privateResponse(html, failed ? 401 : 200, { 'Content-Type': 'text/html; charset=utf-8' });
+  response.headers.set('Content-Security-Policy', `default-src 'none'; style-src 'nonce-${nonce}'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'`);
+  if (failed) response.headers.set('Set-Cookie', cookie(flowCookie, '', 0));
+  return response;
 }
 function json(body: unknown, status = 200) {
   return privateResponse(JSON.stringify(body), status, { 'Content-Type': 'application/json' });
 }
 function configured(env: Environment) {
-  return /^https:\/\/[a-z0-9-]+\.cloudflareaccess\.com$/.test(env.ACCESS_ISSUER || '')
-    && !!env.ACCESS_AUDIENCE && /^[^\s@]+@[^\s@]+$/.test(env.OWNER_EMAIL || '')
+  return !!env.GOOGLE_CLIENT_ID && !!env.GOOGLE_CLIENT_SECRET && (env.SESSION_SECRET || '').length >= 32
+    && /^[^\s@]+@[^\s@]+$/.test(env.OWNER_EMAIL || '')
     && !!env.DATABASE_URL && /^https:\/\/[^/]+$/.test(env.APP_ORIGIN || '');
 }
 export function createApplication(dependencies: Dependencies) {
   const handle = async (request: Request, env: Environment): Promise<Response> => {
     if (!configured(env)) return json({ state: 'error', error: 'service_unconfigured' }, 503);
-    const assertion = request.headers.get('Cf-Access-Jwt-Assertion');
-    if (!assertion) return json({ error: 'authentication_required' }, 401);
-    let email: unknown;
-    try {
-      let verifier;
-      if (dependencies.jwks) verifier = createLocalJWKSet(await dependencies.jwks());
-      else {
-        verifier = verifiers.get(env.ACCESS_ISSUER);
-        if (!verifier) {
-          verifier = createRemoteJWKSet(new URL(`${env.ACCESS_ISSUER}/cdn-cgi/access/certs`), { timeoutDuration: 5000 });
-          verifiers.set(env.ACCESS_ISSUER, verifier);
-        }
+    const url = new URL(request.url);
+    if (url.origin !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+    const path = url.pathname;
+    if (request.method === 'GET' && path === '/login') return signInResponse(false);
+    if (request.method === 'GET' && path === '/auth/login') {
+      const response = await beginLogin(env);
+      return privateResponse(null, response.status, response.headers);
+    }
+    const store = new AuthStore(dependencies.authQuery || authQuery(env.DATABASE_URL));
+    if (request.method === 'GET' && path === '/auth/callback') {
+      try {
+        const identity = await finishLogin(request, env, dependencies.googleFetch);
+        if (!await store.bindOwner(identity.sub, identity.email)) throw Error('owner mismatch');
+        const token = generateRandomState();
+        await store.createSession(token, identity.sub, identity.email);
+        const response = privateResponse(null, 303, { Location: '/' });
+        response.headers.append('Set-Cookie', cookie(flowCookie, '', 0));
+        response.headers.append('Set-Cookie', cookie(sessionCookie, token, month));
+        return response;
+      } catch {
+        return signInResponse(true);
       }
-      const { payload } = await jwtVerify(assertion, verifier, {
-        algorithms: ['RS256'], issuer: env.ACCESS_ISSUER, audience: env.ACCESS_AUDIENCE,
-        requiredClaims: ['exp', 'iat', 'email'], maxTokenAge: '31d',
-      });
-      email = payload.email;
-    } catch { return json({ error: 'invalid_identity' }, 401); }
-    if (typeof email !== 'string' || email.toLowerCase() !== env.OWNER_EMAIL.toLowerCase()) {
-      return json({ error: 'owner_required' }, 403);
+    }
+    const token = readCookie(request, sessionCookie);
+    let authorized = false;
+    try { authorized = !!token && await store.ownerSession(token, env.OWNER_EMAIL.toLowerCase()); }
+    catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
+    if (!authorized) {
+      if (path === '/' && request.method === 'GET') return privateResponse(null, 303, { Location: '/login' });
+      return json({ error: 'authentication_required' }, 401);
+    }
+    if (path === '/auth/logout' && request.method === 'POST') {
+      if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try { await store.revokeSession(token!); }
+      catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
+      return privateResponse(null, 303, { Location: '/login', 'Set-Cookie': cookie(sessionCookie, '', 0) });
     }
     // Authorization precedes method/path dispatch, including matching assets and unknown routes.
     if (!['GET', 'HEAD'].includes(request.method)) {
       if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
       return json({ error: 'method_not_allowed' }, 405);
     }
-    const url = new URL(request.url);
+    if (url.pathname.startsWith('/auth/')) return json({ error: 'not_found' }, 404);
     if (url.pathname === '/api/snapshot') {
       try {
         const snapshot = await dependencies.readAccepted(env);
@@ -78,7 +105,6 @@ export function createApplication(dependencies: Dependencies) {
     try {
       const asset = await env.ASSETS.fetch(request);
       const response = privateResponse(request.method === 'HEAD' ? null : asset.body, asset.status, asset.headers);
-      response.headers.set('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self'; connect-src 'self'; img-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       return response;
     } catch { return json({ state: 'error', error: 'asset_unavailable' }, 503); }
   };
