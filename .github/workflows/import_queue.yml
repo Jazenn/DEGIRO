@@ -1,0 +1,29 @@
+name: Private CSV import queue
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 * * * *'
+  repository_dispatch:
+    types: [degiro_csv_uploaded]
+permissions:
+  contents: read
+concurrency:
+  group: private-import-queue
+  cancel-in-progress: false
+jobs:
+  process:
+    if: vars.HOSTED_IMPORTS_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Process private staged imports without printing financial records
+        env:
+          DATABASE_URL: ${{ secrets.HOSTED_PUBLISHER_DATABASE_URL }}
+          IMPORT_CALCULATION_SETTINGS: ${{ secrets.IMPORT_CALCULATION_SETTINGS }}
+        run: python -m backend.import_jobs
