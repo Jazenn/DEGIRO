@@ -34,3 +34,19 @@ test('absent exposure is visibly unavailable, never invented from asset names', 
   expect(document.body.textContent).toContain('No dated ETF holdings have been published');
   expect(document.body.textContent).not.toContain('0%');
 });
+
+test('complete dated compatible fixture distinguishes covered fund weights from investment predictions', () => {
+  document.body.innerHTML = '<section></section>';
+  renderExposure(document.querySelector('section'), { generation_id: 'synthetic-complete', read_model: {
+    etf_exposure: { schema_version: 'etf-exposure-v1', covered_portfolio_fraction: '1',
+      countries: { US: '100' }, sectors: { Technology: '100' }, limitations: [],
+      funds: [{ fund_id: 'SYNTHETIC', state: 'covered', provider: 'Synthetic', source_url: 'https://provider.example',
+        as_of: '2026-09-30', retrieved_at: '2026-10-23T10:00:00Z', covered_fund_fraction: '1',
+        weight_basis: 'fund_net_assets', concentration_basis: 'exact', top_ten_weight_pct: '100', holdings: [], limitations: [] }],
+      overlap: [{ fund_a: 'SYNTHETIC-A', fund_b: 'SYNTHETIC-B', state: 'complete', observed_overlap_pct: '25', reason: 'Matching stable identifiers and dates.' }],
+    },
+  } });
+  expect(document.body.textContent).toContain('100% of fund net assets covered');
+  expect(document.body.textContent).toContain('25% overlap of fund weights');
+  expect(document.body.textContent).toContain('not a forecast');
+});

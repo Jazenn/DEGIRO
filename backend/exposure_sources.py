@@ -62,6 +62,7 @@ def parse_vanguard_holdings(html, source_url, retrieved_at):
                              'sector': row[2] or None, 'country': row[3] or None})
         result = {'as_of': as_of, 'retrieved_at': retrieved_at, 'source_url': source_url,
                   'provider': 'Vanguard', 'identifier_namespace': None, 'complete': False,
+                  'country_basis': 'provider_reported_region', 'sector_taxonomy': None,
                   'weight_basis': 'provider_reported_market_value', 'holdings': holdings}
         validate_fund(result)
         return result

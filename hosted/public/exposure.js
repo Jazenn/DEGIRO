@@ -14,13 +14,13 @@ export function renderExposure(destination, snapshot) {
   content.append(text('h2', 'ETF exposure'));
   const exposure = snapshot.read_model.etf_exposure;
   if (!exposure || exposure.schema_version !== 'etf-exposure-v1') {
-    content.append(text('p', 'No dated ETF holdings have been published. Country, sector, concentration and overlap remain unavailable.'));
+    content.append(text('p', 'No dated ETF holdings have been published. Country/region, sector, concentration and overlap remain unavailable.'));
   } else {
     content.append(text('p', exposure.covered_portfolio_fraction === null
       ? 'Portfolio coverage unknown without complete invested-asset market values.'
       : `${fraction(exposure.covered_portfolio_fraction)} of invested asset value has verified fund net-asset look-through coverage. Cash is excluded. Uncovered exposure remains unknown.`));
     for (const limitation of exposure.limitations || []) content.append(text('p', limitation));
-    content.append(breakdown('Observed countries (% of all invested assets)', exposure.countries),
+    content.append(breakdown('Observed country/region (% of all invested assets)', exposure.countries),
       breakdown('Observed sectors (% of all invested assets)', exposure.sectors));
     for (const fund of exposure.funds) {
       const card = document.createElement('article'); card.className = 'exposure-fund';
@@ -34,7 +34,8 @@ export function renderExposure(destination, snapshot) {
           ? `${fraction(fund.covered_fund_fraction)} of fund net assets covered.`
           : `${fraction(fund.covered_reported_fraction)} of provider-reported market-value scope covered; fraction of fund net assets is unknown.`));
         card.append(text('p', `Weight basis: ${fund.weight_basis}. Top ten observed holdings: ${percent(fund.top_ten_weight_pct)} (${fund.concentration_basis === 'exact' ? 'complete dataset' : 'observed lower bound'}).`));
-        card.append(breakdown('Countries within reported fund scope', fund.countries), breakdown('Sectors within reported fund scope', fund.sectors));
+        card.append(text('p', `Country/region classification: ${fund.country_basis || 'unverified provider classification'}. Sector taxonomy: ${fund.sector_taxonomy || 'unverified provider classification'}.`));
+        card.append(breakdown('Country/region within reported fund scope', fund.countries), breakdown('Sectors within reported fund scope', fund.sectors));
         const details = document.createElement('details'); details.append(text('summary', 'Reported underlying holdings'));
         const list = document.createElement('ul');
         for (const row of fund.holdings || []) list.append(text('li', `${row.name} · ${percent(row.weight_pct)} · ${row.country || 'country unknown'} · ${row.sector || 'sector unknown'} · ${row.security_id || 'stable identifier unavailable'}`));

@@ -18,8 +18,8 @@ def holding(identifier, weight, country='US', sector='Technology'):
 
 def test_partial_fund_coverage_is_not_normalized_to_a_complete_portfolio():
     model = {'ledger': {'market_value_eur': '1000', 'positions': [
-        {'broker_asset_id': 'FUND-A', 'asset_kind': 'ETF', 'market_value_eur': '600'},
-        {'broker_asset_id': 'FUND-B', 'asset_kind': 'ETF', 'market_value_eur': '400'}]}}
+        {'broker_asset_id': 'FUND-A', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '600'},
+        {'broker_asset_id': 'FUND-B', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '400'}]}}
     exposure = build_exposure(model, {'FUND-A': fund([holding('A', '50')])})
     assert exposure['covered_portfolio_fraction'] == '0.30'
     assert exposure['countries'] == {'US': '30.0'}
@@ -29,8 +29,8 @@ def test_partial_fund_coverage_is_not_normalized_to_a_complete_portfolio():
 
 def test_compatible_complete_holdings_have_hand_checked_overlap_but_dates_and_ids_block_claims():
     model = {'ledger': {'market_value_eur': '1000', 'positions': [
-        {'broker_asset_id': 'FUND-A', 'asset_kind': 'ETF', 'market_value_eur': '500'},
-        {'broker_asset_id': 'FUND-B', 'asset_kind': 'ETF', 'market_value_eur': '500'}]}}
+        {'broker_asset_id': 'FUND-A', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'},
+        {'broker_asset_id': 'FUND-B', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'}]}}
     a = fund([holding('X', '60'), holding('Y', '40')], complete=True)
     b = fund([holding('X', '25'), holding('Z', '75')], complete=True)
     overlap = build_exposure(model, {'FUND-A': a, 'FUND-B': b})['overlap'][0]
@@ -45,8 +45,8 @@ def test_compatible_complete_holdings_have_hand_checked_overlap_but_dates_and_id
 
 def test_partial_compatible_overlap_is_only_an_observed_lower_bound():
     model = {'ledger': {'market_value_eur': '1000', 'positions': [
-        {'broker_asset_id': 'A', 'asset_kind': 'ETF', 'market_value_eur': '500'},
-        {'broker_asset_id': 'B', 'asset_kind': 'ETF', 'market_value_eur': '500'}]}}
+        {'broker_asset_id': 'A', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'},
+        {'broker_asset_id': 'B', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'}]}}
     overlap = build_exposure(model, {'A': fund([holding('X', '30')]),
                                      'B': fund([holding('X', '20')])})['overlap'][0]
     assert overlap['observed_overlap_pct'] == '20'
@@ -75,6 +75,15 @@ def test_dated_provider_table_remains_partial_and_unknown_ids_never_become_names
 ])
 def test_invalid_weights_dates_and_duplicate_ids_never_produce_claims(change):
     model = {'ledger': {'market_value_eur': '100', 'positions': [
-        {'broker_asset_id': 'A', 'asset_kind': 'ETF', 'market_value_eur': '100'}]}}
+        {'broker_asset_id': 'A', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '100'}]}}
     with pytest.raises(ValueError):
         build_exposure(model, {'A': {**fund([holding('A', '100')]), **change}})
+
+
+def test_closed_funds_do_not_appear_as_current_exposure_or_overlap():
+    model = {'ledger': {'market_value_eur': '100', 'positions': [
+        {'broker_asset_id': 'HELD', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '100'},
+        {'broker_asset_id': 'SOLD', 'quantity': '0', 'asset_kind': 'ETF', 'market_value_eur': '0'}]}}
+    result = build_exposure(model, {})
+    assert [row['fund_id'] for row in result['funds']] == ['HELD']
+    assert result['overlap'] == []

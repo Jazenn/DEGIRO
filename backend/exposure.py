@@ -19,7 +19,7 @@ def validate_fund(fund):
     if retrieved.tzinfo is None or retrieved.date() < date.fromisoformat(fund['as_of']):
         raise ValueError('Invalid exposure source timestamps')
     source = urlparse(fund['source_url'])
-    if source.scheme != 'https' or not source.hostname or not fund.get('provider'):
+    if source.scheme != 'https' or not source.hostname or source.username or source.password or not isinstance(fund.get('provider'), str) or not fund.get('provider'):
         raise ValueError('Exposure source provenance required')
     if fund.get('weight_basis') not in ('fund_net_assets', 'provider_reported_market_value') or not isinstance(fund.get('complete'), bool):
         raise ValueError('Unsupported exposure weight basis')
@@ -29,8 +29,12 @@ def validate_fund(fund):
     if fund['complete'] and sum(weights) != 100:
         raise ValueError('Complete fund weights must total 100%; retain residual as unknown')
     for row in fund['holdings']:
-        if not row.get('name'):
+        if not isinstance(row.get('name'), str) or not row.get('name') or not isinstance(row['weight_pct'], str):
             raise ValueError('Holding name required')
+        if any(row.get(key) is not None and not isinstance(row.get(key), str) for key in ('security_id', 'country', 'sector')):
+            raise ValueError('Holding identifiers and classifications must be strings')
+    if any(fund.get(key) is not None and not isinstance(fund.get(key), str) for key in ('identifier_namespace', 'country_basis', 'sector_taxonomy')):
+        raise ValueError('Source namespaces must be strings')
     ids = [row.get('security_id') for row in fund['holdings'] if row.get('security_id')]
     if len(ids) != len(set(ids)):
         raise ValueError('Duplicate security identifiers require aggregation/review')
@@ -39,7 +43,7 @@ def validate_fund(fund):
 
 def build_exposure(model, sources):
     """Weights remain percentages of original funds/portfolio, never renormalized."""
-    positions = model['ledger']['positions']
+    positions = [row for row in model['ledger']['positions'] if number(row['quantity']) > 0]
     total = model['ledger']['market_value_eur']
     total = number(total) if total is not None else None
     if total is not None and (any(row['market_value_eur'] is None for row in positions)
@@ -66,7 +70,9 @@ def build_exposure(model, sources):
             value = position['market_value_eur']
             value = number(value) if value is not None else None
             portfolio_fraction = value / total if value is not None and total and source['weight_basis'] == 'fund_net_assets' else None
-            entry = {**source, 'fund_id': identifier, 'state': 'covered' if source['complete'] else 'partial',
+            source_fields = {key: source.get(key) for key in ('as_of', 'retrieved_at', 'source_url', 'provider', 'identifier_namespace', 'weight_basis', 'complete', 'country_basis', 'sector_taxonomy')}
+            source_fields['holdings'] = [{key: row.get(key) for key in ('name', 'security_id', 'weight_pct', 'country', 'sector')} for row in source['holdings']]
+            entry = {**source_fields, 'fund_id': identifier, 'state': 'covered' if source['complete'] else 'partial',
                      'covered_fund_fraction': str(fraction) if source['weight_basis'] == 'fund_net_assets' else None,
                      'covered_reported_fraction': str(fraction),
                      'portfolio_fraction': str(portfolio_fraction) if portfolio_fraction is not None else None,
