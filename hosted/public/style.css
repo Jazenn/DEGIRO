@@ -56,3 +56,9 @@ section, #recorded-costs { scroll-margin-top:16px; }
 .crypto-level-card table { width:100%; border-collapse:collapse; font-size:14px; }
 .crypto-level-card td, .crypto-level-card th { padding:8px; text-align:left; border-bottom:1px solid #d0dce7; }
 @media(max-width:640px) { #crypto-levels { grid-template-columns:minmax(0,1fr); } .crypto-level-card { padding:16px; } }
+
+#crypto-plan { margin-block:24px; } #crypto-plan > section { background:white;border:1px solid #d0dce7;border-radius:18px;padding:20px;margin-block:16px;min-width:0; }
+#crypto-plan form { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; } #crypto-plan label { display:grid;gap:6px;min-width:0; }
+#crypto-plan input:not([type=checkbox]) { box-sizing:border-box;width:100%;min-width:0;min-height:44px;padding:8px;font:inherit;border:1px solid #627d98;border-radius:8px; }
+#crypto-plan input[type=checkbox] { min-width:24px;min-height:24px; } #crypto-plan label:has(input[type=checkbox]) { grid-column:1/-1;display:flex;align-items:center;gap:12px;min-height:44px; }
+#crypto-plan button { min-height:44px;justify-content:center; } @media(max-width:640px) { #crypto-plan form {grid-template-columns:1fr;} }
