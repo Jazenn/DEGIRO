@@ -26,7 +26,7 @@ export function createRefresh(store: RefreshStore, quote: (mapping: QuoteMapping
           if (!input) return { state: 'retained', reason: 'no_accepted_snapshot', generation_id: null };
           generation = input.snapshot.generation_id;
           const model = input.snapshot.read_model;
-          if (typeof model.valuation_refreshed_at === 'string' && model.settings_version === input.settings.version
+          if (typeof model.valuation_refreshed_at === 'string' && model.rebalancing_targets_version === input.settings.version
             && (input.planning_symbols ?? []).every(symbol => !!(model.observed_prices as Record<string, unknown>)?.[symbol])
             && clock() - Date.parse(model.valuation_refreshed_at) >= 0 && clock() - Date.parse(model.valuation_refreshed_at) < 30000)
             return { state: 'cached', generation_id: generation };

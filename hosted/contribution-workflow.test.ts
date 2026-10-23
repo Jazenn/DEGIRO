@@ -15,8 +15,9 @@ test("owner previews a manual ETF contribution and changing generation invalidat
       submitted = JSON.parse(options.body as string);
       return Response.json({
         state: "complete",
+        settings_version:"financial-fixture",
         generation_id: "g1",
-        settings_version: "1",
+        rebalancing_targets_version: "1",
         budget_eur: "101",
         invested_eur: "100",
         fees_eur: "1",
@@ -49,7 +50,7 @@ test("owner previews a manual ETF contribution and changing generation invalidat
   );
   document.dispatchEvent(
     new CustomEvent("accepted-snapshot", {
-      detail: { generation_id: "g1", read_model: { settings_version: "1" } },
+      detail: { generation_id: "g1", read_model: { settings_version:"financial-fixture", rebalancing_targets_version: "1" } },
     }),
   );
   root.querySelector("input")!.value = "101";
@@ -60,13 +61,13 @@ test("owner previews a manual ETF contribution and changing generation invalidat
   expect(submitted).toEqual({
     budget_eur: "101",
     generation_id: "g1",
-    settings_version: "1",
+    rebalancing_targets_version: "1",
   });
   expect(root.textContent).toContain("Estimated fees EUR 1");
   expect(root.textContent).toContain("Manual");
   document.dispatchEvent(
     new CustomEvent("accepted-snapshot", {
-      detail: { generation_id: "g2", read_model: { settings_version: "1" } },
+      detail: { generation_id: "g2", read_model: { settings_version:"financial-fixture", rebalancing_targets_version: "1" } },
     }),
   );
   expect(root.textContent).toContain("changed");
@@ -89,7 +90,7 @@ test("late preview cannot repopulate old purchases after refresh and missing inp
   const publish = (generation_id: string) =>
     document.dispatchEvent(
       new CustomEvent("accepted-snapshot", {
-        detail: { generation_id, read_model: { settings_version: "1" } },
+        detail: { generation_id, read_model: { settings_version:"financial-fixture", rebalancing_targets_version: "1" } },
       }),
     );
   publish("g1");
@@ -101,8 +102,9 @@ test("late preview cannot repopulate old purchases after refresh and missing inp
   release(
     Response.json({
       state: "complete",
+        settings_version:"financial-fixture",
       generation_id: "g1",
-      settings_version: "1",
+      rebalancing_targets_version: "1",
     }),
   );
   await new Promise((resolve) => setTimeout(resolve, 0));
@@ -127,8 +129,9 @@ test("owner explicitly chooses mixed funding and a BTC/ETH split and sees concen
       submitted = JSON.parse(options.body as string);
       return Response.json({
         state: "complete",
+        settings_version:"financial-fixture",
         generation_id: "g1",
-        settings_version: "1",
+        rebalancing_targets_version: "1",
         budget_eur: "200",
         budgets: { etf_eur: "100", btc_eur: "75", eth_eur: "25" },
         invested_eur: "196",
@@ -144,7 +147,7 @@ test("owner explicitly chooses mixed funding and a BTC/ETH split and sees concen
   );
   document.dispatchEvent(
     new CustomEvent("accepted-snapshot", {
-      detail: { generation_id: "g1", read_model: { settings_version: "1" } },
+      detail: { generation_id: "g1", read_model: { settings_version:"financial-fixture", rebalancing_targets_version: "1" } },
     }),
   );
   const inputs = root.querySelectorAll("input");

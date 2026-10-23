@@ -36,7 +36,7 @@ export async function loadSnapshot(destination, request = fetch) {
       card.append(text('span', label), text('strong', amount(ledger[key])));
       metrics.append(card);
     }
-    target.append(metrics, text('p', `Current holdings cutoff: ${model.cutoff}. Finalized period results have their own cutoff in Performance.`), text('h3', 'Investment result explanation'));
+    target.append(metrics, text('p', `Current valuation calculated at ${model.cutoff}. Recorded Transactions calculated at ${model.ledger_cutoff}. Latest recorded Transaction: ${model.latest_recorded_transaction_at ?? 'Unavailable'}. Verified record coverage through: ${model.source_coverage_through ?? 'Unavailable'}. Finalized period results have their own cutoff in Performance.`), text('h3', 'Investment result explanation'));
     target.append(text('p', 'All-time net gain is equity including cash minus net external contributions. Completed-sale results remain included after the Asset is sold. Retained gain uses fee-inclusive FIFO recorded cost; realized gain uses actual completed sales. Net income includes withholding. Trade charges are already included in FIFO costs and sale proceeds; portfolio-only costs are deducted separately. Do not subtract recorded charges again.'));
     target.append(text('p', `Future fee estimates are separate from these recorded charges. ${model.portfolio_history && Object.keys(model.portfolio_history.periods ?? {}).length ? 'Finalized historical coverage is shown separately in Performance.' : 'Finalized historical coverage is unavailable.'} Current holdings are not a historical return series.`));
     for (const [title, closed] of [['Current holdings', false], ['Completed positions', true]]) {
@@ -75,7 +75,7 @@ export async function loadSnapshot(destination, request = fetch) {
     if (!Object.keys(model.observed_prices ?? {}).length) target.append(text('p', 'Observed price provenance unavailable.'));
     target.append(text('p', [...new Set([...(model.diagnostics ?? []), ...(ledger.diagnostics ?? [])])].join('; ') || 'No coverage diagnostics reported. This does not independently verify complete source history.'));
     target.append(text('h3', 'Versions and coverage'));
-    target.append(text('p', `Ledger ${model.ledger_version}  |  settings ${model.settings_version}  |  calculation ${model.calculation_version}`));
+    target.append(text('p', `Ledger ${model.ledger_version} | financial settings ${model.settings_version} | targets ${model.rebalancing_targets_version ?? 'Unavailable'} | calculation ${model.calculation_version}`));
     target.append(text('p', model.diagnostics.length ? model.diagnostics.join('; ') : 'No calculation diagnostics reported. Synthetic evidence does not certify private source records.'));
     const details = document.createElement('details');
     details.append(text('summary', 'Read exact values, FIFO lots, charges and observed-price provenance'), text('pre', JSON.stringify(model, null, 2)));

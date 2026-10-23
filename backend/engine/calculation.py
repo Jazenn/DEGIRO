@@ -39,6 +39,7 @@ class CalculationReport:
     observed_prices: Mapping[str, ObservedPrice]
     diagnostics: tuple[str, ...]
     ledger: Ledger
+    latest_recorded_transaction_at: str | None = None
 
     def to_read_model(self) -> dict:
         """Versioned JSON contract for new consumers; decimal values are strings.
@@ -56,8 +57,12 @@ class CalculationReport:
         return encode({
             "ledger_version": self.ledger_version,
             "settings_version": self.settings_version,
+            "rebalancing_targets_version": None,
             "calculation_version": "decimal-accounting-v1",
             "cutoff": self.cutoff,
+            "ledger_cutoff": self.cutoff,
+            "latest_recorded_transaction_at": self.latest_recorded_transaction_at,
+            "source_coverage_through": None,
             "ledger": asdict(self.ledger),
             "observed_prices": {symbol: {**asdict(quote), "price_eur": number(quote.price_eur)}
                                 for symbol, quote in self.observed_prices.items()},
@@ -100,6 +105,7 @@ def calculate_portfolio(
             raise ValueError("non_eur_cash_requires_dated_fx: cannot publish an EUR cash balance")
     timezone = settings.get("source_timezone", {})
     verified_timezone = timezone.get("verified") is True and bool(timezone.get("evidence"))
+    latest_recorded = None
     if not frame.empty:
         if not verified_timezone:
             diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
@@ -109,7 +115,9 @@ def calculate_portfolio(
             raise ValueError("Normalized Transactions contain invalid dates")
         if verified_timezone:
             dates = dates.dt.tz_localize(timezone["name"], ambiguous="raise", nonexistent="raise")
-            frame = frame.loc[dates <= end].copy()
+            eligible = dates <= end
+            latest_recorded = dates.loc[eligible].max().isoformat() if eligible.any() else None
+            frame = frame.loc[eligible].copy()
         else:
             frame = frame.loc[dates <= end.tz_localize(None)].copy()
     for symbol, quote in observed_prices.items():
@@ -132,5 +140,5 @@ def calculate_portfolio(
     return CalculationReport(
         ledger_version, settings_version, "canonical-v1", end.isoformat(),
         holdings, calculate_cash_balance(legacy_cash_frame), calculate_net_invested_capital(legacy_cash_frame),
-        dict(observed_prices), tuple(sorted(set(diagnostics + list(ledger.diagnostics)))), ledger,
+        dict(observed_prices), tuple(sorted(set(diagnostics + list(ledger.diagnostics)))), ledger, latest_recorded,
     )

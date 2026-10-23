@@ -20,7 +20,7 @@ test('a stale phone edit remains visible until owner explicitly reloads shared t
   (Array.from(root.querySelectorAll('button')).find(button => button.textContent === 'Reload shared targets')!).click();
   await new Promise(resolve => setTimeout(resolve, 0));
   expect(root.querySelector('input')!.value).toContain('ETF');
-  expect(root.textContent).toContain('Settings version 2');
+  expect(root.textContent).toContain('Rebalancing Targets version 2');
 });
 
 
@@ -41,5 +41,5 @@ test('uncertain save retries preserve operation identity and visible edits', asy
   expect(root.textContent).toContain('Save could not be confirmed');
   await submit();
   expect(bodies[1]).toBe(bodies[0]);
-  expect(root.textContent).toContain('Settings version 2');
+  expect(root.textContent).toContain('Rebalancing Targets version 2');
 });

@@ -183,3 +183,14 @@ def test_missing_purchase_posting_withholds_dependent_equity_and_total_gain():
     assert ledger.positions[0].retained_cost_eur is None
     assert (ledger.cash_balance_eur, ledger.equity_eur,
             ledger.net_gain_eur, ledger.attributed_gain_eur) == (None, None, None, None)
+
+def test_canonical_record_timing_is_distinct_from_current_quote_calculation_cutoff():
+    frame=parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n02-01-2026,09:00,,,Deposit,EUR,1000,\n')
+    settings={'source_timezone':{'name':'UTC','verified':True,'evidence':'synthetic'}}
+    model=calculate_portfolio(frame,observed_prices={},settings=settings,ledger_version='l',settings_version='financial',cutoff='2026-01-11T00:00:00Z').to_read_model()
+    assert model['ledger_cutoff']=='2026-01-11T00:00:00+00:00'
+    assert model['latest_recorded_transaction_at']=='2026-01-02T09:00:00+00:00'
+    assert model['source_coverage_through'] is None
+    assert model['rebalancing_targets_version'] is None
+    unknown=calculate_portfolio(frame,observed_prices={},settings={},ledger_version='l',settings_version='financial',cutoff='2026-01-11T00:00:00Z').to_read_model()
+    assert unknown['latest_recorded_transaction_at'] is None
