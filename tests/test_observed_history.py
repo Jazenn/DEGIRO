@@ -105,3 +105,15 @@ def test_background_provider_adapter_discards_live_tail_and_keeps_exact_midnight
     assert quote['currency'] == 'EUR'
     assert quote['provider'] == 'CoinGecko Demo market_chart EUR daily'
     assert quote['observed_at'] == '2026-01-02T00:00:00Z'
+
+def test_persisted_history_keeps_scalar_series_provenance_and_attribution_without_daily_ledgers():
+    import json
+    result=history()
+    for period in result['periods'].values():
+        assert all('ledger' not in point for point in period['points'])
+    period=result['periods']['ALL']
+    assert [point['equity_eur'] for point in period['points']]==['0','1018','1039','1043','1047']
+    assert period['attribution']['net_gain_eur']=='47'
+    assert period['points'][1]['observed_prices']['ETF']['provider']=='synthetic exchange close'
+    assert period['estimated_return']['state']=='ready'
+    json.dumps(result,allow_nan=False)

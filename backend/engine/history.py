@@ -127,4 +127,9 @@ def calculate_history(transactions, *, settings, daily_prices, asset_coverage,
         if period['state'] != 'ready' and period['estimated_return']['state'] == 'ready':
             period['estimated_return'].update(state='unavailable', percent=None, diagnostics=['unreconciled_period_accounting'])
         result['periods'][name] = period
+    # Ledgers are calculation-only: all six periods and linked returns above
+    # consume them before the shared points become the persisted display model.
+    for point in points:
+        point.pop('ledger', None)
     return result
+
