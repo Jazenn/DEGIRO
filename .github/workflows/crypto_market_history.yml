@@ -1,0 +1,27 @@
+name: Crypto market daily history
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 0 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: crypto-market-daily-history
+  cancel-in-progress: false
+jobs:
+  history:
+    if: vars.HOSTED_CRYPTO_MARKET_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Store observed BTC and ETH daily EUR series independently of private history
+        env:
+          DATABASE_URL: ${{ secrets.HOSTED_PUBLISHER_DATABASE_URL }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m backend.crypto_market

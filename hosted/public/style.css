@@ -39,3 +39,14 @@ h1 { font-size:clamp(28px,4vw,42px); letter-spacing:-1.3px; }
 #contribution input { min-height:44px; max-width:100%; }
 #contribution form { display:flex; flex-wrap:wrap; align-items:end; gap:12px; }
 #performance {padding:24px;background:white;border:1px solid #d0dce7;border-radius:18px;margin-block:24px;min-width:0;} #performance svg {width:100%;height:auto;} #performance button {margin:4px;} #performance button[aria-pressed=true] {background:#dce7f1;}
+#crypto-scale { margin-block:24px; min-width:0; }
+#crypto-levels { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:16px; }
+#crypto-levels > h3, #crypto-levels > p, #crypto-levels > a { grid-column:1/-1; margin-block:4px; }
+.crypto-level-card { padding:20px; min-width:0; background:white; border:1px solid #d0dce7; border-radius:18px; }
+.crypto-level-card fieldset { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; min-width:0; margin-block:12px; padding:8px; border:1px solid #ccd8e4; }
+.crypto-level-card label { display:block; font-size:14px; min-width:0; }
+.crypto-level-card input { box-sizing:border-box; width:100%; min-height:44px; font:inherit; }
+.crypto-level-card details { max-width:100%; overflow-x:auto; margin-block:12px; }
+.crypto-level-card table { width:100%; border-collapse:collapse; font-size:14px; }
+.crypto-level-card td, .crypto-level-card th { padding:8px; text-align:left; border-bottom:1px solid #d0dce7; }
+@media(max-width:640px) { #crypto-levels { grid-template-columns:minmax(0,1fr); } .crypto-level-card { padding:16px; } }
