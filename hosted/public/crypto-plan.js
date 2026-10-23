@@ -118,6 +118,7 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
         const result = await http('/api/crypto/plans', state.payload);
         if (result.state !== 'accepted') throw Error(result.reason ?? 'Acceptance unavailable');
         state.plan = result.plan; state.version = result.version; invalidate(); showPlan(); status.textContent = 'Plan accepted and saved across devices. No Transaction was executed.';
+        document.dispatchEvent(new CustomEvent('crypto-plan-accepted', { detail: { coin, plan_id: state.plan.plan_id } }));
       } catch (error) { status.textContent = error.message + '. Reload shared state after a conflict; retrying an unchanged uncertain acceptance keeps its operation identity.'; }
       finally { state.busy = false; accept.disabled = !state.payload || !review.checked || !!state.plan; }
     });

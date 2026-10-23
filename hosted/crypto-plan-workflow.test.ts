@@ -9,6 +9,7 @@ test('owner explicitly previews original quantities then accepts; accepted plan 
   document.body.innerHTML='<div id="snapshot"></div><div id="plans"></div>';
   Object.assign(document.querySelector('#snapshot')!, {acceptedSnapshot:structuredClone(snapshot)});
   const root = document.querySelector('#plans')!;
+  const acceptedEvent=vi.fn(); document.addEventListener('crypto-plan-accepted',acceptedEvent);
   let saved: any = null, failRead=false;
   const cleanup = cryptoPlanUI(root, async (url: string, init: RequestInit) => {
     if (init.method === 'GET') return Response.json(failRead ? {} : {version:'0',plan:url.includes('BTC-EUR')?saved:null,terms}, {status:failRead?503:200});
@@ -34,6 +35,7 @@ test('owner explicitly previews original quantities then accepts; accepted plan 
   const review=form.querySelector<HTMLInputElement>('[name=review]')!;review.checked=true;review.dispatchEvent(new Event('input',{bubbles:true}));
   expect(accept.disabled).toBe(false);accept.click();
   await vi.waitFor(()=>expect(root.textContent).toContain('Plan accepted and saved across devices'));
+  expect(acceptedEvent).toHaveBeenCalledOnce();
   document.dispatchEvent(new CustomEvent('accepted-snapshot',{detail:{...snapshot,generation_id:'new-purchase'}}));
   document.dispatchEvent(new CustomEvent('crypto-levels-preview',{detail:{coin:'BTC-EUR',state:'paused',market_version:'missing'}}));
   expect(root.textContent).toContain('Stage 1: 0.4 units');
@@ -42,4 +44,5 @@ test('owner explicitly previews original quantities then accepts; accepted plan 
   await vi.waitFor(()=>expect(root.textContent).toContain('Accepted-plan read failed'));
   expect(root.textContent).toContain('Stage 1: 0.4 units');
   cleanup();
+  document.removeEventListener('crypto-plan-accepted',acceptedEvent);
 });
