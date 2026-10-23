@@ -25,7 +25,12 @@ canonical net-contribution change. Transaction records are never rewritten.
 Missing daily valuations, unverified flows, unknown/DST-ambiguous timing or a
 nonpositive denominator withhold the affected selected-period percentage. No
 available days are linked across an unknown interval. Intraday first funding
-can have positive weighted capital; endpoint first funding cannot. A fully
+can have positive weighted capital; endpoint first funding cannot. When the
+verified zero opening baseline is followed only by known unfunded days and
+endpoint deposits, the percentage can explicitly begin at the first funded
+daily opening. The UI labels this supported start and the excluded prefunding
+intervals, retaining the original EUR chart and attribution endpoints. Missing
+observations, invested days and post-withdrawal gaps are never skipped. A fully
 withdrawn account can resume with independently eligible intraday funding, but
 an intervening day without positive capital remains unavailable. Percentage
 unavailability does not erase independently verified EUR results.
