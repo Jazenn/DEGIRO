@@ -62,6 +62,7 @@ export function cryptoLevelsUI(root, request = fetch, clock = Date.now) {
         const remaining = Date.parse(result.valid_until) - clock();
         if (remaining <= 0) clear('UTC day changed. Preview again; the rolling window must be complete.');
         else expiry = setTimeout(() => { epoch++; clear('UTC day changed. Preview again; the rolling window must be complete.'); }, Math.min(remaining, 2147483647));
+        root.suggestedPreviews ??= {}; root.suggestedPreviews[coin] = result;
         root.dispatchEvent(new CustomEvent('crypto-levels-preview', { bubbles: true, detail: result }));
       } catch { if (operation === epoch) clear('Suggested levels unavailable. Existing Accepted Crypto Plans are unchanged. Retry the preview.'); }
       finally { clearTimeout(deadline); if (operation === epoch) { submit.disabled = false; form.querySelectorAll('fieldset').forEach(fields => { fields.disabled = false; }); } }
