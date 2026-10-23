@@ -58,6 +58,8 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
             "amount": record["exact_fields"]["amount"], "quantity": record["exact_fields"]["quantity"],
             "price": record["exact_fields"]["price"],
         }
+        if record["type"] == "FEE":
+            identity["fee_category"] = "autofx" if re.search(r"\bauto[\s-]*fx\b", record["description"], re.I) else "broker_fee"
         if record["type"] not in ("BUY", "SELL", "FEE"):
             identity["description"] = record["description"]
         fingerprint = hashlib.sha256(json.dumps(identity, sort_keys=True).encode()).hexdigest()
@@ -65,8 +67,8 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
         occurrence = occurrences[fingerprint]
         record["identity_fingerprint"] = fingerprint
         record["identity_occurrence"] = occurrence
-        record["row_hash"] = hashlib.md5(f"v3:{fingerprint}:{occurrence}".encode()).hexdigest()
-        record["identity_version"] = "execution-v3"
+        record["row_hash"] = hashlib.md5(f"v4:{fingerprint}:{occurrence}".encode()).hexdigest()
+        record["identity_version"] = "execution-v4"
     if records:
         ordered = sorted(records, key=lambda row: (row["normalized_date"], row["time"], -row["csv_row_id"]))
         previous = None
@@ -91,4 +93,5 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
                 for record in group:
                     record["diagnostics"].append("same_time_ordering_requires_review")
     return pd.DataFrame(records)
+
 

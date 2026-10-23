@@ -153,7 +153,7 @@ class DBStorage:
 
                 for rec in records:
                     if legacy_hash_by_row_hash.get(rec["row_hash"]) in existing_legacy_hashes:
-                        if rec.get("identity_version") == "execution-v3":
+                        if rec.get("identity_version") == "execution-v4":
                             raise ValueError("legacy_identity_requires_review: reconcile prior collapsed executions before migration")
                         continue
                     cur.execute(sql, pack_transaction(rec))
@@ -247,4 +247,5 @@ class DBStorage:
                         """,
                         record,
                     )
+
 
