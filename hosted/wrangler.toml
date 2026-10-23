@@ -1,0 +1,14 @@
+name = "degiro-private-staging"
+main = "worker.ts"
+compatibility_date = "2026-10-22"
+workers_dev = false
+preview_urls = false
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+# Supply approved custom domain/routes and all environment values privately.
+# ACCESS_ISSUER, ACCESS_AUDIENCE, OWNER_EMAIL, APP_ORIGIN, DATABASE_URL.
+# Missing values fail closed. DATABASE_URL must be a Worker secret, not a VITE_* value.

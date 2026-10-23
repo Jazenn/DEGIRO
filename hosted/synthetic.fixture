@@ -1,0 +1,64 @@
+{
+  "ledger_version": "synthetic-ledger-1",
+  "settings_version": "synthetic-settings-1",
+  "calculation_version": "decimal-accounting-v1",
+  "cutoff": "2026-01-11T00:00:00+00:00",
+  "ledger": {
+    "schema_version": "ledger-v1",
+    "positions": [
+      {
+        "broker_asset_id": "SYNTHETIC-A",
+        "symbol": "SYNTHETIC",
+        "asset_kind": "ETF",
+        "quantity": "1",
+        "lots": [
+          {
+            "transaction_id": "0c8645bcd1040246780f4577e260e48a",
+            "acquired_at": "2026-01-03",
+            "quantity": "1",
+            "cost_eur": "1005"
+          }
+        ],
+        "retained_cost_eur": "1005",
+        "cost_coverage": "verified_complete",
+        "market_value_eur": "1100",
+        "held_gain_eur": "95",
+        "realized_gain_eur": "0"
+      }
+    ],
+    "charges": [
+      {
+        "transaction_id": "8d44c7d97ccd82282c500996897dd2ef",
+        "date": "2026-01-03",
+        "category": "recorded_fee",
+        "amount_eur": "5",
+        "allocation": "trade"
+      }
+    ],
+    "cash_balance_eur": "0",
+    "net_external_contributions_eur": "1005",
+    "market_value_eur": "1100",
+    "equity_eur": "1100",
+    "net_gain_eur": "95",
+    "attributed_gain_eur": "95",
+    "gross_income_eur": "0",
+    "withholding_eur": "0",
+    "net_income_eur": "0",
+    "portfolio_costs_eur": "0",
+    "diagnostics": []
+  },
+  "observed_prices": {
+    "SYNTHETIC": {
+      "price_eur": "1100",
+      "observed_at": "2026-01-10T00:00:00Z",
+      "provider": "synthetic-only",
+      "currency": "EUR",
+      "adjustment_basis": "unadjusted",
+      "retrieved_at": "2026-01-10T00:01:00Z"
+    }
+  },
+  "diagnostics": [
+    "asset_kind_and_quote_mapping_unverified",
+    "source_timezone_unverified"
+  ]
+}

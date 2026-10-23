@@ -7,10 +7,15 @@
     "dev": "vite",
     "build": "tsc && vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "hosted:test": "vitest run --config hosted/vitest.config.ts",
+    "hosted:typecheck": "tsc -p hosted/tsconfig.json",
+    "hosted:build": "npm run hosted:typecheck && npx --yes wrangler@4.152.0 deploy --dry-run --config hosted/wrangler.toml --outdir hosted/.wrangler/build",
+    "hosted:verify": "node --experimental-strip-types hosted/verify-neon.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",
+    "jose": "^6.1.3",
     "lucide-react": "^1.59.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
