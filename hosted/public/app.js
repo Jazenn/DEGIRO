@@ -1,3 +1,4 @@
+import { renderExposure } from './exposure.js';
 // This entrypoint consumes persisted JSON only. No ledger, provider or privileged browser storage.
 const amount = value => value === null || value === undefined ? 'Unavailable' : `EUR ${value}`;
 function text(tag, value) {
@@ -77,6 +78,7 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    renderExposure(document.querySelector('#exposure'), snapshot);
   } catch {
     if (previous) {
       const warning = text('p', 'Snapshot read failed. Showing the previous accepted generation; values have not been refreshed.');
