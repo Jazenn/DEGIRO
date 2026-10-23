@@ -166,7 +166,7 @@ export function planContribution(
         market_value_eur: "0",
       });
   }
-  if (settings.version !== model.settings_version)
+  if (settings.version !== model.rebalancing_targets_version)
     diagnostics.push("settings_changed_refresh_required");
   if (
     pools.etf.gt(0) &&

@@ -27,11 +27,13 @@ def synthetic_read_model():
         'asset_evidence': {'SYNTHETIC-A': {'symbol': 'SYNTHETIC', 'kind': 'ETF', 'verified': True,
                                          'evidence': 'invented synthetic Asset, not a broker mapping'}},
     }
-    return calculate_portfolio(
+    model = calculate_portfolio(
         transactions, observed_prices={'SYNTHETIC': ObservedPrice(
             '1100', '2026-01-10T00:00:00Z', 'synthetic-only', retrieved_at='2026-01-10T00:01:00Z')},
         settings=settings, ledger_version='synthetic-ledger-1', settings_version='synthetic-settings-1',
         cutoff='2026-01-11T00:00:00Z').to_read_model()
+    model['rebalancing_targets_version'] = '0'
+    return model
 
 
 def seed_synthetic():

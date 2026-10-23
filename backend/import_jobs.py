@@ -95,6 +95,7 @@ def process_next(connection, settings, historical_input=None):
                 quotes = {symbol: ObservedPrice(**quote) for symbol, quote in previous_model.get('observed_prices', {}).items()}
                 model = stage_generation(sources, settings=settings, quotes=quotes, cutoff=datetime.now(timezone.utc).isoformat(), historical_input=historical_input)
                 # Keep accounting-evidence configuration distinct from shared targets.
+                model['rebalancing_targets_version'] = expected_targets
                 model['import_provenance'] = {'calculation_settings_version': model['settings_version'],
                                              'rebalancing_targets_version': expected_targets}
                 # Missing mapping/quote/fee evidence remains explicit in the canonical model;
@@ -152,17 +153,25 @@ def rebuild_history(connection, settings):
         if not cursor.fetchone()[0]:
             return False
         try:
-            cursor.execute('SELECT g.generation_id, g.read_model FROM hosted_snapshot_pointer p JOIN hosted_snapshot_generations g USING(generation_id) WHERE singleton=true')
+            cursor.execute('SELECT g.generation_id, g.read_model, t.version::text FROM hosted_snapshot_pointer p JOIN hosted_snapshot_generations g USING(generation_id) CROSS JOIN hosted_targets t WHERE p.singleton=true AND t.singleton=true')
             previous = cursor.fetchone()
             if not previous:
                 return False
-            previous_id, previous_model = previous
+            previous_id, previous_model, expected_targets = previous
             cursor.execute("SELECT csv_content FROM hosted_import_jobs WHERE state='completed' ORDER BY completed_at, job_id")
             sources = [bytes(row[0]) for row in cursor.fetchall()]
             if not sources:
                 return False
             quotes = {symbol: ObservedPrice(**quote) for symbol, quote in previous_model.get('observed_prices', {}).items()}
             model = stage_generation(sources, settings=settings, quotes=quotes, cutoff=now, historical_input=historical_input)
+            model['rebalancing_targets_version'] = expected_targets
+            cursor.execute('SELECT generation_id FROM hosted_snapshot_pointer WHERE singleton=true FOR UPDATE')
+            locked = cursor.fetchone()
+            cursor.execute('SELECT version::text FROM hosted_targets WHERE singleton=true FOR SHARE')
+            targets = cursor.fetchone()
+            if not locked or locked[0] != previous_id or not targets or targets[0] != expected_targets:
+                connection.rollback()
+                return False
             generation = str(uuid4())
             cursor.execute("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES (%s,'private',%s)", (generation, Json(model)))
             cursor.execute('UPDATE hosted_snapshot_pointer SET generation_id=%s WHERE singleton=true AND generation_id=%s', (generation, previous_id))

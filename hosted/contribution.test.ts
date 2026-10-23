@@ -15,7 +15,8 @@ const terms = (asset_id: string): ExecutionTerms => ({
   valid_until: "2027-01-01T00:00:00Z",
 });
 const model = {
-  settings_version: "1",
+  settings_version: "financial-fixture",
+  rebalancing_targets_version: "1",
   ledger: {
     market_value_eur: "200",
     positions: [
@@ -220,7 +221,7 @@ test("authenticated preview requires the displayed coherent generation and setti
   const input = {
     budget_eur: "202",
     generation_id: "g1",
-    settings_version: "1",
+    rebalancing_targets_version: "1",
   };
   expect((await call(input, env.APP_ORIGIN, false)).status).toBe(401);
   expect((await call(input, "https://wrong.test")).status).toBe(403);
@@ -232,7 +233,8 @@ test("authenticated preview requires the displayed coherent generation and setti
   expect(await response.json()).toMatchObject({
     state: "complete",
     generation_id: "g1",
-    settings_version: "1",
+    settings_version: "financial-fixture",
+    rebalancing_targets_version: "1",
     invested_eur: "200",
     fees_eur: "2",
     remaining_cash_eur: "0",
@@ -528,7 +530,7 @@ test("authenticated API rejects contradictory allocations and returns an explici
         headers: { Cookie: cookie, Origin: env.APP_ORIGIN },
         body: JSON.stringify({
           generation_id: "crypto-g",
-          settings_version: "1",
+          rebalancing_targets_version: "1",
           budget_eur: "202",
           choice,
         }),
