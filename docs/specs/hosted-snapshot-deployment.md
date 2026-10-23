@@ -70,6 +70,16 @@ This package does not claim live Google login, deployed CPU/resource fit or full
 
 ## Mandatory live evidence before closing #45
 
+### Verified staging outcome — 23 October 2026
+
+The owner completed real Google sign-in and confirmed the hosted workflow works. Remote request evidence shows a successful callback, authenticated page/assets, and a successful Worker-to-Neon Snapshot read. Independent staging probes compared the entire accepted generation, timestamp and read model with the database, preserving exact decimal strings and nulls. Expired/unknown sessions were rejected; same-origin POST logout invalidated a copied probe cookie. Temporary probe sessions were removed and the owner's session was retained.
+
+The public login/Google redirect, unauthenticated API/assets, disabled preview routing and alternate paths were checked. A browser at an exact 390px viewport showed no horizontal overflow. The existing synthetic publication rollback, immutable-generation rejection and export/restore round trip passed in an independent empty staging database. Snapshot grants remain SELECT-only; auth-table grants are limited to the documented operations.
+
+Observed initial authenticated page/asset CPU was 2ms and the first Snapshot read was 4ms, with a 141ms server wall time for that read. Later successful Snapshot reads generally used 2–7ms, with one 12ms sample. The first successful Google callback used 15ms CPU and 1.3 seconds wall time. These occasional overruns succeeded under Cloudflare's documented [isolate flexibility](https://developers.cloudflare.com/workers/platform/limits/#cpu-time) and [CPU rollover](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/); the samples do not establish a strict 10ms maximum. Three further exact-roundtrip requests took 312, 668 and 294ms end to end. No paid plan, payment method, purchased domain or additional paid service was introduced.
+
+Local verification passed: 19 hosted workflow tests, 155 frontend tests, 76 Python tests, typechecks and both production/dry-run builds. The staging package remains synthetic; private production data and the existing Pages site were not migrated by #45. Later dashboard tickets and production cutover remain separate work.
+
 Record pass/fail and dated evidence privately; publish sanitized results only:
 
 - Actual Google login for the configured owner and rejection of a different verified account; remembered session at the chosen duration (at most one month); expiry and sign-out/revocation; phone/laptop/network behavior. Confirm unauthorized email cannot gain access.
