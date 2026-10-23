@@ -5,6 +5,7 @@ import { generateRandomState } from 'oauth4webapi';
 import { loginPage } from './login-page';
 
 export interface Environment {
+  IMPORTS_ENABLED?: string;
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   SESSION_SECRET: string;
