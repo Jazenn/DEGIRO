@@ -73,3 +73,15 @@ test('HEAD responses have no body and owner-only write routes require the config
   expect((await app()(new Request(env.APP_ORIGIN + '/api/snapshot', { method: 'POST', headers: { ...headers, Origin: env.APP_ORIGIN } }), env)).status).toBe(405);
   expect((await app()(new Request(env.APP_ORIGIN + '/app.js', { headers }), env)).headers.get('cache-control')).toBe('private, no-store');
 });
+
+test('accepted history must share ledger/settings versions and completed UTC cutoff', async () => {
+  const original = JSON.parse(await readFile(new URL('./synthetic.fixture', import.meta.url), 'utf8'));
+  const request = new Request(env.APP_ORIGIN + '/api/snapshot', { headers: { Cookie: await token() } });
+  for (const history of [
+    { schema_version: 'observed-history-v1', ledger_version: 'wrong', settings_version: original.settings_version, cutoff: '2026-01-11T00:00:00Z', periods: {}, diagnostics: ['missing'] },
+    { schema_version: 'observed-history-v1', ledger_version: original.ledger_version, settings_version: original.settings_version, cutoff: '2026-01-11T12:00:00Z', periods: {}, diagnostics: ['missing'] },
+  ]) {
+    const store = new NeonSnapshotStore(async () => [{ generation_id: 'broken-history', published_at: '2026-10-22T00:00:00Z', data_classification: 'synthetic', read_model: { ...original, portfolio_history: history } }]);
+    expect((await app(() => store.readAccepted())(request, env)).status).toBe(503);
+  }
+});
