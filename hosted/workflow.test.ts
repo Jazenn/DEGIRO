@@ -32,3 +32,35 @@ test('owner sees distinct empty, expired-session, forbidden and failed-read stat
     expect(target?.textContent).not.toContain('Synthetic data');
   }
 });
+
+test('overview explains completed-sale gains, dated recorded charges and missing coverage without estimates', async () => {
+  document.body.innerHTML = '<main></main>';
+  const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  read_model.ledger.positions.push({ broker_asset_id: 'CLOSED', symbol: 'SOLD', asset_kind: 'ETF', quantity: '0', lots: [], retained_cost_eur: '0', cost_coverage: 'verified_complete', market_value_eur: '0', held_gain_eur: '0', realized_gain_eur: '45' });
+  read_model.ledger.positions[0].held_gain_eur = null;
+  read_model.ledger.positions[0].cost_coverage = 'missing_purchase_history';
+  read_model.ledger.charges.push({ transaction_id: 'fee-2', date: '2026-01-09', category: 'connectivity', amount_eur: '2.50', allocation: 'portfolio' });
+  read_model.ledger.diagnostics = ['missing_purchase_history'];
+  await loadSnapshot(document.querySelector('main'), async () => new Response(JSON.stringify({ state: 'ready', snapshot: { generation_id: 'generation-costs', published_at: '2026-01-11T00:01:00Z', data_classification: 'private', read_model } })));
+  const overview = document.querySelector('main')!;
+  expect(overview.querySelector('[aria-label="Recorded charges"]')?.textContent).toContain('2026-01-09');
+  expect(overview.querySelector('[aria-label="Recorded charges"]')?.textContent).toContain('connectivity');
+  expect(overview.querySelector('[aria-label="Recorded charges"]')?.textContent).toContain('EUR 2.50');
+  expect(overview.querySelector('[aria-label="Completed positions"]')?.textContent).toContain('EUR 45');
+  expect(overview.querySelector('[aria-label="Current holdings"]')?.textContent).toContain('Unavailable');
+  expect(overview.textContent).toContain('missing_purchase_history');
+  expect(overview.textContent).toContain('already included');
+  expect(overview.textContent).toContain('Future fee estimates');
+  expect(overview.textContent).toContain('Finalized historical coverage is unavailable');
+});
+
+test('failed reread retains the accepted generation with an explicit stale warning', async () => {
+  document.body.innerHTML = '<main></main>';
+  const target = document.querySelector('main');
+  const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  await loadSnapshot(target, async () => new Response(JSON.stringify({ state: 'ready', snapshot: { generation_id: 'last-good', published_at: '2026-01-11T00:01:00Z', data_classification: 'synthetic', read_model } })));
+  await loadSnapshot(target, async () => new Response('{}', { status: 503 }));
+  expect(target?.textContent).toContain('last-good');
+  expect(target?.textContent).toContain('Showing the previous accepted generation');
+  expect(target?.querySelector('[role="alert"]')?.textContent).toContain('read failed');
+});

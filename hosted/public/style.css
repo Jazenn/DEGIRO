@@ -8,3 +8,21 @@ dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; } li { margin-
 pre { overflow: auto; max-height: 30rem; font-size: .8rem; } p, li { overflow-wrap: anywhere; }
 summary { cursor: pointer; min-height: 44px; } :focus-visible { outline: 3px solid #2470b9; outline-offset: 3px; }
 @media (max-width: 480px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: .8rem; } }
+
+#snapshot article { padding: 1rem; border: 1px solid #ccd8e4; border-radius: .75rem; margin-block: .75rem; min-width: 0; }
+#snapshot h4 { margin: 0; }
+#snapshot section { margin-block: 1.5rem; min-width: 0; }
+#snapshot { min-width: 0; }
+
+/* Selected D shell: cool light surfaces, generous hierarchy, summary cards and dock navigation. */
+body { max-width: 1160px; padding-bottom: 110px; background: #eaf0f5; color: #203347; }
+header { display:flex; justify-content:space-between; align-items:center; gap:1rem; background:transparent; }
+main { background:transparent; padding-top: 1rem; }
+h1 { font-size:clamp(28px,4vw,42px); letter-spacing:-1.3px; }
+.shell-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin-block:24px; }
+#snapshot .shell-summary article { display:flex; flex-direction:column; gap:12px; padding:24px; margin:0; border-radius:18px; background:white; }
+.shell-summary strong { font-size:clamp(24px,3vw,34px); letter-spacing:-1px; overflow-wrap:anywhere; }
+#snapshot > section:not(.shell-summary) { padding:24px; background:white; border:1px solid #d0dce7; border-radius:18px; }
+.shell-nav { position:fixed; bottom:16px; left:50%; transform:translateX(-50%); display:flex; justify-content:space-around; gap:12px; width:min(580px,calc(100% - 32px)); padding:8px; background:white; border:1px solid #bdcddd; border-radius:18px; box-shadow:0 8px 28px #213b5424; z-index:10; }
+.shell-nav a { padding:8px; text-align:center; font-size:14px; }
+@media(max-width:640px) { body {padding:.5rem .5rem 100px;} header {align-items:flex-start;padding:16px;} main {padding:16px;} .shell-summary {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;} .shell-summary article:first-child {grid-column:1/-1;} #snapshot .shell-summary article {padding:18px;} #snapshot > section:not(.shell-summary) {padding:18px;} .shell-nav {bottom:0; width:100%;border-radius:14px 14px 0 0;} }
