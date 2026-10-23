@@ -69,7 +69,13 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
         ordered = sorted(records, key=lambda row: (row["normalized_date"], row["time"], -row["csv_row_id"]))
         previous = None
         for record in ordered:
-            if record.get("balance_reported"):
+            if record.get("is_cash_sweep"):
+                # Sweeps cross broker/bank subaccounts. Their exported balances
+                # are not evidence for continuity of one combined cash ledger.
+                record["diagnostics"].append("cash_sweep_continuity_unverified")
+                previous = None
+                continue
+            if record.get("balance_reported") and record.get("mutation_present", True):
                 if previous is not None and not math.isclose(previous + record["amount"], record["balance"], abs_tol=0.011):
                     record["diagnostics"].append("cash_balance_discontinuity")
                 previous = record["balance"]
