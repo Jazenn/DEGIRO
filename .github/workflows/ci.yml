@@ -51,5 +51,10 @@ jobs:
       - name: Run Vitest
         run: npm test
 
+      - name: Verify hosted application
+        run: |
+          npm run hosted:test
+          npm run hosted:typecheck
+
       - name: Run Build
         run: npm run build
