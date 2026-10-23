@@ -18,8 +18,14 @@ export function validHistory(history: unknown, model: RecordValue): boolean {
     if (period.estimated_return !== undefined) {
       const estimate = period.estimated_return;
       if (!object(estimate) || !['ready', 'unavailable'].includes(String(estimate.state))
-          || estimate.method !== 'geometrically_linked_daily_modified_dietz' || estimate.start !== period.start || estimate.cutoff !== period.end
+          || estimate.method !== 'geometrically_linked_daily_modified_dietz' || estimate.cutoff !== period.end
           || !strings(estimate.diagnostics) || !Array.isArray(estimate.daily)) return false;
+      if (estimate.start !== period.start && !(estimate.opening_coverage === 'first_funded_baseline'
+          && estimate.requested_start === period.start && midnight(estimate.start)
+          && estimate.start > String(period.start) && estimate.start < String(period.end)
+          && Array.isArray(estimate.excluded_prefunding_intervals)
+          && estimate.excluded_prefunding_intervals.every(midnight)
+          && estimate.excluded_prefunding_intervals.at(-1) === estimate.start)) return false;
       if (estimate.state === 'ready' ? !decimal(estimate.percent) : estimate.percent !== null) return false;
       if (period.state !== 'ready' && estimate.state === 'ready') return false;
     }
