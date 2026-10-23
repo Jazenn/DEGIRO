@@ -1,3 +1,4 @@
+import type { TargetsStore } from './targets';
 import { beginLogin, finishLogin, cookie, readCookie, flowCookie, sessionCookie, month, type GoogleFetch } from './auth';
 import { AuthStore, authQuery, type AuthQuery } from './auth-store';
 import { generateRandomState } from 'oauth4webapi';
@@ -20,6 +21,8 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  targets?(env: Environment): TargetsStore;
+  handleImports?(request: Request, env: Environment): Promise<Response>;
   readAccepted(env: Environment): Promise<AcceptedSnapshot | null>;
   // External provider HTTP and database transports; no identity bypass.
   googleFetch?: GoogleFetch;
@@ -89,6 +92,29 @@ export function createApplication(dependencies: Dependencies) {
       catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
       return privateResponse(null, 303, { Location: '/login', 'Set-Cookie': cookie(sessionCookie, '', 0) });
     }
+    if (path === '/api/targets') {
+      if (!['GET', 'PUT'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+      if (request.method === 'PUT' && request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try {
+        const targets = dependencies.targets?.(env);
+        if (!targets) throw Error('unavailable');
+        if (request.method === 'GET') return json(await targets.read());
+        if (Number(request.headers.get('Content-Length')) > 30000) return json({ error: 'invalid_targets' }, 400);
+        let input: unknown;
+        try { const body = await request.text(); if (body.length > 30000) throw Error(); input = JSON.parse(body); }
+        catch { return json({ error: 'invalid_targets' }, 400); }
+        const result = await targets.save(input);
+        return json(result, result.state === 'conflict' ? 409 : 200);
+      } catch (error) {
+        return error instanceof Error && error.message === 'invalid_targets' ? json({ error: 'invalid_targets' }, 400)
+          : json({ error: 'targets_unavailable' }, 503);
+      }
+    }
+    if (path === '/api/imports' || /^\/api\/imports\/[^/]+\/retry$/.test(path)) {
+      if (!dependencies.handleImports) return json({ error: 'imports_unavailable' }, 503);
+      const response = await dependencies.handleImports(request, env);
+      return privateResponse(response.body, response.status, response.headers);
+    }
     // Authorization precedes method/path dispatch, including matching assets and unknown routes.
     if (!['GET', 'HEAD'].includes(request.method)) {
       if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
@@ -113,3 +139,4 @@ export function createApplication(dependencies: Dependencies) {
     return request.method === 'HEAD' ? new Response(null, { status: response.status, headers: response.headers }) : response;
   };
 }
+
