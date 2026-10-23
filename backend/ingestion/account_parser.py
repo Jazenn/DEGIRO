@@ -121,15 +121,18 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
         # Resolve mutation (amount) handling currency shift
         amount = None
         amount_currency = ""
+        mutation_raw = None
         if idx_mut is not None:
             mut_val = row.iloc[idx_mut]
             # If Mutatie column contains currency code (EUR, USD, etc.), amount is in next column
             if isinstance(mut_val, str) and mut_val.strip().upper() in {"EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "CAD", "AUD", "JPY", "HKD"}:
                 if idx_mut + 1 < len(row):
-                    amount = parse_degiro_number(row.iloc[idx_mut + 1])
+                    mutation_raw = str(row.iloc[idx_mut + 1]).strip()
+                    amount = parse_degiro_number(mutation_raw)
                     amount_currency = mut_val.strip().upper()
             else:
-                amount = parse_degiro_number(mut_val)
+                mutation_raw = str(mut_val).strip()
+                amount = parse_degiro_number(mutation_raw)
 
         # Resolve balance handling currency shift
         balance = 0.0
@@ -141,7 +144,14 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             else:
                 balance = parse_degiro_number(saldo_val)
 
-        if amount is None:
+        mutation_present = bool(mutation_raw)
+        # Sweep notifications can carry a balance without a monetary mutation.
+        # Preserve them as source evidence; a missing required posting or a
+        # malformed nonblank number remains invalid.
+        informational_sweep = mutation_raw == "" and is_internal_cash_sweep(desc, prod)
+        if informational_sweep:
+            amount = 0.0
+        elif amount is None:
             raise ValueError(f"Invalid Transaction amount at source row {row_idx + 2}")
         quote_currency_match = re.search(r"@.*?\b([A-Z]{3})\b", desc)
         quote_currency = quote_currency_match.group(1) if quote_currency_match else ""
@@ -188,6 +198,7 @@ def parse_account_csv(file_bytes_or_buffer: Any) -> pd.DataFrame:
             "amount_currency": amount_currency,
             "quote_currency": quote_currency,
             "balance_reported": idx_saldo is not None,
+            "mutation_present": mutation_present,
             "source_record": {str(k): (None if pd.isna(v) else str(v)) for k, v in row.items()},
             "amount": amount,
             "balance": balance,

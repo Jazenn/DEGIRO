@@ -118,7 +118,7 @@ def test_account_external_flows_exclude_reservations_and_sweeps():
     assert calculate_net_invested_capital(rows) == 400
     assert calculate_cash_balance(rows) == 400
 
-@pytest.mark.parametrize("bad", ["not-money", "NaN", "inf"])
+@pytest.mark.parametrize("bad", ["", "not-money", "NaN", "inf"])
 def test_import_rejects_invalid_money_instead_of_inventing_zero(bad):
     from backend.ingestion import TransactionIngestionService
     source = f"Datum;Tijd;Product;ISIN;Omschrijving;Mutatie;Saldo\n01-01-2024;09:00;DEGIRO;;Storting;{bad};100\n"
@@ -180,3 +180,23 @@ def test_import_iso_dates_keep_calendar_meaning_at_calculation_cutoff():
                                  ledger_version="v1", settings_version="s1", cutoff="2026-06-01T00:00:00Z")
     assert report.holdings.iloc[0]["shares_held"] == 2
     assert report.cash_balance_eur == -100
+
+def test_account_blank_informational_mutation_preserves_source_without_cash_posting():
+    from backend.ingestion import TransactionIngestionService
+    source = b"Date;Time;Product;ISIN;Description;Change;;Balance;\n02-01-2024;09:00;DEGIRO;;Cash Sweep Transfer;EUR;;EUR;100\n01-01-2024;09:00;DEGIRO;;Deposit;EUR;100;EUR;100\n"
+    result = TransactionIngestionService().ingest_csv(source)
+    assert result.accepted
+    assert len(result.transactions) == 2
+    assert result.transactions.iloc[0]["type"] == "CASH_SWEEP"
+    assert result.transactions.iloc[0]["mutation_present"] == False
+    assert result.transactions.iloc[0]["source_record"]["unnamed: 6"] == ""
+    assert calculate_cash_balance(result.transactions) == 100
+    assert calculate_net_invested_capital(result.transactions) == 100
+
+def test_sweep_notifications_bound_cash_continuity_to_comparable_account_segments():
+    from backend.ingestion import TransactionIngestionService
+    source = b"Date;Time;Product;ISIN;Description;Change;;Balance;\n04-01-2024;09:00;DEGIRO;;Dividend;EUR;10;EUR;10\n03-01-2024;09:00;DEGIRO;;Cash Sweep Transfer;EUR;;EUR;0\n02-01-2024;09:00;DEGIRO;;Cash Sweep Transfer;EUR;-100;EUR;100\n01-01-2024;09:00;DEGIRO;;Deposit;EUR;100;EUR;100\n"
+    result = TransactionIngestionService().ingest_csv(source)
+    assert result.accepted
+    assert "cash_sweep_continuity_unverified" in result.diagnostics
+    assert calculate_cash_balance(result.transactions) == 110
