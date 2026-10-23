@@ -54,6 +54,8 @@ class CalculationReport:
             if isinstance(value, (list, tuple)):
                 return [encode(item) for item in value]
             return value
+        from backend.engine.disposal_projection import disposal_projection
+        cutoff_eligible = not any('cutoff_eligibility_unavailable' in diagnostic for diagnostic in self.ledger.diagnostics)
         return encode({
             "ledger_version": self.ledger_version,
             "settings_version": self.settings_version,
@@ -64,6 +66,10 @@ class CalculationReport:
             "latest_recorded_transaction_at": self.latest_recorded_transaction_at,
             "source_coverage_through": None,
             "ledger": asdict(self.ledger),
+            "disposal_cost_projections": {position.broker_asset_id: disposal_projection(position,
+                ledger_version=self.ledger_version, financial_settings_version=self.settings_version,
+                cutoff_eligible=cutoff_eligible, ledger_cutoff=self.cutoff) for position in self.ledger.positions
+                if position.asset_kind == 'Cryptocurrency'},
             "observed_prices": {symbol: {**asdict(quote), "price_eur": number(quote.price_eur)}
                                 for symbol, quote in self.observed_prices.items()},
             "diagnostics": tuple(sorted(set(self.diagnostics + self.ledger.diagnostics))),
