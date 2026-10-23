@@ -132,3 +132,13 @@ test('fast revaluation matches canonical FIFO ledger after partial sale, fees, r
   expect(next.ledger.net_gain_eur).toBe('503');
 });
 
+
+import { validReadModel } from './read-model';
+test('current target-version refresh keeps finalized historical settings and cutoff unchanged', async () => {
+  const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  model.portfolio_history = { schema_version:'observed-history-v1', ledger_version:model.ledger_version, settings_version:'historical-evidence', cutoff:'2026-01-11T00:00:00Z', periods:{}, diagnostics:['missing_observed_history'] };
+  const next = revalue(model, { version:'2', targets:[] }, { SYNTHETIC: { price_eur:'1200', observed_at:'2026-10-23T10:00:00Z', retrieved_at:'2026-10-23T10:00:01Z',provider:'synthetic',currency:'EUR',adjustment_basis:'unadjusted' } },'2026-10-23T10:00:01Z');
+  expect(next.settings_version).toBe('2');
+  expect(next.portfolio_history).toEqual(model.portfolio_history);
+  expect(validReadModel(next)).toBe(true);
+});
