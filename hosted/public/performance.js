@@ -22,6 +22,13 @@ export function renderPerformance(target, snapshot) {
     const period = history.periods[name];
     result.replaceChildren(element('h3', `${name === 'ALL' ? 'All time' : name} | ${period?.start ?? 'opening unavailable'} to ${period?.end ?? history.cutoff}`));
     if (period?.shorter_coverage) result.append(element('p', 'Shorter observed coverage: the requested opening is unavailable. Results use the displayed observed start.'));
+    const estimate = period?.estimated_return;
+    if (estimate?.state === 'ready') {
+      result.append(element('p', `Estimated cash-flow-adjusted return: ${estimate.percent}%`));
+      result.append(element('p', `Finalized percentage cutoff: ${estimate.cutoff}. Geometrically linked daily Modified Dietz estimate, without annualization. Current intraday EUR figures have their own cutoff.`));
+    } else {
+      result.append(element('p', `Estimated cash-flow-adjusted return unavailable. ${(estimate?.diagnostics ?? ['Verified daily return inputs have not been supplied.']).join('; ')}`));
+    }
     if (!period || period.state !== 'ready') {
       result.append(element('p', `Period results unavailable. ${(period?.diagnostics ?? ['No observed interval supplied.']).join('; ')}`));
       return;
@@ -50,6 +57,12 @@ export function renderPerformance(target, snapshot) {
     const details = document.createElement('details');
     details.append(element('summary', 'Observed equity and dated price sources'));
     details.append(element('p', `Generation ${snapshot.generation_id} | history settings ${history.settings_version} | ledger ${history.ledger_version}`));
+    if (estimate?.state === 'ready') {
+      details.append(element('p', 'Daily Modified Dietz: (closing equity - opening equity - signed external flows) / (opening equity + remaining-interval weighted external flows). Daily growth factors are multiplied across every observed day. This approximates flow timing rather than exact intraday time-weighted performance.'));
+      for (const day of estimate.daily) {
+        details.append(element('p', `${day.start} to ${day.cutoff} | gain ${money(day.net_gain_eur)} | signed flows ${money(day.external_flows_eur)} | weighted flows ${money(day.weighted_external_flows_eur)} | denominator ${money(day.denominator_eur)} | daily fraction ${day.fraction}`));
+      }
+    }
     for (const point of points) {
       details.append(element('p', `${point.cutoff} | equity ${money(point.equity_eur)}`));
       for (const [symbol, quote] of Object.entries(point.observed_prices)) details.append(element('p', `${symbol} | ${quote.provider} | observed ${quote.observed_at} | retrieved ${quote.retrieved_at ?? 'unknown'} | ${quote.currency} | ${quote.adjustment_basis}`));

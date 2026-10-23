@@ -7,6 +7,7 @@ from calendar import monthrange
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from backend.engine.calculation import calculate_portfolio
+from backend.engine.returns import estimated_return
 
 
 def instant(value):
@@ -122,5 +123,8 @@ def calculate_history(transactions, *, settings, daily_prices, asset_coverage,
                 period['diagnostics'].append('equity_bridge_does_not_reconcile')
         elif not period['diagnostics']:
             period['diagnostics'].append('two_observed_endpoints_required')
+        period['estimated_return'] = estimated_return(selected, transactions, settings)
+        if period['state'] != 'ready' and period['estimated_return']['state'] == 'ready':
+            period['estimated_return'].update(state='unavailable', percent=None, diagnostics=['unreconciled_period_accounting'])
         result['periods'][name] = period
     return result
