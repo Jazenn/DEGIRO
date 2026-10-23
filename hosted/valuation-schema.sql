@@ -25,8 +25,8 @@ BEGIN
     OR proposed->'portfolio_history' IS DISTINCT FROM original->'portfolio_history'
     OR proposed->'ledger'->'charges' IS DISTINCT FROM original->'ledger'->'charges'
     OR proposed->'ledger'->'cash_balance_eur' IS DISTINCT FROM original->'ledger'->'cash_balance_eur'
-    OR (proposed->'ledger' - ARRAY['positions','market_value_eur','equity_eur','net_gain_eur','attributed_gain_eur'])
-      IS DISTINCT FROM (original->'ledger' - ARRAY['positions','market_value_eur','equity_eur','net_gain_eur','attributed_gain_eur'])
+    OR ((proposed->'ledger') - ARRAY['positions','market_value_eur','equity_eur','net_gain_eur','attributed_gain_eur'])
+      IS DISTINCT FROM ((original->'ledger') - ARRAY['positions','market_value_eur','equity_eur','net_gain_eur','attributed_gain_eur'])
     OR (SELECT jsonb_agg(position - ARRAY['market_value_eur','held_gain_eur'] ORDER BY ordinal)
         FROM jsonb_array_elements(proposed->'ledger'->'positions') WITH ORDINALITY AS p(position, ordinal))
       IS DISTINCT FROM (SELECT jsonb_agg(position - ARRAY['market_value_eur','held_gain_eur'] ORDER BY ordinal)

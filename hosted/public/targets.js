@@ -8,7 +8,7 @@ export async function loadTargets(root, request = fetch) {
     if (!response.ok) throw Error();
     settings = await response.json();
   } catch { status.textContent = 'Targets unavailable. Reload this page to retry.'; return; }
-  status.textContent = `Rebalancing Targets version ${settings.version}. The Snapshot identifies the settings version used for its valuation; saving targets does not revalue it.`;
+  status.textContent = `Rebalancing Targets version ${settings.version}. The Snapshot records its Rebalancing Target version separately. Saving targets does not refresh valuation or change financial settings.`;
   const form = document.createElement('form');
   const rows = node('div', '');
   function addRow(target = { asset_id: '', target_pct: '' }) {
@@ -47,7 +47,7 @@ export async function loadTargets(root, request = fetch) {
       if (response.status === 400) { message.textContent = 'Targets are invalid. Use unique Asset identifiers and nonnegative percentages totaling 100% (up to two decimal places).'; pending = null; return; }
       if (!response.ok) throw Error();
       const result = await response.json(); settings = result.current; pending = null;
-      status.textContent = `Rebalancing Targets version ${settings.version}. Saved across devices. Snapshot valuations retain their recorded settings version until revalued.`;
+      status.textContent = `Rebalancing Targets version ${settings.version}. Saved across devices. Valuations keep their recorded Rebalancing Target version until refreshed. Financial settings stay unchanged.`;
       message.textContent = 'Targets saved.';
       document.dispatchEvent(new CustomEvent('targets-saved',{detail:settings}));
     } catch { message.textContent = 'Save could not be confirmed. Retry Save targets unchanged to safely confirm the same change.'; }

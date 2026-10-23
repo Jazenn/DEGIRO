@@ -12,6 +12,14 @@ Hidden Chrome checks used an explicitly synthetic local HTTP fixture at exact 39
 
 These browser checks verify visible behavior against controlled responses. They do not establish deployed database concurrency, authentication, network latency or Cloudflare CPU usage. Previous real Google sign-in and Worker-to-Neon Snapshot evidence remains documented in [hosted deployment](hosted-snapshot-deployment.md).
 
+## Latest local checks
+
+The verified implementation now includes daily history and supported returns, current valuation refresh, ETF exposure availability, fee-aware ETF/crypto contribution previews, rolling crypto market suggestions and durable accepted Crypto Plans. Review corrections preserve exact execution identities, reconcile corroborating AutoFX charges, reduce persisted history payloads and distinguish financial settings from Rebalancing Targets versions. See [prefix review corrections](prefix-review-corrections.md) and [accepted plans](../accepted-crypto-plans.md).
+
+After integrating accepted plans, 124 Python tests and 82 hosted tests passed, with hosted typecheck, the frontend production build and the Worker dry-run build. The latest previously pushed main batch passed remote CI. Repeat synthetic Chrome checks at 390px and 1440px passed navigation bounds, empty personal plan defaults, disabled acceptance before review, target-conflict recovery and retention of the previous accepted Snapshot after a failed read.
+
+An isolated local PostgreSQL engine executed the actual accepted-plan function successfully: identical retries return the original result, operation reuse and stale versions conflict, existing plans require replacement, and BTC acceptance leaves ETH unchanged. The SQL checks reproduced and corrected a valuation-publication operator-precedence defect. Two permanent PostgreSQL regressions now cover publication guards, immutable ledger facts, plan acceptance and restricted Worker permissions, and run in CI using a development-only dependency. These checks use synthetic records and one connection; they do not demonstrate Neon concurrency.
+
 ## Outstanding release gates
 
 - Apply reviewed new schemas and least-privilege grants to the authorized staging destination; demonstrate real durable target conflicts and upload retry/publication behavior.

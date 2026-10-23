@@ -55,6 +55,7 @@ jobs:
         run: |
           npm run hosted:test
           npm run hosted:typecheck
+          npm run hosted:sql-test
 
       - name: Run Build
         run: npm run build
