@@ -106,7 +106,7 @@ export function createApplication(dependencies: Dependencies) {
         const result = await dependencies.contribution(value, env);
         return json(result, result.state === 'stale' ? 409 : 200);
       } catch (error) {
-        return error instanceof Error && ['invalid_request','invalid_budget'].includes(error.message)
+        return error instanceof Error && ['invalid_request','invalid_budget','invalid_choice'].includes(error.message)
           ? json({ error: error.message }, 400) : json({ error: 'contribution_unavailable' }, 503);
       }
     }
@@ -165,6 +165,3 @@ export function createApplication(dependencies: Dependencies) {
     return request.method === 'HEAD' ? new Response(null, { status: response.status, headers: response.headers }) : response;
   };
 }
-
-
-
