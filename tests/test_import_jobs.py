@@ -146,3 +146,9 @@ def test_autofx_corroboration_keeps_equal_broker_commission_and_rejects_uncertai
     assert sorted((charge['category'],charge['amount_eur']) for charge in ledger['charges'])==[('recorded_fee','2'),('recorded_fx','2')]
     with pytest.raises(ValueError,match='ambiguous_autofx_fee_overlap_requires_review'):
         stage_generation([transactions,account.replace(b'AutoFX fee,EUR,-2,o',b'AutoFX fee,EUR,-3,o')],**args)
+
+def test_ledger_version_changes_when_source_interpretation_schema_changes():
+    result=stage_generation([CSV],settings=SETTINGS,quotes={},cutoff='2026-01-10T00:00:00Z')
+    # Prior unversioned implementation's independently recorded digest for CSV.
+    assert result['ledger_version']!='ab83e4ebde6ba1e92a03d44877d726e2429288426993e01037a528f560904abb'
+    assert result['ledger_version']==stage_generation([CSV],settings=SETTINGS,quotes={},cutoff='2026-01-10T00:00:00Z')['ledger_version']

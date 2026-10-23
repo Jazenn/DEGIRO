@@ -15,6 +15,7 @@ import pandas as pd
 
 from backend.engine.calculation import calculate_portfolio, ObservedPrice
 from backend.ingestion import TransactionIngestionService
+from backend.ingestion.identity import ledger_identity
 
 
 class PublicationConflict(Exception):
@@ -42,7 +43,7 @@ def stage_generation(sources, *, settings, quotes, cutoff, historical_input=None
         if result.rows_processed == 0:
             raise ValueError('empty_import')
         transactions = pd.concat([transactions, result.transactions], ignore_index=True)
-    ledger_version = hashlib.sha256(b''.join(hashlib.sha256(s).digest() for s in sources)).hexdigest()
+    ledger_version = ledger_identity(sources)
     settings_version = hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
     model = calculate_portfolio(transactions, settings=settings, observed_prices=quotes,
                                ledger_version=ledger_version, settings_version=settings_version,
@@ -203,3 +204,4 @@ if __name__ == '__main__':
         main()
     except Exception:
         raise SystemExit('Import runner failed; accepted generation preserved. Review configuration privately.') from None
+

@@ -20,6 +20,7 @@ from backend.engine.calculation import calculate_portfolio
 from backend.engine.cash import calculate_cash_balance, calculate_net_invested_capital, sort_transactions_chronologically
 from backend.engine.portfolio import compute_fifo_holdings, build_daily_equity_history
 from backend.ingestion import load_degiro_csv, TransactionIngestionService
+from backend.ingestion.identity import ledger_identity
 from backend.providers import PriceService
 
 
@@ -47,7 +48,7 @@ def cmd_audit(csv_path: str, cutoff: str | None = None) -> None:
     settings = {"mappings": config.get_mappings(), "assets": config.get_assets(), "settings": config.get_settings()}
     report = calculate_portfolio(
         df, observed_prices={}, settings=settings,
-        ledger_version=hashlib.sha256(content).hexdigest(),
+        ledger_version=ledger_identity([content]),
         settings_version=hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest(),
         cutoff=cutoff or datetime.now(timezone.utc).isoformat(),
     )
@@ -172,3 +173,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+

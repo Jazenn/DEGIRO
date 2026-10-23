@@ -14,6 +14,14 @@ import pandas as pd
 from backend.ingestion.decimal_fields import economic_fields
 
 
+IDENTITY_VERSION = 'execution-v4'
+
+
+def ledger_identity(sources):
+    """Raw source revisions plus their exact economic interpretation contract."""
+    return hashlib.sha256(IDENTITY_VERSION.encode() + b'\0' + b''.join(hashlib.sha256(source).digest() for source in sources)).hexdigest()
+
+
 def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
     occurrences = Counter()
     for record in records:
@@ -67,8 +75,8 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
         occurrence = occurrences[fingerprint]
         record["identity_fingerprint"] = fingerprint
         record["identity_occurrence"] = occurrence
-        record["row_hash"] = hashlib.md5(f"v4:{fingerprint}:{occurrence}".encode()).hexdigest()
-        record["identity_version"] = "execution-v4"
+        record["row_hash"] = hashlib.md5(f"{IDENTITY_VERSION.removeprefix('execution-')}:{fingerprint}:{occurrence}".encode()).hexdigest()
+        record["identity_version"] = IDENTITY_VERSION
     if records:
         ordered = sorted(records, key=lambda row: (row["normalized_date"], row["time"], -row["csv_row_id"]))
         previous = None
@@ -93,5 +101,7 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
                 for record in group:
                     record["diagnostics"].append("same_time_ordering_requires_review")
     return pd.DataFrame(records)
+
+
 
 
