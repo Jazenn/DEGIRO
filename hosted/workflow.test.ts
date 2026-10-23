@@ -53,3 +53,14 @@ test('overview explains completed-sale gains, dated recorded charges and missing
   expect(overview.textContent).toContain('Future fee estimates');
   expect(overview.textContent).toContain('Finalized historical coverage is unavailable');
 });
+
+test('failed reread retains the accepted generation with an explicit stale warning', async () => {
+  document.body.innerHTML = '<main></main>';
+  const target = document.querySelector('main');
+  const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  await loadSnapshot(target, async () => new Response(JSON.stringify({ state: 'ready', snapshot: { generation_id: 'last-good', published_at: '2026-01-11T00:01:00Z', data_classification: 'synthetic', read_model } })));
+  await loadSnapshot(target, async () => new Response('{}', { status: 503 }));
+  expect(target?.textContent).toContain('last-good');
+  expect(target?.textContent).toContain('Showing the previous accepted generation');
+  expect(target?.querySelector('[role="alert"]')?.textContent).toContain('read failed');
+});
