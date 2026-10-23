@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest';
-import { reviewReachedStages } from './crypto-stage-review';
+import { reviewReachedStages, projectedCostInterval } from './crypto-stage-review';
 export const now = '2026-10-23T12:00:00Z';
 export function context(cost = '480') {
   return { snapshot: { generation_id: 'g1', read_model: { ledger_version: 'ledger1', settings_version: 'financial1', ledger_cutoff: now, calculation_version: 'decimal-accounting-v1',
@@ -62,4 +62,14 @@ test('mandatory net gain examples retain core and treat imported completed quant
     {matched_quantity:'0.2',pending_quantity:'0',stages:{s1:{matched_quantity:'0.2',pending_quantity:'0'}}});
   expect(review.stages[0].quantity).toBe('0.3');
   expect(review.available_tactical_quantity).toBe('0.7');
+});
+
+test('consumer interval includes the actual Python40-digit repeating-ratio disposal and rejects sub-quantum curves', () => {
+  const value=context('1'),model=value.snapshot.read_model,position=model.ledger.positions[0],curve=model.disposal_cost_projections.btc;
+  position.quantity='6';curve.quantity_limit='6';curve.breakpoints[1].quantity='6';curve.absolute_error_bound_eur='1E-37';
+  const interval=projectedCostInterval(curve,model,position,'1','2')!;
+  const actual='0.1666666666666666666666666666666666666667';
+  expect(interval.lower.lte(actual)).toBe(true);expect(interval.upper.gte(actual)).toBe(true);
+  curve.breakpoints.splice(1,0,{quantity:'1E-40',cost_eur:'0'});
+  expect(projectedCostInterval(curve,model,position,'1','2')).toBeNull();
 });

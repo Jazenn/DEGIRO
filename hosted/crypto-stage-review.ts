@@ -6,14 +6,14 @@ const down = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_FLOOR);
 const up = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_CEIL);
 export interface Progress { matched_quantity: string; pending_quantity: string; reconciled_ledger_version?: string; stages: Record<string, { matched_quantity: string; pending_quantity: string }> }
 export const noReports: Progress = { matched_quantity: '0', pending_quantity: '0', stages: {} };
-export function projectedCostInterval(curve: any, model: any, position: any, start: string, end: string) {
+function prepareCostProjection(curve: any, model: any, position: any) {
   if (!curve || curve.state !== 'available' || curve.schema_version !== 'bounded-disposal-curve-v1'
       || curve.precision_policy !== 'canonical40-consumer80-outward-bound-v1' || curve.maximum_hypothetical_disposals !== '3'
       || curve.cutoff_eligible !== true || !timestamp(curve.ledger_cutoff) || curve.ledger_cutoff !== model.ledger_cutoff
       || curve.ledger_version !== model.ledger_version || curve.financial_settings_version !== model.settings_version
       || curve.calculation_version !== model.calculation_version || curve.broker_asset_id !== position.broker_asset_id
       || curve.cost_coverage !== 'verified_complete' || position.cost_coverage !== 'verified_complete'
-      || ![curve.quantity_limit, curve.absolute_error_bound_eur, position.retained_cost_eur, start, end].every(decimal)
+      || ![curve.quantity_limit, curve.absolute_error_bound_eur, position.retained_cost_eur].every(decimal)
       || !new D(curve.quantity_limit).eq(position.quantity) || !Array.isArray(curve.breakpoints)
       || curve.breakpoints.length < 2 || curve.breakpoints.length > 4097) return null;
   const points = curve.breakpoints;
@@ -24,17 +24,24 @@ export function projectedCostInterval(curve: any, model: any, position: any, sta
     const quantity = new D(points[i].quantity).minus(points[i-1].quantity), cost = new D(points[i].cost_eur).minus(points[i-1].cost_eur);
     if (!quantity.gt(0) || quantity.gt('1e18') || quantity.decimalPlaces() > 18 || cost.lt(0) || cost.gt('1e18') || cost.decimalPlaces() > 40) return null;
   }
-  const a = new D(start), b = new D(end), bound = new D(curve.absolute_error_bound_eur);
-  if (a.lt(0) || !b.gt(a) || b.gt(curve.quantity_limit) || a.decimalPlaces() > 18 || b.decimalPlaces() > 18
-      || bound.lt(new D(100).mul(points.length).mul('5e-40').mul(D.max(1, position.retained_cost_eur)))) return null;
+  const bound = new D(curve.absolute_error_bound_eur);
+  if (bound.lt(new D(100).mul(points.length).mul('5e-40').mul(D.max(1, position.retained_cost_eur)))) return null;
   const evaluate = (quantity: Decimal) => {
     let low = 1, high = points.length - 1;
     while (low < high) { const middle = Math.floor((low + high) / 2); if (new D(points[middle].quantity).lt(quantity)) low = middle + 1; else high = middle; }
     const left = points[low-1], right = points[low];
     return new D(left.cost_eur).plus(new D(right.cost_eur).minus(left.cost_eur).mul(quantity.minus(left.quantity)).div(new D(right.quantity).minus(left.quantity)));
   };
-  const center = evaluate(b).minus(evaluate(a));
-  return { center, lower: D.max(0, center.minus(bound)), upper: center.plus(bound), bound };
+  return (start: string, end: string) => {
+    if (![start,end].every(decimal)) return null;
+    const a=new D(start), b=new D(end);
+    if (a.lt(0) || !b.gt(a) || b.gt(curve.quantity_limit) || a.decimalPlaces()>18 || b.decimalPlaces()>18) return null;
+    const center = evaluate(b).minus(evaluate(a));
+    return { center, lower: D.max(0, center.minus(bound)), upper: center.plus(bound), bound };
+  };
+}
+export function projectedCostInterval(curve: any, model: any, position: any, start: string, end: string) {
+  return prepareCostProjection(curve, model, position)?.(start, end) ?? null;
 }
 function reviewedFees(terms: any, plan: any, now: string) {
   return terms && terms.asset_id === plan.asset_id && terms.permission_revision === plan.terms_revision
@@ -75,6 +82,7 @@ export function reviewReachedStages(snapshot: any, state: any, fees: any, now: s
   result.pending_quantity = pending.toFixed(); result.available_tactical_quantity = D.max(0, held.minus(core).minus(pending)).toFixed();
   let prefix = new D(0), total = new D(0);
   const feeCoverage = reviewedFees(fees, plan, now);
+  const costProjection = pending.isZero() ? prepareCostProjection(model.disposal_cost_projections?.[plan.asset_id],model,position) : null;
   result.review_eligible_until = feeCoverage ? new Date(Math.min(Date.parse(result.quote_eligible_until),
     Date.parse(fees.valid_until), Date.parse(fees.permission_valid_until), Date.parse(fees.quantity_valid_until))).toISOString() : result.quote_eligible_until;
   for (const stage of plan.stages) {
@@ -87,7 +95,7 @@ export function reviewReachedStages(snapshot: any, state: any, fees: any, now: s
     total = total.plus(remainder);
     if (total.gt(result.available_tactical_quantity)) return { ...result, state: 'review', reason: 'core_protection_or_pending_quantity_limit', stages: [] };
     const gross = remainder.mul(quote.price_eur);
-    const projection = pending.isZero() ? projectedCostInterval(model.disposal_cost_projections?.[plan.asset_id], model, position, prefix.toFixed(), prefix.plus(remainder).toFixed()) : null;
+    const projection = costProjection?.(prefix.toFixed(), prefix.plus(remainder).toFixed()) ?? null;
     const row: Record<string, any> = { stage_id: stage.stage_id, level_eur: stage.level_eur, quantity: remainder.toFixed(),
       gross_proceeds_eur: gross.toFixed(), profit_status: 'profit_unverified', estimated_gain_eur: null,
       diagnostic: !pending.isZero() ? 'pending_execution_order_requires_canonical_reconciliation' : !projection ? 'canonical_cost_projection_unverified' : !feeCoverage ? 'reviewed_all_in_sale_fees_required' : null };
