@@ -75,6 +75,8 @@ export function reviewReachedStages(snapshot: any, state: any, fees: any, now: s
   result.pending_quantity = pending.toFixed(); result.available_tactical_quantity = D.max(0, held.minus(core).minus(pending)).toFixed();
   let prefix = new D(0), total = new D(0);
   const feeCoverage = reviewedFees(fees, plan, now);
+  result.review_eligible_until = feeCoverage ? new Date(Math.min(Date.parse(result.quote_eligible_until),
+    Date.parse(fees.valid_until), Date.parse(fees.permission_valid_until), Date.parse(fees.quantity_valid_until))).toISOString() : result.quote_eligible_until;
   for (const stage of plan.stages) {
     const activity = progress.stages[stage.stage_id] || { pending_quantity: '0', matched_quantity: '0' };
     if (![activity.pending_quantity, activity.matched_quantity, stage.quantity, stage.level_eur].every(decimal))
