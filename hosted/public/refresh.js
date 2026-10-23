@@ -3,6 +3,7 @@ export async function startRefresh(target, button, status, load = loadSnapshot, 
   const refresh = async () => {
     if (document.visibilityState === 'hidden' || button.disabled) return;
     button.disabled = true;
+    document.dispatchEvent(new CustomEvent('valuation-refresh-started'));
     status.textContent = 'Refreshing current prices; finalized history is separate.';
     const controller = new AbortController();
     const deadline = setTimeout(() => controller.abort(), 10000);
@@ -13,7 +14,10 @@ export async function startRefresh(target, button, status, load = loadSnapshot, 
       const result = await response.json();
       if (['refreshed', 'cached'].includes(result.state)) {
         if (document.visibilityState === 'hidden') return;
-        await load(target);
+        if (await load(target) !== true) {
+          status.textContent = 'Valuation updated on the server, but reading it failed. Visible values have not been confirmed. Retry Refresh current prices.';
+          return;
+        }
         status.textContent = 'Current values refreshed together. Read each source observation time; finalized history remains separate.';
       } else status.textContent = `Previous accepted values retained (${result.reason ?? 'refresh_failed'}). Retry Refresh current prices.`;
     } catch { status.textContent = 'Current refresh failed or exceeded ten seconds. Previous accepted values retained. Retry Refresh current prices.'; }
@@ -26,3 +30,5 @@ export async function startRefresh(target, button, status, load = loadSnapshot, 
 }
 const target = document.querySelector('#snapshot'), button = document.querySelector('#reload'), status = document.querySelector('#refresh-status');
 if (target && button && status) startRefresh(target, button, status);
+
+

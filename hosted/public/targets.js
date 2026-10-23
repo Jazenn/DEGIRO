@@ -49,10 +49,12 @@ export async function loadTargets(root, request = fetch) {
       const result = await response.json(); settings = result.current; pending = null;
       status.textContent = `Settings version ${settings.version}. Saved across devices. Snapshot valuations retain their recorded settings version until revalued.`;
       message.textContent = 'Targets saved.';
+      document.dispatchEvent(new CustomEvent('targets-saved',{detail:settings}));
     } catch { message.textContent = 'Save could not be confirmed. Retry Save targets unchanged to safely confirm the same change.'; }
     finally { rows.querySelectorAll('input, button').forEach(control => { control.disabled = false; }); if (!message.textContent.startsWith('Another device')) save.disabled = false; reload.disabled = false; add.disabled = false; }
   });
 }
 const root = document.querySelector('#targets');
 if (root) loadTargets(root);
+
 
