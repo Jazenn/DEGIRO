@@ -57,7 +57,7 @@ class TransactionIngestionService:
 
     def __init__(self, existing_transactions: pd.DataFrame | None = None) -> None:
         existing = existing_transactions if existing_transactions is not None else pd.DataFrame()
-        if not existing.empty and ("identity_version" not in existing or not existing["identity_version"].eq("execution-v2").all()):
+        if not existing.empty and ("identity_version" not in existing or not existing["identity_version"].eq("execution-v3").all()):
             raise ValueError("legacy_identity_requires_review: reconcile prior collapsed executions before migration")
         self._seen_hashes = set(existing.get("row_hash", []))
         self._multiplicities = Counter(existing.get("identity_fingerprint", []))
@@ -180,3 +180,4 @@ class TransactionIngestionService:
             transactions=unique_transactions,
             diagnostics=tuple(diagnostics), audit_transactions=parsed_transactions,
         )
+

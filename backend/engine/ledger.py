@@ -26,6 +26,8 @@ def source_number(value):
 
 def exact(row, field):
     """Read preserved broker text, never round-trip money through binary floats."""
+    if field in (row.get('exact_fields') or {}):
+        return number(row['exact_fields'][field])
     src = row.get('source_record') or {}
     kind = row.get('source_format')
     if kind == 'account':
@@ -256,3 +258,5 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
         diagnostics.append('equity_bridge_does_not_reconcile')
         gain = attributed = None
     return Ledger('ledger-v1', tuple(positions), tuple(charges), cash if cash_known else None, external, market, equity, gain, attributed, income, withholding, income-withholding, costs, tuple(sorted(set(diagnostics))))
+
+
