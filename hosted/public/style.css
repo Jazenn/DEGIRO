@@ -8,3 +8,8 @@ dt { font-weight: 600; } dd { margin: 0; overflow-wrap: anywhere; } li { margin-
 pre { overflow: auto; max-height: 30rem; font-size: .8rem; } p, li { overflow-wrap: anywhere; }
 summary { cursor: pointer; min-height: 44px; } :focus-visible { outline: 3px solid #2470b9; outline-offset: 3px; }
 @media (max-width: 480px) { dl { grid-template-columns: 1fr; } dd { margin-bottom: .8rem; } }
+
+#snapshot article { padding: 1rem; border: 1px solid #ccd8e4; border-radius: .75rem; margin-block: .75rem; min-width: 0; }
+#snapshot h4 { margin: 0; }
+#snapshot section { margin-block: 1.5rem; min-width: 0; }
+#snapshot { min-width: 0; }
