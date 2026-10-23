@@ -20,6 +20,8 @@ After integrating accepted plans, 124 Python tests and 82 hosted tests passed, w
 
 An isolated local PostgreSQL engine executed the actual accepted-plan function successfully: identical retries return the original result, operation reuse and stale versions conflict, existing plans require replacement, and BTC acceptance leaves ETH unchanged. The SQL checks reproduced and corrected a valuation-publication operator-precedence defect. Two permanent PostgreSQL regressions now cover publication guards, immutable ledger facts, plan acceptance and restricted Worker permissions, and run in CI using a development-only dependency. These checks use synthetic records and one connection; they do not demonstrate Neon concurrency.
 
+Reached-stage review now consumes canonical bounded cost projections and separately reviewed sale-fee evidence. An independent review found a quantity-rounding counterexample; producer and consumer now reject unsupported precision rather than mislabel profit. The supported range and error bound are documented in [reached stages](reached-crypto-stages.md). Following integration, 132 Python tests, 90 hosted tests and two actual SQL regressions passed, with typecheck and the Worker dry-run build. Synthetic Chrome checks at both viewports displayed the first two stages reached by EUR118,000, current-price proceeds, and a rounding-boundary result labelled profit unverified without horizontal overflow. Earlier fee expiry clears current review prompts without changing accepted plans; this is covered by a controlled-clock workflow test.
+
 ## Outstanding release gates
 
 - Apply reviewed new schemas and least-privilege grants to the authorized staging destination; demonstrate real durable target conflicts and upload retry/publication behavior.
