@@ -38,9 +38,9 @@ export function cryptoStageUI(root, request = fetch, clock = () => Date.now()) {
       if (disposed || epoch !== state.epoch) return;
       if (!response.ok) throw Error('Stage review unavailable.');
       if (value.state !== 'ready') { state.status.textContent = reasons[value.reason] ?? 'Current stage review is unavailable. Accepted plans remain saved.'; return; }
-      const until = Date.parse(value.quote_eligible_until), remaining = until - clock();
+      const until = Math.min(Date.parse(value.quote_eligible_until), Date.parse(value.review_eligible_until ?? value.quote_eligible_until)), remaining = until - clock();
       if (!Number.isFinite(until) || remaining <= 0 || remaining > 300000 || !Array.isArray(value.stages)) {
-        state.status.textContent = 'Reference quote expired. Review again for current reached-stage prompts.'; return;
+        state.status.textContent = 'Current review expired. Review again for current quotes and fee evidence.'; return;
       }
       state.output.append(text('p', `Reference EUR ${value.quote.price_eur}; observed ${value.quote.observed_at}; source ${value.quote.provider}. Available tactical quantity ${value.available_tactical_quantity}; pending ${value.pending_quantity}.`));
       for (const stage of value.stages) {
@@ -54,7 +54,7 @@ export function cryptoStageUI(root, request = fetch, clock = () => Date.now()) {
         state.output.append(article);
       }
       state.status.textContent = value.stages.length ? 'Reference estimates only. Execute manually and report actual sales for reconciliation.' : 'No currently reached unfinished stages.';
-      state.timer = setTimeout(() => clear(state, 'Reference quote expired. Review again for current reached-stage prompts.'), remaining);
+      state.timer = setTimeout(() => clear(state, 'Current review expired. Review again for current quotes and fee evidence.'), remaining);
     } catch {
       if (!disposed && epoch === state.epoch) { state.output.replaceChildren(); state.status.textContent = 'Stage review failed. Accepted plans remain saved. Review again before acting.'; }
     } finally { clearTimeout(deadline); }
