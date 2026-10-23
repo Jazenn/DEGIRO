@@ -1,4 +1,5 @@
 import { createContribution, neonContributionStore } from './contribution-store';
+import { previewStageReview, neonStageReviewReader } from './crypto-stage-store';
 import { neonCryptoPlans } from './crypto-plan-store';
 import { previewCryptoLevels, neonCryptoMarketReader } from './crypto-market-store';
 import { createRefresh, type RefreshStore } from './refresh';
@@ -14,6 +15,7 @@ export function workerApplication(options: { authQuery?: AuthQuery; refreshStore
   let binding: string | undefined, refresh: ReturnType<typeof createRefresh> | undefined;
   return createApplication({
     authQuery: options.authQuery,
+    cryptoStageReview: (value, env) => previewStageReview(value, neonStageReviewReader(env.DATABASE_URL)),
     cryptoPlans: (method, value, env) => neonCryptoPlans(env.DATABASE_URL)(method, value),
     cryptoLevels: (value, env) => previewCryptoLevels(value, neonCryptoMarketReader(env.DATABASE_URL)),
     refresh: env => {
