@@ -82,6 +82,7 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    return true;
   } catch {
     if (previous) {
       const warning = text('p', 'Snapshot read failed. Showing the previous accepted generation; values have not been refreshed.');
@@ -90,6 +91,8 @@ export async function loadSnapshot(destination, request = fetch) {
       destination.prepend(warning);
     } else destination.replaceChildren(text('p', 'Snapshot unavailable. Retry the read. No replacement values have been supplied.'));
   } finally { clearTimeout(deadline); }
+  return false;
 }
+
 
 
