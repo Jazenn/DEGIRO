@@ -1,0 +1,23 @@
+# Useful dashboard implementation evidence
+
+This records implementation checks for spec #40. It is not production cutover approval. The current dashboard remains available while replacement capabilities are verified.
+
+## Shared targets, overview and imports — 23 October 2026
+
+The integration branch contains authenticated versioned Rebalancing Targets, a canonical-data overview and durable CSV upload processing. Uploads run through the existing Python ingestion/calculation boundary in a hosted Actions job; they do not introduce a second browser ledger.
+
+Local baseline checks passed: 76 Python tests, 155 frontend tests, 19 hosted tests, frontend production build and hosted typecheck. Following the first integration batch, 78 Python tests and 30 hosted tests passed, with hosted typecheck and the pinned Wrangler dry-run build. Hosted tests and typecheck now run in CI.
+
+Hidden Chrome checks used an explicitly synthetic local HTTP fixture at exact 390px and 1440px viewports. Both rendered the canonical EUR1,100 holdings value, EUR1,005 contribution and EUR95 net gain without horizontal overflow. A failed reread kept the last accepted generation and displayed a warning. An edit based on an old targets version was rejected, retained the draft and offered reload; reload displayed the other device's version. The phone header was adjusted after screenshot inspection to keep the brand and sign-out control readable.
+
+These browser checks verify visible behavior against controlled responses. They do not establish deployed database concurrency, authentication, network latency or Cloudflare CPU usage. Previous real Google sign-in and Worker-to-Neon Snapshot evidence remains documented in [hosted deployment](hosted-snapshot-deployment.md).
+
+## Outstanding release gates
+
+- Apply reviewed new schemas and least-privilege grants to the authorized staging destination; demonstrate real durable target conflicts and upload retry/publication behavior.
+- Configure and verify the hosted Python job with server-only publisher credentials and reviewed calculation settings. Keep import feature gates disabled until this passes. No private CSV or settings belong in repository files, Actions logs or public issue comments.
+- Verify exact broker Asset identities, source timezone, quantity precision/minimums, historical coverage and fee assumptions before dependent recommendations are complete.
+- Verify current/historical provider integration, coherent publication, recovery and free-tier resource usage using actual staged requests. Local clocks and dry-run builds are not latency or quota evidence.
+- Complete private matched-cutoff source reconciliation and demonstrate backup, export/restore and rollback before switching production or retiring legacy calculations/access paths.
+
+Tickets remain open where their required live checks have not passed. Missing source coverage must remain an explicit unavailable state, never a generated history, zero value or fee-free recommendation.

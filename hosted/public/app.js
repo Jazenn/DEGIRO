@@ -66,6 +66,11 @@ export async function loadSnapshot(destination, request = fetch) {
     for (const [symbol, quote] of Object.entries(model.observed_prices ?? {})) {
       target.append(text('p', `${symbol} | ${quote.provider} | ${amount(quote.price_eur)} | observed ${quote.observed_at} | retrieved ${quote.retrieved_at ?? 'time unavailable'} | ${quote.currency} ${quote.adjustment_basis}`));
     }
+    for (const position of ledger.positions.filter(row => row.asset_kind === 'Cryptocurrency' && row.quantity !== '0')) {
+      const observed = model.observed_prices?.[position.symbol]?.observed_at;
+      const age = observed ? Date.now() - Date.parse(observed) : NaN;
+      target.append(text('p', `${position.symbol}: ${Number.isFinite(age) && age >= 0 && age <= 300000 ? 'Source quote within five minutes at this read' : 'Stale or unknown source time; current reached-stage prompts suspended'}. Recheck freshness before acting.`));
+    }
     if (!Object.keys(model.observed_prices ?? {}).length) target.append(text('p', 'Observed price provenance unavailable.'));
     target.append(text('p', [...new Set([...(model.diagnostics ?? []), ...(ledger.diagnostics ?? [])])].join('; ') || 'No coverage diagnostics reported. This does not independently verify complete source history.'));
     target.append(text('h3', 'Versions and coverage'));
@@ -88,9 +93,5 @@ export async function loadSnapshot(destination, request = fetch) {
     } else destination.replaceChildren(text('p', 'Snapshot unavailable. Retry the read. No replacement values have been supplied.'));
   } finally { clearTimeout(deadline); }
 }
-const target = document.querySelector('#snapshot');
-const reload = document.querySelector('#reload');
-if (target && reload) {
-  reload.addEventListener('click', () => loadSnapshot(target));
-  loadSnapshot(target);
-}
+
+
