@@ -80,3 +80,16 @@ def test_verified_broker_timezone_weights_against_utc_interval_not_local_clock()
 def test_nonexistent_dst_flow_time_withholds_without_substituting_midnight():
     result = cash_history(['29-03-2026,02:30,,,Deposit,EUR,500,'], start='2026-03-28T00:00:00Z', now='2026-03-30T12:00:00Z', timezone={'name': 'Europe/Amsterdam', 'verified': True, 'evidence': 'synthetic broker convention'})
     assert result['periods']['ALL']['estimated_return']['state'] == 'unavailable'
+
+def test_verified_zero_prefunding_prefix_establishes_explicit_supported_percentage_start():
+    result = cash_history(['03-01-2026,00:00,,,Deposit,EUR,1000,', '03-01-2026,12:00,,,Dividend,EUR,100,'], baseline='0', now='2026-01-04T12:00:00Z')
+    period = result['periods']['ALL']
+    assert period['start'] == '2026-01-01T00:00:00Z'
+    assert period['attribution']['net_gain_eur'] == '100'
+    estimate = period['estimated_return']
+    assert estimate['state'] == 'ready'
+    assert Decimal(estimate['percent']) == Decimal('10')
+    assert estimate['start'] == '2026-01-03T00:00:00Z'
+    assert estimate['opening_coverage'] == 'first_funded_baseline'
+    assert estimate['requested_start'] == '2026-01-01T00:00:00Z'
+    assert estimate['excluded_prefunding_intervals'] == ['2026-01-02T00:00:00Z', '2026-01-03T00:00:00Z']

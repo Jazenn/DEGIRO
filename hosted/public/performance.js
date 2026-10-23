@@ -25,6 +25,9 @@ export function renderPerformance(target, snapshot) {
     const estimate = period?.estimated_return;
     if (estimate?.state === 'ready') {
       result.append(element('p', `Estimated cash-flow-adjusted return: ${estimate.percent}%`));
+      if (estimate.opening_coverage === 'first_funded_baseline') {
+        result.append(element('p', `Percentage opening: ${estimate.start} | first-funded baseline. Verified zero-capital prefunding intervals are excluded from the percentage; EUR results and chart retain their displayed endpoints.`));
+      }
       result.append(element('p', `Finalized percentage cutoff: ${estimate.cutoff}. Geometrically linked daily Modified Dietz estimate, without annualization. Current intraday EUR figures have their own cutoff.`));
     } else {
       result.append(element('p', `Estimated cash-flow-adjusted return unavailable. ${(estimate?.diagnostics ?? ['Verified daily return inputs have not been supplied.']).join('; ')}`));
