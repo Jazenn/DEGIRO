@@ -180,7 +180,7 @@ export function contributionUI(root, snapshotNode, request = fetch) {
         body: JSON.stringify({
           budget_eur: budget.value,
           generation_id: source.generation_id,
-          settings_version: source.read_model.settings_version,
+          rebalancing_targets_version: source.read_model.rebalancing_targets_version,
           ...(mode.value === "etf"
             ? {}
             : {
@@ -209,7 +209,7 @@ export function contributionUI(root, snapshotNode, request = fetch) {
       if (operation !== epoch) return;
       if (
         plan.generation_id !== snapshot.generation_id ||
-        plan.settings_version !== snapshot.read_model.settings_version
+        plan.rebalancing_targets_version !== snapshot.read_model.rebalancing_targets_version || plan.settings_version !== snapshot.read_model.settings_version
       )
         throw Error();
       if (plan.state !== "complete") {
@@ -245,7 +245,7 @@ export function contributionUI(root, snapshotNode, request = fetch) {
         );
         return;
       }
-      status.textContent = `Manual estimate from generation ${plan.generation_id}, settings ${plan.settings_version}. Verify current broker prices and charges before acting.`;
+      status.textContent = `Manual estimate from generation ${plan.generation_id}, financial settings ${plan.settings_version}, targets ${plan.rebalancing_targets_version}. Verify current broker prices and charges before acting.`;
       output.append(
         node(
           "p",

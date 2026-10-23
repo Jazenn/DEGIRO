@@ -36,13 +36,13 @@ export function revalue(original: Model, settings: Targets, quotes: Record<strin
   for (const key of ['equity_eur', 'net_gain_eur', 'attributed_gain_eur']) {
     if (ledger[key] !== null) ledger[key] = new D(ledger[key]).plus(delta).toFixed();
   }
-  model.settings_version = settings.version;
+  model.rebalancing_targets_version = settings.version;
   model.cutoff = now;
   model.observed_prices = quotes;
   model.crypto_quote_eligibility = eligibility;
   model.crypto_quote_eligible_until = Object.fromEntries(Object.keys(eligibility).filter(symbol => eligibility[symbol] !== 'not_crypto')
     .map(symbol => [symbol, new Date(Date.parse(quotes[symbol].observed_at!) + 300000).toISOString()]));
-  model.contribution_inputs = { settings_version: settings.version, cutoff: now,
+  model.contribution_inputs = { settings_version: model.settings_version, rebalancing_targets_version: settings.version, cutoff: now,
     positions: positions.map(position => ({ asset_id: position.broker_asset_id, symbol: position.symbol, quantity: position.quantity,
       market_value_eur: position.market_value_eur, price_eur: quotes[position.symbol]?.price_eur ?? null,
       actual_pct: market.isZero() ? null : new D(position.market_value_eur).div(market).mul(100).toDecimalPlaces(12).toFixed(),

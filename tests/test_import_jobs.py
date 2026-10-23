@@ -152,3 +152,36 @@ def test_ledger_version_changes_when_source_interpretation_schema_changes():
     # Prior unversioned implementation's independently recorded digest for CSV.
     assert result['ledger_version']!='ab83e4ebde6ba1e92a03d44877d726e2429288426993e01037a528f560904abb'
     assert result['ledger_version']==stage_generation([CSV],settings=SETTINGS,quotes={},cutoff='2026-01-10T00:00:00Z')['ledger_version']
+
+def test_import_publication_exposes_financial_hash_and_shared_target_revision_without_revaluation():
+    database=DatabaseTransport()
+    outcome=process_next(database,SETTINGS)
+    assert database.publication['settings_version']==outcome.calculation_settings_version
+    assert database.publication['rebalancing_targets_version']=='3'
+    assert database.publication['settings_version']!=database.publication['rebalancing_targets_version']
+    assert database.publication['portfolio_history']['settings_version']==database.publication['settings_version']
+
+
+def test_background_history_keeps_independent_financial_and_target_versions(monkeypatch):
+    import io,json
+    import backend.import_jobs as runner
+    from datetime import datetime,timezone
+    class Clock(datetime):
+        @classmethod
+        def now(cls,tz=None):return cls(2026,1,10,12,tzinfo=timezone.utc)
+    monkeypatch.setattr(runner,'datetime',Clock)
+    payload=json.dumps({'prices':[[1768003200000,100]]}).encode()
+    monkeypatch.setattr('urllib.request.urlopen',lambda *args,**kwargs:io.BytesIO(payload))
+    class HistoryDatabase(DatabaseTransport):
+        def execute(self,sql,params=()):
+            if 'SELECT g.generation_id, g.read_model, t.version::text' in sql:
+                self.rows=[(self.generation,{'observed_prices':{}},self.target_version)];return
+            if "SELECT csv_content" in sql:
+                self.rows=[(CSV,)];return
+            super().execute(sql,params)
+    database=HistoryDatabase()
+    settings={**SETTINGS,'history_sources':{'BTC':{'provider':'coingecko','coin_id':'bitcoin','verified':True,'evidence':'synthetic'}}}
+    assert runner.rebuild_history(database,settings)
+    assert database.publication['rebalancing_targets_version']=='3'
+    assert len(database.publication['settings_version'])==64
+    assert database.publication['portfolio_history']['settings_version']==database.publication['settings_version']

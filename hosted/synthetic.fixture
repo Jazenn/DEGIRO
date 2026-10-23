@@ -60,5 +60,9 @@
   "diagnostics": [
     "asset_kind_and_quote_mapping_unverified",
     "source_timezone_unverified"
-  ]
+  ],
+  "rebalancing_targets_version": "0",
+  "ledger_cutoff": "2026-01-11T00:00:00+00:00",
+  "latest_recorded_transaction_at": "2026-01-03T09:01:00+00:00",
+  "source_coverage_through": null
 }

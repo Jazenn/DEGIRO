@@ -25,21 +25,21 @@ export function createContribution(
     if (
       !input ||
       typeof input.generation_id !== "string" ||
-      typeof input.settings_version !== "string"
+      typeof input.rebalancing_targets_version !== "string"
     )
       throw Error("invalid_request");
     const current = await store.read();
     if (!current) return { state: "stale", reason: "no_accepted_snapshot" };
     if (
       current.snapshot.generation_id !== input.generation_id ||
-      current.settings.version !== input.settings_version ||
-      current.snapshot.read_model.settings_version !== current.settings.version
+      current.settings.version !== input.rebalancing_targets_version ||
+      current.snapshot.read_model.rebalancing_targets_version !== current.settings.version
     )
       return {
         state: "stale",
         reason: "valuation_or_targets_changed_refresh_required",
         generation_id: current.snapshot.generation_id,
-        settings_version: current.settings.version,
+        rebalancing_targets_version: current.settings.version,
       };
     return {
       ...planContribution(
@@ -55,7 +55,8 @@ export function createContribution(
       ),
       generation_id: current.snapshot.generation_id,
       ledger_version: current.snapshot.read_model.ledger_version,
-      settings_version: current.settings.version,
+      settings_version: current.snapshot.read_model.settings_version,
+      rebalancing_targets_version: current.settings.version,
       calculation_version: current.snapshot.read_model.calculation_version,
       valuation_cutoff: current.snapshot.read_model.cutoff,
     };
@@ -66,7 +67,7 @@ export function neonContributionStore(url: string): ContributionStore {
   return {
     async read() {
       const rows = await sql.query(
-        `SELECT g.generation_id, to_char(g.published_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at, g.data_classification, g.read_model, t.version::text AS settings_version, t.targets,
+        `SELECT g.generation_id, to_char(g.published_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at, g.data_classification, g.read_model, t.version::text AS rebalancing_targets_version, t.targets,
       (SELECT coalesce(jsonb_agg(jsonb_build_object('asset_id',asset_id,'symbol',symbol,'asset_kind',asset_kind,'identity_evidence',identity_evidence,
         'verified_at',to_char(verified_at AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'))),'[]'::jsonb) FROM hosted_contribution_assets) AS assets,
       (SELECT coalesce(jsonb_agg(jsonb_build_object('asset_id',asset_id,'revision',revision,'quantity_step',quantity_step::text,
@@ -95,7 +96,7 @@ export function neonContributionStore(url: string): ContributionStore {
           data_classification: row.data_classification,
           read_model: row.read_model,
         },
-        settings: { version: row.settings_version, targets: row.targets },
+        settings: { version: row.rebalancing_targets_version, targets: row.targets },
         terms: row.terms,
         assets: row.assets,
       } as ContributionInput;

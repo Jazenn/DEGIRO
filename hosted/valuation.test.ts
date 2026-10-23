@@ -15,7 +15,8 @@ test('revalues reconciled quantities coherently without changing costs, cash, re
   expect(result.ledger.positions[0].lots).toEqual(model.ledger.positions[0].lots);
   expect(result.ledger.cash_balance_eur).toBe('0');
   expect(result.portfolio_history).toEqual(model.portfolio_history);
-  expect(result.settings_version).toBe('2');
+  expect(result.settings_version).toBe(model.settings_version);
+  expect(result.rebalancing_targets_version).toBe('2');
   expect(result.contribution_inputs.positions[0].actual_pct).toBe('100');
   expect(model.ledger.market_value_eur).toBe('1100');
 });
@@ -80,10 +81,10 @@ import { fetchQuote } from './quote-provider';
 test('database refresh wire returns canonical UTC timestamp and rejects malformed persisted metadata', async () => {
   const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
   const row = { generation_id: 'g1', published_at: '2026-10-23T10:00:00.000000Z', data_classification: 'synthetic', read_model,
-    settings_version: '2', targets: [], mappings: [] };
+    rebalancing_targets_version: '2', targets: [], mappings: [] };
   const store = valuationStore(async () => [row]);
   expect((await store.read(new AbortController().signal))?.snapshot.published_at).toBe('2026-10-23T10:00:00.000000Z');
-  row.settings_version = 'corrupt';
+  row.rebalancing_targets_version = 'corrupt';
   await expect(store.read(new AbortController().signal)).rejects.toThrow('invalid_snapshot');
 });
 
@@ -138,7 +139,27 @@ test('current target-version refresh keeps finalized historical settings and cut
   const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
   model.portfolio_history = { schema_version:'observed-history-v1', ledger_version:model.ledger_version, settings_version:'historical-evidence', cutoff:'2026-01-11T00:00:00Z', periods:{}, diagnostics:['missing_observed_history'] };
   const next = revalue(model, { version:'2', targets:[] }, { SYNTHETIC: { price_eur:'1200', observed_at:'2026-10-23T10:00:00Z', retrieved_at:'2026-10-23T10:00:01Z',provider:'synthetic',currency:'EUR',adjustment_basis:'unadjusted' } },'2026-10-23T10:00:01Z');
-  expect(next.settings_version).toBe('2');
+  expect(next.settings_version).toBe(model.settings_version);
+  expect(next.rebalancing_targets_version).toBe('2');
   expect(next.portfolio_history).toEqual(model.portfolio_history);
   expect(validReadModel(next)).toBe(true);
+});
+
+test('current quote refresh preserves financial settings identity while versioning shared targets separately', async()=>{
+  const model=JSON.parse(await readFile('hosted/synthetic.fixture','utf8'));
+  model.settings_version='financial-evidence-hash';model.rebalancing_targets_version='1';
+  const next=revalue(model,{version:'2',targets:[]},{SYNTHETIC:{price_eur:'1200',observed_at:'2026-10-23T10:00:00Z',retrieved_at:'2026-10-23T10:00:01Z',provider:'synthetic',currency:'EUR',adjustment_basis:'unadjusted'}},'2026-10-23T10:00:01Z');
+  expect(next.settings_version).toBe('financial-evidence-hash');
+  expect(next.rebalancing_targets_version).toBe('2');
+  expect(next.contribution_inputs.settings_version).toBe('financial-evidence-hash');
+  expect(next.contribution_inputs.rebalancing_targets_version).toBe('2');
+});
+
+test('current quote refresh preserves record timing without manufacturing broker coverage',async()=>{
+  const model=JSON.parse(await readFile('hosted/synthetic.fixture','utf8'));
+  const next=revalue(model,{version:'2',targets:[]},{SYNTHETIC:{price_eur:'1200',observed_at:'2026-10-23T10:00:00Z',retrieved_at:'2026-10-23T10:00:01Z',provider:'synthetic',currency:'EUR',adjustment_basis:'unadjusted'}},'2026-10-23T10:00:01Z');
+  expect(next.cutoff).toBe('2026-10-23T10:00:01Z');
+  expect(next.ledger_cutoff).toBe('2026-01-11T00:00:00+00:00');
+  expect(next.latest_recorded_transaction_at).toBe('2026-01-03T09:01:00+00:00');
+  expect(next.source_coverage_through).toBeNull();
 });

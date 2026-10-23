@@ -15,7 +15,9 @@ const exact = (item: unknown): boolean => typeof item !== 'number' &&
   (!item || typeof item !== 'object' || Object.values(item).every(exact));
 export function validReadModel(value: unknown): value is ObjectValue {
   if (!object(value) || !exact(value) || !string(value.ledger_version) || !string(value.settings_version)
+      || !(value.rebalancing_targets_version === null || (typeof value.rebalancing_targets_version === 'string' && /^\d+$/.test(value.rebalancing_targets_version)))
       || value.calculation_version !== 'decimal-accounting-v1' || !timestamp(value.cutoff)
+      || !timestamp(value.ledger_cutoff) || ![value.latest_recorded_transaction_at,value.source_coverage_through].every(at => at === null || timestamp(at))
       || !strings(value.diagnostics) || !object(value.observed_prices) || !object(value.ledger)) return false;
   const ledger = value.ledger;
   if (ledger.schema_version !== 'ledger-v1' || !strings(ledger.diagnostics)
