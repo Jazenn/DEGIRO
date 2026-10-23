@@ -86,7 +86,7 @@ ETF look-through uses dated fund/provider facts and coverage labels. Overlap com
 
 ## Durable state, security and migration
 
-Candidate hosting remains Cloudflare Workers Static Assets/Access plus Neon; prove fit before deploying private data. Owner-only email-code access with remembered sessions up to one month follows the approved decision. Account provisioning, payment-method entry and deployment are not performed by this planning artifact.
+Candidate hosting remains Cloudflare Workers Static Assets plus Neon; prove fit before deploying private data. On 23 October 2026 the owner replaced the email-code/Cloudflare Access preference with Google sign-in and authorized choosing the simplest genuinely free implementation, without payment details or a purchased domain. Direct Google OpenID Connect is the selected approach; retain owner-only server authorization and remembered sessions capped at one month. Clerk was considered but its production custom-domain requirement does not fit the owner's `pages.dev` hosting. This supersedes the identity-provider and email-code details of the earlier decision, not the shared-state or server-only credential requirements. Account provisioning and deployment are not performed by this planning artifact.
 
 Authorize every read/write, verify identity tokens, protect alternate preview/version routes and keep database/GitHub credentials server-side. Use version-checked writes; reject stale edits rather than losing another device's plan/settings changes. Snapshot/plan generations must reference the reconciled ledger they use.
 
