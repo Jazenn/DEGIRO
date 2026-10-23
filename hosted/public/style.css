@@ -66,3 +66,8 @@ section, #recorded-costs { scroll-margin-top:16px; }
 #crypto-stage article { padding-block:.75rem; border-top:1px solid #ccd8e4; }
 #crypto-stage h5 { font-size:1rem; overflow-wrap:anywhere; margin-block:.5rem; }
 #crypto-stage > a { display:flex; margin-block:.5rem; }
+#crypto-execution > section { margin-block:1rem; padding:1rem; background:white; border:1px solid #ccd8e4; border-radius:1rem; min-width:0; }
+#crypto-execution form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+#crypto-execution label { display:grid; gap:6px; min-width:0; }
+#crypto-execution input, #crypto-execution select { box-sizing:border-box; width:100%; min-width:0; min-height:44px; padding:8px; font:inherit; }
+#crypto-execution h5 { font-size:1rem; } @media(max-width:640px) { #crypto-execution form { grid-template-columns:1fr; } }

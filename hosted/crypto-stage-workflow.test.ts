@@ -29,6 +29,16 @@ test('all reached stages use current proceeds and expire without altering the ac
   cleanup(); vi.useRealTimers();
 });
 
+test('recording an actual execution reloads current stage prompts without polling', async () => {
+  document.body.innerHTML='<div id="stages"></div>';
+  const request=vi.fn(async ()=>Response.json({state:'review',reason:'stage_quantity_reconciliation_required',stages:[]}));
+  const cleanup=cryptoStageUI(document.querySelector('#stages')!,request);
+  await vi.waitFor(()=>expect(request).toHaveBeenCalledTimes(2));
+  document.dispatchEvent(new CustomEvent('crypto-execution-updated',{detail:{coin:'BTC-EUR'}}));
+  await vi.waitFor(()=>expect(request).toHaveBeenCalledTimes(4));
+  cleanup();
+});
+
 test('rounding-boundary estimates never receive a verified-profit label', async () => {
   vi.useFakeTimers(); vi.setSystemTime(Date.parse('2026-10-23T12:00:00Z'));
   document.body.innerHTML='<div id="stages"></div>';

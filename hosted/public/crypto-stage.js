@@ -65,10 +65,10 @@ export function cryptoStageUI(root, request = fetch, clock = () => Date.now()) {
   const load = () => { if (!disposed) for (const [coin, state] of states) read(coin, state); };
   const hidden = () => { if (document.hidden) for (const state of states.values()) clear(state, 'Return to this tab and review current quotes before acting.'); };
   reload.addEventListener('click', load); document.addEventListener('accepted-snapshot', load);
-  document.addEventListener('crypto-plan-accepted', load); document.addEventListener('visibilitychange', hidden);
+  document.addEventListener('crypto-plan-accepted', load); document.addEventListener('crypto-execution-updated', load); document.addEventListener('visibilitychange', hidden);
   load();
   return () => { disposed = true; for (const state of states.values()) clear(state, ''); reload.removeEventListener('click', load);
-    document.removeEventListener('accepted-snapshot', load); document.removeEventListener('crypto-plan-accepted', load); document.removeEventListener('visibilitychange', hidden); };
+    document.removeEventListener('accepted-snapshot', load); document.removeEventListener('crypto-plan-accepted', load); document.removeEventListener('crypto-execution-updated', load); document.removeEventListener('visibilitychange', hidden); };
 }
 const root = document.querySelector('#crypto-stage');
 if (root) cryptoStageUI(root);
