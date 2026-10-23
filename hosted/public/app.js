@@ -25,7 +25,7 @@ export async function loadSnapshot(destination, request = fetch) {
     const snapshot = result.snapshot;
     const model = snapshot.read_model;
     const ledger = model.ledger;
-    target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data · hosting verification only' : 'Private portfolio data'));
+    target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data Â· hosting verification only' : 'Private portfolio data'));
 
     const metrics = document.createElement('section');
     metrics.className = 'shell-summary';
@@ -75,7 +75,7 @@ export async function loadSnapshot(destination, request = fetch) {
     if (!Object.keys(model.observed_prices ?? {}).length) target.append(text('p', 'Observed price provenance unavailable.'));
     target.append(text('p', [...new Set([...(model.diagnostics ?? []), ...(ledger.diagnostics ?? [])])].join('; ') || 'No coverage diagnostics reported. This does not independently verify complete source history.'));
     target.append(text('h3', 'Versions and coverage'));
-    target.append(text('p', `Ledger ${model.ledger_version} · settings ${model.settings_version} · calculation ${model.calculation_version}`));
+    target.append(text('p', `Ledger ${model.ledger_version} Â· settings ${model.settings_version} Â· calculation ${model.calculation_version}`));
     target.append(text('p', model.diagnostics.length ? model.diagnostics.join('; ') : 'No calculation diagnostics reported. Synthetic evidence does not certify private source records.'));
     const details = document.createElement('details');
     details.append(text('summary', 'Read exact values, FIFO lots, charges and observed-price provenance'), text('pre', JSON.stringify(model, null, 2)));
@@ -83,10 +83,12 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    destination.acceptedSnapshot = snapshot;
     renderExposure(document.querySelector('#exposure'), snapshot);
     const performance = document.querySelector('#performance');
     if (performance) renderPerformance(performance, snapshot);
     document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));
+    return true;
   } catch {
     if (previous) {
       const warning = text('p', 'Snapshot read failed. Showing the previous accepted generation; values have not been refreshed.');
@@ -95,6 +97,5 @@ export async function loadSnapshot(destination, request = fetch) {
       destination.prepend(warning);
     } else destination.replaceChildren(text('p', 'Snapshot unavailable. Retry the read. No replacement values have been supplied.'));
   } finally { clearTimeout(deadline); }
+  return false;
 }
-
-

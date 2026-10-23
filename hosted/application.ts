@@ -22,6 +22,7 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  contribution?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
   refresh?(env: Environment): Promise<Record<string, unknown>>;
   targets?(env: Environment): TargetsStore;
   handleImports?(request: Request, env: Environment): Promise<Response>;
@@ -94,6 +95,21 @@ export function createApplication(dependencies: Dependencies) {
       catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
       return privateResponse(null, 303, { Location: '/login', 'Set-Cookie': cookie(sessionCookie, '', 0) });
     }
+    if (path === '/api/contribution') {
+      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+      if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try {
+        if (!dependencies.contribution) throw Error('unavailable');
+        let value: unknown;
+        try { const body = await request.text(); if (body.length > 5000) throw Error(); value = JSON.parse(body); }
+        catch { return json({ error: 'invalid_request' }, 400); }
+        const result = await dependencies.contribution(value, env);
+        return json(result, result.state === 'stale' ? 409 : 200);
+      } catch (error) {
+        return error instanceof Error && ['invalid_request','invalid_budget'].includes(error.message)
+          ? json({ error: error.message }, 400) : json({ error: 'contribution_unavailable' }, 503);
+      }
+    }
     if (path === '/api/refresh') {
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
       if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
@@ -149,5 +165,6 @@ export function createApplication(dependencies: Dependencies) {
     return request.method === 'HEAD' ? new Response(null, { status: response.status, headers: response.headers }) : response;
   };
 }
+
 
 
