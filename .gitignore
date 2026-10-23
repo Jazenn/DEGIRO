@@ -11,3 +11,6 @@ dist/
 .env
 .env.*
 !.env.example
+.dev.vars*
+.wrangler/
+!hosted/tsconfig.json
