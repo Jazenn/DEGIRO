@@ -32,3 +32,17 @@ test('missing history never creates a zero or demonstration chart', () => {
   expect(target.textContent).not.toContain('EUR 0');
   expect(target.querySelector('svg')).toBeNull();
 });
+
+test('first-funded percentage opening is labelled separately from the EUR chart interval', () => {
+  const target = document.createElement('section');
+  const start = '2026-01-01T00:00:00Z', funded = '2026-01-03T00:00:00Z', end = '2026-01-04T00:00:00Z';
+  renderPerformance(target, { generation_id: 'first-funded', read_model: { portfolio_history: { cutoff: end, periods: { ALL: {
+    state: 'ready', start, end, points: [{ cutoff: start, equity_eur: '0', observed_prices: {} }, { cutoff: end, equity_eur: '1100', observed_prices: {} }],
+    attribution: { net_gain_eur: '100', net_external_flows_eur: '1000' }, assets: [],
+    estimated_return: { state: 'ready', percent: '10', start: funded, cutoff: end, opening_coverage: 'first_funded_baseline', daily: [] },
+  } } } } });
+  expect(target.textContent).toContain('Estimated cash-flow-adjusted return: 10%');
+  expect(target.textContent).toContain('Percentage opening: 2026-01-03T00:00:00Z');
+  expect(target.textContent).toContain('Verified zero-capital prefunding intervals');
+  expect(target.querySelector('svg')?.getAttribute('aria-label')).toContain(start);
+});

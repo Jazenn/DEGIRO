@@ -27,7 +27,14 @@ Provisioning is a separate authorized operation. Before enabling uploads:
 `python -m backend.import_jobs` is also the same entrypoint for a separately
 approved hosted runner. It requires explicit environment configuration and does
 not read legacy credential files. Publishing and marking the import complete
-happen in the same database transaction. A validation/calculation failure rolls
+happen in the same database transaction. Import staging captures the accepted
+generation and shared Rebalancing Targets version in one read. Publication locks
+the pointer and targets in the same order as current valuation, rejects either
+version changing, and never replaces another writer's first pointer insertion.
+Conflicts leave a failed, safely retryable job with `publication_conflict_retry`.
+The `import_provenance` object records the separate calculation-settings hash and
+shared targets version used during that import; it never relabels one as the other.
+A validation/calculation failure rolls
 back the new generation and retains the prior accepted pointer. Raw source files
 remain private for overlap replay and correction review. Retrying an identical
 file retains its durable identity; explicit retries recover failed jobs or a
