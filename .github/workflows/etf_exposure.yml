@@ -1,0 +1,27 @@
+name: Dated ETF exposure
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '37 7 * * 3'
+permissions:
+  contents: read
+concurrency:
+  group: dated-etf-exposure
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: vars.HOSTED_EXPOSURE_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Fetch official dated sources and atomically attach exposure
+        env:
+          DATABASE_URL: ${{ secrets.HOSTED_PUBLISHER_DATABASE_URL }}
+          ETF_EXPOSURE_MANIFEST: ${{ secrets.ETF_EXPOSURE_MANIFEST }}
+        run: python -m backend.exposure_publish
