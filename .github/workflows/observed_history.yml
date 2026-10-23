@@ -1,0 +1,29 @@
+name: Private observed history
+on:
+  workflow_dispatch:
+  schedule:
+    # Seven days, after the provider's documented 00:10 UTC completed-day release.
+    - cron: '23 0 * * *'
+permissions:
+  contents: read
+concurrency:
+  group: private-observed-history
+  cancel-in-progress: false
+jobs:
+  history:
+    if: vars.HOSTED_HISTORY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Rebuild observed daily history without printing private records
+        env:
+          DATABASE_URL: ${{ secrets.HOSTED_PUBLISHER_DATABASE_URL }}
+          IMPORT_CALCULATION_SETTINGS: ${{ secrets.IMPORT_CALCULATION_SETTINGS }}
+          COINGECKO_DEMO_API_KEY: ${{ secrets.COINGECKO_DEMO_API_KEY }}
+        run: python -m backend.import_jobs --history-only

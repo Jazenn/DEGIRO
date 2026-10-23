@@ -8,6 +8,7 @@ import json
 import os
 from datetime import datetime, timezone
 from uuid import uuid4
+from pathlib import Path
 
 import pandas as pd
 
@@ -15,7 +16,7 @@ from backend.engine.calculation import calculate_portfolio, ObservedPrice
 from backend.ingestion import TransactionIngestionService
 
 
-def stage_generation(sources, *, settings, quotes, cutoff):
+def stage_generation(sources, *, settings, quotes, cutoff, historical_input=None):
     transactions = pd.DataFrame()
     for source in sources:
         result = TransactionIngestionService(transactions).ingest_csv(source)
@@ -26,12 +27,20 @@ def stage_generation(sources, *, settings, quotes, cutoff):
         transactions = pd.concat([transactions, result.transactions], ignore_index=True)
     ledger_version = hashlib.sha256(b''.join(hashlib.sha256(s).digest() for s in sources)).hexdigest()
     settings_version = hashlib.sha256(json.dumps(settings, sort_keys=True).encode()).hexdigest()
-    return calculate_portfolio(transactions, settings=settings, observed_prices=quotes,
+    model = calculate_portfolio(transactions, settings=settings, observed_prices=quotes,
                                ledger_version=ledger_version, settings_version=settings_version,
                                cutoff=cutoff).to_read_model()
+    from backend.engine.history import calculate_history
+    history = historical_input or {}
+    model['portfolio_history'] = calculate_history(transactions, settings=settings,
+        daily_prices={at: {symbol: ObservedPrice(**quote) for symbol, quote in quotes.items()}
+                      for at, quotes in history.get('daily_prices', {}).items()},
+        asset_coverage=history.get('asset_coverage', {}), market_closures=history.get('market_closures', {}),
+        ledger_version=ledger_version, settings_version=settings_version, now=cutoff)
+    return model
 
 
-def process_next(connection, settings):
+def process_next(connection, settings, historical_input=None):
     """One atomic publication; rollback retains accepted pointer and prior sources.
 
     Session advisory lock serializes publishers, including across workflow retries.
@@ -58,13 +67,15 @@ def process_next(connection, settings):
                 previous = cursor.fetchone()
                 previous_model = previous[0] if previous else {}
                 quotes = {symbol: ObservedPrice(**quote) for symbol, quote in previous_model.get('observed_prices', {}).items()}
-                model = stage_generation(sources, settings=settings, quotes=quotes, cutoff=datetime.now(timezone.utc).isoformat())
+                model = stage_generation(sources, settings=settings, quotes=quotes, cutoff=datetime.now(timezone.utc).isoformat(), historical_input=historical_input)
                 # Missing mapping/quote/fee evidence remains explicit in the canonical model;
                 # a failed parse or review blocker never reaches publication.
                 generation = str(uuid4())
                 cursor.execute("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES (%s,'private',%s)", (generation, Json(model)))
                 cursor.execute('INSERT INTO hosted_snapshot_pointer(singleton,generation_id) VALUES(true,%s) ON CONFLICT(singleton) DO UPDATE SET generation_id=excluded.generation_id', (generation,))
-                cursor.execute("UPDATE hosted_import_jobs SET state='completed', generation_id=%s, diagnostics=%s, history_state='unavailable', completed_at=now(), updated_at=now() WHERE job_id=%s", (generation, Json(model['diagnostics']), job_id))
+                periods = model['portfolio_history']['periods'].values()
+                history_state = 'completed' if periods and all(period['state'] == 'ready' for period in periods) else 'unavailable'
+                cursor.execute("UPDATE hosted_import_jobs SET state='completed', generation_id=%s, diagnostics=%s, history_state=%s, completed_at=now(), updated_at=now() WHERE job_id=%s", (generation, Json(model['diagnostics']), history_state, job_id))
                 connection.commit()
             except Exception as error:
                 connection.rollback()
@@ -78,13 +89,67 @@ def process_next(connection, settings):
             connection.commit()
 
 
+def rebuild_history(connection, settings):
+    """Daily hosted background work, independent of new uploads; atomic CAS publish.
+
+    Public history calls happen before the database transaction. Provider errors
+    retain the complete previous generation. CSV bytes and API keys are not logged.
+    """
+    from backend.providers.history import fetch_history_input
+    from psycopg2.extras import Json
+    now = datetime.now(timezone.utc).isoformat()
+    historical_input = fetch_history_input(settings, now=now, api_key=os.environ.get('COINGECKO_DEMO_API_KEY'))
+    if not historical_input['daily_prices']:
+        return False
+    with connection.cursor() as cursor:
+        cursor.execute('SELECT pg_try_advisory_lock(470047)')
+        if not cursor.fetchone()[0]:
+            return False
+        try:
+            cursor.execute('SELECT g.generation_id, g.read_model FROM hosted_snapshot_pointer p JOIN hosted_snapshot_generations g USING(generation_id) WHERE singleton=true')
+            previous = cursor.fetchone()
+            if not previous:
+                return False
+            previous_id, previous_model = previous
+            cursor.execute("SELECT csv_content FROM hosted_import_jobs WHERE state='completed' ORDER BY completed_at, job_id")
+            sources = [bytes(row[0]) for row in cursor.fetchall()]
+            if not sources:
+                return False
+            quotes = {symbol: ObservedPrice(**quote) for symbol, quote in previous_model.get('observed_prices', {}).items()}
+            model = stage_generation(sources, settings=settings, quotes=quotes, cutoff=now, historical_input=historical_input)
+            generation = str(uuid4())
+            cursor.execute("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES (%s,'private',%s)", (generation, Json(model)))
+            cursor.execute('UPDATE hosted_snapshot_pointer SET generation_id=%s WHERE singleton=true AND generation_id=%s', (generation, previous_id))
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return False
+            connection.commit()
+            return True
+        finally:
+            cursor.execute('SELECT pg_advisory_unlock(470047)')
+            connection.commit()
+
+
 def main():
+    import argparse
     import psycopg2
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--history-only', action='store_true')
+    args = parser.parse_args()
     # Explicit verified evidence configuration; never silently assume private baselines.
     settings = json.loads(os.environ['IMPORT_CALCULATION_SETTINGS'])
+    history_path = os.environ.get('IMPORT_HISTORY_FILE')
+    historical_input = json.loads(Path(history_path).read_text(encoding='utf-8')) if history_path else None
     with psycopg2.connect(os.environ['DATABASE_URL']) as connection:
+        if args.history_only:
+            try:
+                rebuild_history(connection, settings)
+            except Exception:
+                connection.rollback()
+                raise SystemExit('History refresh failed; prior accepted generation retained.') from None
+            return
         for _ in range(10):
-            if not process_next(connection, settings):
+            if not process_next(connection, settings, historical_input):
                 break
 
 

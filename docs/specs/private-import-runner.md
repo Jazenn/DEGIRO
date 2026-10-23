@@ -35,8 +35,42 @@ processing job abandoned for fifteen minutes. A database advisory lock serialize
 processors, and the hosted workflow is limited to ten minutes.
 
 Current prices are reused with their original timestamps and diagnostics; import
-does not fetch or claim fresh quotes. Background history has its own explicit
-`unavailable` status until a history worker is integrated and verified. An import
+does not fetch or claim fresh quotes. Background history has its own explicit cutoff and coverage state; missing reviewed observations leave affected periods unavailable. An import
 completing means the canonical ledger Snapshot was published, not that history or
 price refresh completed. Do not claim the parent delivery gates are met until
 those integrations and browser/live database recovery checks have passed.
+
+
+## Daily observed history
+
+The separate `observed_history.yml` workflow runs seven days at 00:23 UTC, after
+CoinGecko's documented 00:10 UTC completed-day release. It is disabled until an
+explicitly authorized operator sets `HOSTED_HISTORY_ENABLED=true`. It uses the
+same private publisher/settings secrets and optional `COINGECKO_DEMO_API_KEY`.
+No private records belong in the public repository or job logs.
+
+Reviewed `IMPORT_CALCULATION_SETTINGS.history_sources` maps canonical symbols to
+objects with `provider: "coingecko"`, `coin_id: "bitcoin"` or `"ethereum"`,
+`verified: true` and nonempty `evidence` for the mapping. Never manufacture
+verification. At most two requests fetch 365 daily EUR days with ten-second
+request timeouts. The adapter keeps exact observed 00:00 UTC samples only;
+missing days and older-than-window records remain unavailable. Provider failure
+retains the previous accepted generation. At roughly 60 calls/month the request
+count is bounded, but actual free account usage still requires verification.
+
+`python -m backend.import_jobs --history-only` replays completed private sources,
+uses canonical calculation at each completed UTC cutoff, and publishes history
+and ledger coherently with an accepted-generation compare-and-swap. It operates
+without waiting for new uploads and without the owner's PC. Background rebuilds
+are separate from bounded current-price refresh. GitHub schedules can be delayed.
+
+For separately approved runners, optional `IMPORT_HISTORY_FILE` points to a
+private JSON observation file containing `daily_prices` (UTC cutoff -> symbol ->
+ObservedPrice fields), `asset_coverage` (symbol -> reviewed
+`corporate_actions_reconciled: true`, `official_close_verified: true` plus `evidence`), and `market_closures`
+(cutoff -> symbol -> explicit exchange-calendar evidence). It is an operator
+input path, not the hosted worker's sole source. Never commit private files or
+unverified prices. Preserve original observation and retrieval timestamps.
+
+See `docs/research/observed-history-coverage.md` for verified public limitations.
+ETF provider coverage and older crypto history remain explicit delivery gates.

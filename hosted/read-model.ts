@@ -1,4 +1,5 @@
 // Validate the canonical wire contract, never recompute financial values.
+import { validHistory } from './history-contract.ts';
 type ObjectValue = Record<string, unknown>;
 const object = (value: unknown): value is ObjectValue => !!value && typeof value === 'object' && !Array.isArray(value);
 const string = (value: unknown): value is string => typeof value === 'string' && value.length > 0;
@@ -28,7 +29,7 @@ export function validReadModel(value: unknown): value is ObjectValue {
         && date(lot.acquired_at) && decimal(lot.quantity) && nullableDecimal(lot.cost_eur)))) return false;
   if (!ledger.charges.every(charge => object(charge) && string(charge.transaction_id) && date(charge.date)
       && string(charge.category) && decimal(charge.amount_eur) && string(charge.allocation))) return false;
-  return Object.values(value.observed_prices).every(quote => object(quote) && decimal(quote.price_eur)
+  return validHistory(value.portfolio_history, value) && Object.values(value.observed_prices).every(quote => object(quote) && decimal(quote.price_eur)
     && timestamp(quote.observed_at) && string(quote.provider) && quote.currency === 'EUR'
     && quote.adjustment_basis === 'unadjusted' && (quote.retrieved_at === null || timestamp(quote.retrieved_at)));
 }

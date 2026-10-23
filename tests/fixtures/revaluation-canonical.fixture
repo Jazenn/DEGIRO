@@ -1,0 +1,259 @@
+{
+  "source_csv": "Date,Time,Product,ISIN,Description,Amount,,Order Id\n02-01-2026,09:00,,,Deposit,EUR,1100,\n03-01-2026,09:00,Coin,A,Buy 1 @ 1000 EUR,EUR,-1000,a\n03-01-2026,09:01,Coin,A,Transaction fee,EUR,-5,a\n04-01-2026,09:00,Coin,A,Sell 0.5 @ 1500 EUR,EUR,750,b\n04-01-2026,09:01,Coin,A,Transaction fee,EUR,-5,b\n05-01-2026,09:00,Fund,B,Buy 1 @ 750 EUR,EUR,-750,c\n05-01-2026,09:01,Fund,B,Transaction fee,EUR,-2,c\n06-01-2026,09:00,Fund,B,Dividend,EUR,25,\n06-01-2026,09:01,Fund,B,Dividend withholding,EUR,-5,\n07-01-2026,09:00,,,Account fee,EUR,-5,\n",
+  "settings": {
+    "cost_history": {
+      "verified": true,
+      "evidence": "complete synthetic"
+    },
+    "source_timezone": {
+      "name": "UTC",
+      "verified": true,
+      "evidence": "synthetic"
+    },
+    "opening_baseline": {
+      "verified": true,
+      "evidence": "synthetic first funding",
+      "at": "2026-01-01T00:00:00Z",
+      "cash_eur": "0",
+      "equity_eur": "0"
+    },
+    "asset_evidence": {
+      "A": {
+        "verified": true,
+        "evidence": "synthetic BTC",
+        "symbol": "BTC",
+        "kind": "Cryptocurrency"
+      },
+      "B": {
+        "verified": true,
+        "evidence": "synthetic ETF",
+        "symbol": "ETF",
+        "kind": "ETF"
+      }
+    }
+  },
+  "before": {
+    "ledger_version": "canonical-revaluation-fixture",
+    "settings_version": "1",
+    "calculation_version": "decimal-accounting-v1",
+    "cutoff": "2026-01-11T00:00:00+00:00",
+    "ledger": {
+      "schema_version": "ledger-v1",
+      "positions": [
+        {
+          "broker_asset_id": "A",
+          "symbol": "BTC",
+          "asset_kind": "Cryptocurrency",
+          "quantity": "0.5",
+          "lots": [
+            {
+              "transaction_id": "0da494a3499de0e9c7e78b60def26070",
+              "acquired_at": "2026-01-03",
+              "quantity": "0.5",
+              "cost_eur": "502.5"
+            }
+          ],
+          "retained_cost_eur": "502.5",
+          "cost_coverage": "verified_complete",
+          "market_value_eur": "600.0",
+          "held_gain_eur": "97.5",
+          "realized_gain_eur": "242.5"
+        },
+        {
+          "broker_asset_id": "B",
+          "symbol": "ETF",
+          "asset_kind": "ETF",
+          "quantity": "1",
+          "lots": [
+            {
+              "transaction_id": "1be78084821ed0ed4779f945ccbaba03",
+              "acquired_at": "2026-01-05",
+              "quantity": "1",
+              "cost_eur": "752"
+            }
+          ],
+          "retained_cost_eur": "752",
+          "cost_coverage": "verified_complete",
+          "market_value_eur": "750",
+          "held_gain_eur": "-2",
+          "realized_gain_eur": "0"
+        }
+      ],
+      "charges": [
+        {
+          "transaction_id": "79162cae07287c7b44f3769d18a7c45d",
+          "date": "2026-01-03",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "3b78ed7c9ea568693940da8cf35a69d6",
+          "date": "2026-01-04",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "20ad431fe912dafba20561d00c218e45",
+          "date": "2026-01-05",
+          "category": "recorded_fee",
+          "amount_eur": "2",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "67b652a34aa203629eb7b893b226c2ad",
+          "date": "2026-01-07",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "portfolio"
+        }
+      ],
+      "cash_balance_eur": "103",
+      "net_external_contributions_eur": "1100",
+      "market_value_eur": "1350.0",
+      "equity_eur": "1453.0",
+      "net_gain_eur": "353.0",
+      "attributed_gain_eur": "353.0",
+      "gross_income_eur": "25",
+      "withholding_eur": "5",
+      "net_income_eur": "20",
+      "portfolio_costs_eur": "5",
+      "diagnostics": []
+    },
+    "observed_prices": {
+      "BTC": {
+        "price_eur": "1200",
+        "observed_at": "2026-01-10T00:00:00Z",
+        "provider": "synthetic",
+        "currency": "EUR",
+        "adjustment_basis": "unadjusted",
+        "retrieved_at": "2026-01-10T00:00:01Z"
+      },
+      "ETF": {
+        "price_eur": "750",
+        "observed_at": "2026-01-10T00:00:00Z",
+        "provider": "synthetic",
+        "currency": "EUR",
+        "adjustment_basis": "unadjusted",
+        "retrieved_at": "2026-01-10T00:00:01Z"
+      }
+    },
+    "diagnostics": [
+      "asset_kind_and_quote_mapping_unverified",
+      "source_timezone_unverified"
+    ]
+  },
+  "after": {
+    "ledger_version": "canonical-revaluation-fixture",
+    "settings_version": "1",
+    "calculation_version": "decimal-accounting-v1",
+    "cutoff": "2026-01-11T00:00:00+00:00",
+    "ledger": {
+      "schema_version": "ledger-v1",
+      "positions": [
+        {
+          "broker_asset_id": "A",
+          "symbol": "BTC",
+          "asset_kind": "Cryptocurrency",
+          "quantity": "0.5",
+          "lots": [
+            {
+              "transaction_id": "0da494a3499de0e9c7e78b60def26070",
+              "acquired_at": "2026-01-03",
+              "quantity": "0.5",
+              "cost_eur": "502.5"
+            }
+          ],
+          "retained_cost_eur": "502.5",
+          "cost_coverage": "verified_complete",
+          "market_value_eur": "700.0",
+          "held_gain_eur": "197.5",
+          "realized_gain_eur": "242.5"
+        },
+        {
+          "broker_asset_id": "B",
+          "symbol": "ETF",
+          "asset_kind": "ETF",
+          "quantity": "1",
+          "lots": [
+            {
+              "transaction_id": "1be78084821ed0ed4779f945ccbaba03",
+              "acquired_at": "2026-01-05",
+              "quantity": "1",
+              "cost_eur": "752"
+            }
+          ],
+          "retained_cost_eur": "752",
+          "cost_coverage": "verified_complete",
+          "market_value_eur": "800",
+          "held_gain_eur": "48",
+          "realized_gain_eur": "0"
+        }
+      ],
+      "charges": [
+        {
+          "transaction_id": "79162cae07287c7b44f3769d18a7c45d",
+          "date": "2026-01-03",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "3b78ed7c9ea568693940da8cf35a69d6",
+          "date": "2026-01-04",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "20ad431fe912dafba20561d00c218e45",
+          "date": "2026-01-05",
+          "category": "recorded_fee",
+          "amount_eur": "2",
+          "allocation": "trade"
+        },
+        {
+          "transaction_id": "67b652a34aa203629eb7b893b226c2ad",
+          "date": "2026-01-07",
+          "category": "recorded_fee",
+          "amount_eur": "5",
+          "allocation": "portfolio"
+        }
+      ],
+      "cash_balance_eur": "103",
+      "net_external_contributions_eur": "1100",
+      "market_value_eur": "1500.0",
+      "equity_eur": "1603.0",
+      "net_gain_eur": "503.0",
+      "attributed_gain_eur": "503.0",
+      "gross_income_eur": "25",
+      "withholding_eur": "5",
+      "net_income_eur": "20",
+      "portfolio_costs_eur": "5",
+      "diagnostics": []
+    },
+    "observed_prices": {
+      "BTC": {
+        "price_eur": "1400",
+        "observed_at": "2026-01-10T00:00:00Z",
+        "provider": "synthetic",
+        "currency": "EUR",
+        "adjustment_basis": "unadjusted",
+        "retrieved_at": "2026-01-10T00:00:01Z"
+      },
+      "ETF": {
+        "price_eur": "800",
+        "observed_at": "2026-01-10T00:00:00Z",
+        "provider": "synthetic",
+        "currency": "EUR",
+        "adjustment_basis": "unadjusted",
+        "retrieved_at": "2026-01-10T00:00:01Z"
+      }
+    },
+    "diagnostics": [
+      "asset_kind_and_quote_mapping_unverified",
+      "source_timezone_unverified"
+    ]
+  }
+}

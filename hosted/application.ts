@@ -22,6 +22,7 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  refresh?(env: Environment): Promise<Record<string, unknown>>;
   targets?(env: Environment): TargetsStore;
   handleImports?(request: Request, env: Environment): Promise<Response>;
   readAccepted(env: Environment): Promise<AcceptedSnapshot | null>;
@@ -93,6 +94,14 @@ export function createApplication(dependencies: Dependencies) {
       catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
       return privateResponse(null, 303, { Location: '/login', 'Set-Cookie': cookie(sessionCookie, '', 0) });
     }
+    if (path === '/api/refresh') {
+      if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+      if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try {
+        if (!dependencies.refresh) throw Error('unavailable');
+        return json(await dependencies.refresh(env));
+      } catch { return json({ state: 'retained', reason: 'refresh_unavailable' }, 503); }
+    }
     if (path === '/api/targets') {
       if (!['GET', 'PUT'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
       if (request.method === 'PUT' && request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
@@ -140,4 +149,5 @@ export function createApplication(dependencies: Dependencies) {
     return request.method === 'HEAD' ? new Response(null, { status: response.status, headers: response.headers }) : response;
   };
 }
+
 
