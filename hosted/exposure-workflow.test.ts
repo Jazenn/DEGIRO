@@ -50,3 +50,16 @@ test('complete dated compatible fixture distinguishes covered fund weights from 
   expect(document.body.textContent).toContain('25% overlap of fund weights');
   expect(document.body.textContent).toContain('not a forecast');
 });
+
+test('revaluation withholds previous portfolio coverage while retaining dated fund facts', () => {
+  document.body.innerHTML = '<section></section>';
+  renderExposure(document.querySelector('section'), { generation_id: 'refreshed', read_model: {
+    cutoff: '2026-10-23T11:00:00Z', ledger_version: 'ledger-1', etf_exposure: {
+      schema_version: 'etf-exposure-v1', valuation_cutoff: '2026-10-23T10:00:00Z', ledger_version: 'ledger-1',
+      covered_portfolio_fraction: '0.30', countries: { US: '30' }, sectors: { Technology: '30' }, limitations: [],
+      funds: [], overlap: [],
+    },
+  } });
+  expect(document.body.textContent).toContain('need recalculation for this valuation');
+  expect(document.body.textContent).not.toContain('30%');
+});

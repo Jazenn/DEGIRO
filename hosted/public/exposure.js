@@ -16,11 +16,14 @@ export function renderExposure(destination, snapshot) {
   if (!exposure || exposure.schema_version !== 'etf-exposure-v1') {
     content.append(text('p', 'No dated ETF holdings have been published. Country/region, sector, concentration and overlap remain unavailable.'));
   } else {
-    content.append(text('p', exposure.covered_portfolio_fraction === null
+    const compatible = (!exposure.valuation_cutoff || exposure.valuation_cutoff === snapshot.read_model.cutoff)
+      && (!exposure.ledger_version || exposure.ledger_version === snapshot.read_model.ledger_version);
+    if (!compatible) content.append(text('p', 'Portfolio exposure weights need recalculation for this valuation. Dated fund facts remain available; previous portfolio percentages are withheld.'));
+    else content.append(text('p', exposure.covered_portfolio_fraction === null
       ? 'Portfolio coverage unknown without complete invested-asset market values.'
       : `${fraction(exposure.covered_portfolio_fraction)} of invested asset value has verified fund net-asset look-through coverage. Cash is excluded. Uncovered exposure remains unknown.`));
     for (const limitation of exposure.limitations || []) content.append(text('p', limitation));
-    content.append(breakdown('Observed country/region (% of all invested assets)', exposure.countries),
+    if (compatible) content.append(breakdown('Observed country/region (% of all invested assets)', exposure.countries),
       breakdown('Observed sectors (% of all invested assets)', exposure.sectors));
     for (const fund of exposure.funds) {
       const card = document.createElement('article'); card.className = 'exposure-fund';

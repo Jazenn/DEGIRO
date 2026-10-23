@@ -110,6 +110,7 @@ def build_exposure(model, sources):
                         else 'Observed lower bound only; missing holdings may overlap too.')
         overlaps.append(item)
     return {'schema_version': 'etf-exposure-v1', 'denominator': 'invested_asset_market_value_excluding_cash',
+            'valuation_cutoff': model.get('cutoff'), 'ledger_version': model.get('ledger_version'),
             'covered_portfolio_fraction': str(covered) if total else None,
             'country_classification': next(iter(country_bases)) if aggregate_countries else None,
             'sector_classification': next(iter(sector_bases)) if aggregate_sectors else None,
