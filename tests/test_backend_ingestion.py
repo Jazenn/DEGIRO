@@ -200,3 +200,38 @@ def test_sweep_notifications_bound_cash_continuity_to_comparable_account_segment
     assert result.accepted
     assert "cash_sweep_continuity_unverified" in result.diagnostics
     assert calculate_cash_balance(result.transactions) == 110
+
+def test_distinct_full_precision_fills_survive_separate_exports_and_repeat_idempotently():
+    from backend.ingestion.service import TransactionIngestionService
+    first = b'Date,Time,Product,ISIN,Quantity,Price,Value EUR,Order Id\n03-01-2026,09:00,Fund,A,0.123456789012345678,1000,-123.456789012345678,o\n'
+    second = first.replace(b'0.123456789012345678', b'0.123456789012345679').replace(b'-123.456789012345678', b'-123.456789012345679')
+    initial = TransactionIngestionService().ingest_csv(first)
+    next_fill = TransactionIngestionService(initial.transactions).ingest_csv(second)
+    assert next_fill.accepted and next_fill.new_rows == 1 and next_fill.duplicates_skipped == 0
+    import pandas as pd
+    combined = pd.concat([initial.transactions, next_fill.transactions], ignore_index=True)
+    repeated = TransactionIngestionService(combined).ingest_csv(second)
+    assert repeated.new_rows == 0 and repeated.duplicates_skipped == 1
+    assert combined['identity_fingerprint'].nunique() == 2
+
+
+def test_equal_precision_account_and_transactions_exports_corroborate_one_fill():
+    from backend.ingestion.service import TransactionIngestionService
+    first = b'Date,Time,Product,ISIN,Quantity,Price,Value EUR,Order Id\n03-01-2026,09:00,Fund,A,0.123456789012345678,1000,-123.456789012345678,o\n'
+    account = b'Date,Time,Product,ISIN,Description,Amount,,Order Id\n03-01-2026,09:00,Fund,A,Buy 0.123456789012345678 @ 1000 EUR,EUR,-123.456789012345678,o\n'
+    initial = TransactionIngestionService().ingest_csv(first)
+    overlap = TransactionIngestionService(initial.transactions).ingest_csv(account)
+    assert overlap.accepted and overlap.new_rows == 0 and overlap.duplicates_skipped == 1
+
+def test_account_exact_fill_identity_and_numeric_spelling_are_stable():
+    from backend.ingestion.service import TransactionIngestionService
+    first=b'Date,Time,Product,ISIN,Description,Amount,,Order Id\n03-01-2026,09:00,Fund,A,Buy 0.123456789012345678 @ 1000 EUR,EUR,-123.456789012345678,o\n'
+    initial=TransactionIngestionService().ingest_csv(first)
+    distinct=first.replace(b'0.123456789012345678',b'0.123456789012345679').replace(b'-123.456789012345678',b'-123.456789012345679')
+    assert TransactionIngestionService(initial.transactions).ingest_csv(distinct).new_rows==1
+    spelling=first.replace(b'@ 1000 EUR',b'@ 1000.00 EUR')
+    assert TransactionIngestionService(initial.transactions).ingest_csv(spelling).duplicates_skipped==1
+    previous=initial.transactions.copy();previous['identity_version']='execution-v2'
+    import pytest
+    with pytest.raises(ValueError,match='legacy_identity_requires_review'):
+        TransactionIngestionService(previous)

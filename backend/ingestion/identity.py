@@ -11,6 +11,7 @@ import json
 import math
 import re
 import pandas as pd
+from backend.ingestion.decimal_fields import economic_fields
 
 
 def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
@@ -27,6 +28,7 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
                 raise ValueError(f"Invalid Transaction {field} at source row {record['csv_row_id'] + 2}")
         record["normalized_date"] = date.strftime("%Y-%m-%d")
         record["source_format"] = source_format
+        record["exact_fields"] = economic_fields(record, source_format)
         record["source_timezone"] = None
         record["asset_kind"] = "unverified"
         record["quote_symbol"] = None
@@ -53,8 +55,8 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
         identity = {
             "date": record["normalized_date"], "time": time, "asset": record["broker_asset_id"],
             "order_id": record["order_id"], "type": record["type"],
-            "amount": str(record["amount"]), "quantity": str(record["quantity"]),
-            "price": str(record["price"]),
+            "amount": record["exact_fields"]["amount"], "quantity": record["exact_fields"]["quantity"],
+            "price": record["exact_fields"]["price"],
         }
         if record["type"] not in ("BUY", "SELL", "FEE"):
             identity["description"] = record["description"]
@@ -63,8 +65,8 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
         occurrence = occurrences[fingerprint]
         record["identity_fingerprint"] = fingerprint
         record["identity_occurrence"] = occurrence
-        record["row_hash"] = hashlib.md5(f"v2:{fingerprint}:{occurrence}".encode()).hexdigest()
-        record["identity_version"] = "execution-v2"
+        record["row_hash"] = hashlib.md5(f"v3:{fingerprint}:{occurrence}".encode()).hexdigest()
+        record["identity_version"] = "execution-v3"
     if records:
         ordered = sorted(records, key=lambda row: (row["normalized_date"], row["time"], -row["csv_row_id"]))
         previous = None
@@ -89,3 +91,4 @@ def finalize_records(records: list[dict], source_format: str) -> pd.DataFrame:
                 for record in group:
                     record["diagnostics"].append("same_time_ordering_requires_review")
     return pd.DataFrame(records)
+
