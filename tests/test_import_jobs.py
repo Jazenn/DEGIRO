@@ -19,3 +19,9 @@ def test_repeated_upload_publishes_one_canonical_cash_flow():
 def test_invalid_upload_cannot_produce_a_generation():
     with pytest.raises(ValueError):
         stage_generation([CSV, b'not,a,supported,file'], settings=SETTINGS, quotes={}, cutoff='2026-01-10T00:00:00Z')
+
+def test_import_pipeline_publishes_explicit_history_contract_without_fabricating_prices():
+    result = stage_generation([CSV], settings=SETTINGS, quotes={}, cutoff='2026-01-10T00:00:00Z')
+    assert result['portfolio_history']['periods'] == {}
+    assert result['portfolio_history']['diagnostics'] == ['observed_daily_history_not_supplied']
+    assert result['portfolio_history']['ledger_version'] == result['ledger_version']

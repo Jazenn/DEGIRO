@@ -1,4 +1,5 @@
 // This entrypoint consumes persisted JSON only. No ledger, provider or privileged browser storage.
+import { renderPerformance } from './performance.js';
 const amount = value => value === null || value === undefined ? 'Unavailable' : `EUR ${value}`;
 function text(tag, value) {
   const node = document.createElement(tag);
@@ -23,22 +24,20 @@ export async function loadSnapshot(destination, request = fetch) {
     const snapshot = result.snapshot;
     const model = snapshot.read_model;
     const ledger = model.ledger;
-    target.replaceChildren(text('h2', snapshot.data_classification === 'synthetic' ? 'Synthetic data · hosting verification only' : 'Private portfolio data'));
-    target.append(text('p', `Generation ${snapshot.generation_id} · published ${snapshot.published_at}`));
-    target.append(text('p', `Current holdings cutoff: ${model.cutoff}. No finalized percentage history is supplied by this view.`));
+    target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data · hosting verification only' : 'Private portfolio data'));
+
     const metrics = document.createElement('section');
     metrics.className = 'shell-summary';
     metrics.setAttribute('aria-label', 'Portfolio summary');
-    for (const [label, key] of [['Holdings market value', 'market_value_eur'], ['Available cash', 'cash_balance_eur'],
-      ['Equity including cash', 'equity_eur'], ['Net external contributions', 'net_external_contributions_eur'],
-      ['All-time net gain', 'net_gain_eur'], ['Gross income', 'gross_income_eur'], ['Income withholding', 'withholding_eur'], ['Net income', 'net_income_eur'], ['Portfolio-only costs', 'portfolio_costs_eur']]) {
+    for (const [label, key] of [['Equity including cash', 'equity_eur'], ['All-time net gain', 'net_gain_eur'], ['Net external contributions', 'net_external_contributions_eur'],
+      ['Holdings market value', 'market_value_eur'], ['Available cash', 'cash_balance_eur'], ['Gross income', 'gross_income_eur'], ['Income withholding', 'withholding_eur'], ['Net income', 'net_income_eur'], ['Portfolio-only costs', 'portfolio_costs_eur']]) {
       const card = document.createElement('article');
       card.append(text('span', label), text('strong', amount(ledger[key])));
       metrics.append(card);
     }
-    target.append(metrics, text('h3', 'Investment result explanation'));
+    target.append(metrics, text('p', `Current holdings cutoff: ${model.cutoff}. Finalized period results have their own cutoff in Performance.`), text('h3', 'Investment result explanation'));
     target.append(text('p', 'All-time net gain is equity including cash minus net external contributions. Completed-sale results remain included after the Asset is sold. Retained gain uses fee-inclusive FIFO recorded cost; realized gain uses actual completed sales. Net income includes withholding. Trade charges are already included in FIFO costs and sale proceeds; portfolio-only costs are deducted separately. Do not subtract recorded charges again.'));
-    target.append(text('p', 'Future fee estimates are separate from these recorded charges. Finalized historical coverage is unavailable in this overview; current holdings are not a historical return series.'));
+    target.append(text('p', `Future fee estimates are separate from these recorded charges. ${model.portfolio_history && Object.keys(model.portfolio_history.periods ?? {}).length ? 'Finalized historical coverage is shown separately in Performance.' : 'Finalized historical coverage is unavailable.'} Current holdings are not a historical return series.`));
     for (const [title, closed] of [['Current holdings', false], ['Completed positions', true]]) {
       const section = document.createElement('section');
       section.setAttribute('aria-label', title);
@@ -79,9 +78,13 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(text('p', model.diagnostics.length ? model.diagnostics.join('; ') : 'No calculation diagnostics reported. Synthetic evidence does not certify private source records.'));
     const details = document.createElement('details');
     details.append(text('summary', 'Read exact values, FIFO lots, charges and observed-price provenance'), text('pre', JSON.stringify(model, null, 2)));
+    details.append(text('p', `Generation ${snapshot.generation_id} | published ${snapshot.published_at}`));
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    const performance = document.querySelector('#performance');
+    if (performance) renderPerformance(performance, snapshot);
+    document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));
   } catch {
     if (previous) {
       const warning = text('p', 'Snapshot read failed. Showing the previous accepted generation; values have not been refreshed.');
