@@ -11,6 +11,7 @@ describe('livePrices service', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     clearPriceCache();
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected external request in test'));
   });
 
   describe('parsePriceString', () => {
@@ -42,8 +43,16 @@ describe('livePrices service', () => {
     it('returns null on invalid ISIN or fetch failure', async () => {
       expect(await fetchTradeGatePrice('INVALID')).toBeNull();
 
-      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('Network error'));
+      vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Network error'));
       expect(await fetchTradeGatePrice('IE00BK5BQT80')).toBeNull();
+    });
+
+    it('uses the fallback quote when the primary provider fails', async () => {
+      vi.spyOn(globalThis, 'fetch')
+        .mockRejectedValueOnce(new Error('Primary provider unavailable'))
+        .mockResolvedValueOnce(new Response(JSON.stringify({ last: '169,64' })));
+
+      expect(await fetchTradeGatePrice('IE00BK5BQT80')).toBe(169.64);
     });
   });
 
