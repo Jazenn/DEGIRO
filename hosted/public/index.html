@@ -2,11 +2,11 @@
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Your portfolio</title><link rel="stylesheet" href="/style.css"></head>
 <body>
-  <header><p>portfolio.</p><h1>Your money, clearly explained.</h1><form action="/auth/logout" method="post"><button type="submit">Sign out</button></form></header>
+  <header><p>portfolio.</p><h1>Your money, clearly explained.</h1><details class="portfolio-tools"><summary aria-label="Manage portfolio">Manage</summary><div><a href="#imports">Import history</a><a href="#targets">Rebalancing targets</a><a href="#exposure">ETF exposure</a></div></details><form action="/auth/logout" method="post"><button type="submit">Sign out</button></form></header>
   <main><p>Your portfolio / Overview. Current holdings and recorded results from one accepted Snapshot.</p>
     <button id="reload" type="button">Read accepted Snapshot</button>
     <p id="refresh-status" role="status"></p>
-    <section id="snapshot" aria-live="polite"><p>Loading accepted Snapshotâ€¦</p></section>
+    <section id="snapshot" aria-live="polite"><p>Loading accepted Snapshot...</p></section>
     <section id="contribution" aria-live="polite"></section>
     <section id="crypto-scale" aria-label="Crypto Scale"><h2>Crypto Scale</h2><div id="crypto-levels"></div><div id="crypto-plan"></div></section>
     <section id="exposure" aria-live="polite"></section>
@@ -14,7 +14,14 @@
     <section id="performance" aria-live="polite"></section>
     <section id="imports" aria-live="polite"></section>
   </main>
-  <nav class="shell-nav" aria-label="Dashboard destinations"><a href="#snapshot">Overview</a><a href="#performance">Performance</a><a href="#exposure">Exposure</a><a href="#recorded-costs">Costs</a><a href="#contribution">Contribute</a><a href="#targets">Targets</a><a href="#imports">Imports</a></nav>
+  <nav class="shell-nav" aria-label="Dashboard destinations">
+    <a href="#snapshot"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3Z"/></svg><span>Overview</span></a>
+    <a href="#performance"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v18h18M7 14l4-5 4 3 6-8"/></svg><span>Performance</span></a>
+    <a href="#recorded-costs"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-3-2-3 2-3-2-3 2ZM9 8h6M9 12h6"/></svg><span>Costs</span></a>
+    <a href="#contribution"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M7 12h10"/></svg><span>Contributions</span></a>
+    <a href="#crypto-scale"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="9" cy="9" r="6"/><path d="M15 9a6 6 0 1 1-6 6M9 6v6M7 7h3a1 1 0 0 1 0 2H8h2a1 1 0 0 1 0 2H7"/></svg><span>Crypto Scale</span></a>
+  </nav>
+  <script type="module" src="/navigation.js"></script>
   <script type="module" src="/refresh.js"></script>
   <script type="module" src="/contribution.js"></script>
   <script type="module" src="/crypto-levels.js"></script>

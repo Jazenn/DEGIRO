@@ -26,6 +26,8 @@ def source_number(value):
 
 def exact(row, field):
     """Read preserved broker text, never round-trip money through binary floats."""
+    if field in (row.get('exact_fields') or {}):
+        return number(row['exact_fields'][field])
     src = row.get('source_record') or {}
     kind = row.get('source_format')
     if kind == 'account':
@@ -166,8 +168,36 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             raw = src.get('autofx kosten') or src.get('autofx fee')
             if raw:
                 inline_fx[row['row_hash']] = abs(source_number(raw))
+    # Match the two representations only with a shared Asset/date/order and an
+    # equal aggregate AutoFX amount. The order groups fills; it is not a fill ID.
+    def fx_key(row):
+        return (row.get('broker_asset_id'), row['normalized_date'], row.get('order_id') or '')
+    def posted_autofx(row):
+        return row['type'] == 'FEE' and bool(re.search(r'\bauto[\s-]*fx\b', row['description'], re.I))
+    inline_groups, posted_groups = {}, {}
     for row in ordered:
-        if row['type'] == 'FEE' and row.get('order_id'):
+        if row['row_hash'] in inline_fx:
+            inline_groups.setdefault(fx_key(row), []).append(row)
+        if posted_autofx(row):
+            posted_groups.setdefault(fx_key(row), []).append(row)
+    matched_inline, matched_postings = set(), set()
+    for key, executions in inline_groups.items():
+        possible = [other for other in posted_groups if other[:2] == key[:2] and (not other[2] or not key[2])]
+        if possible:
+            raise ValueError('ambiguous_autofx_fee_overlap_requires_review')
+        postings = posted_groups.get(key, [])
+        if not postings:
+            continue
+        inline_total = sum((inline_fx[row['row_hash']] for row in executions), ZERO)
+        if any(eur_rate(row, settings) is None for row in postings):
+            raise ValueError('ambiguous_autofx_fee_overlap_requires_review')
+        posted_total = sum((abs(exact(row, 'amount')) * eur_rate(row, settings) for row in postings), ZERO)
+        if inline_total != posted_total:
+            raise ValueError('ambiguous_autofx_fee_overlap_requires_review')
+        matched_inline.update(row['row_hash'] for row in executions)
+        matched_postings.update(row['row_hash'] for row in postings)
+    for row in ordered:
+        if row['type'] == 'FEE' and row.get('order_id') and row['row_hash'] not in matched_postings:
             key = (row.get('broker_asset_id'), row['order_id'])
             fees[key] = fees.get(key, ZERO) + abs(exact(row, 'amount')) * (eur_rate(row, settings) or Decimal(1))
     # Allocate an order's separately posted fees across its executions by quantity.
@@ -186,7 +216,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             diagnostics.append('missing_verified_eur_cash:' + row['row_hash'])
         cash += amount
         fx_cost = inline_fx.get(row['row_hash'], ZERO)
-        if fx_cost:
+        if fx_cost and row['row_hash'] not in matched_inline:
             cash -= fx_cost
             charges.append(Charge(row['row_hash'], row['normalized_date'], 'recorded_fx', fx_cost, 'trade'))
         typ = row['type']
@@ -202,7 +232,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             allocation = 'trade' if key in quantities and key[1] else 'portfolio'
             if allocation == 'portfolio':
                 costs += abs(amount)
-            charges.append(Charge(row['row_hash'], row['normalized_date'], 'recorded_fee', abs(amount), allocation))
+            charges.append(Charge(row['row_hash'], row['normalized_date'], 'recorded_fx' if posted_autofx(row) else 'recorded_fee', abs(amount), allocation))
         if row.get('action') not in ('BUY', 'SELL'):
             continue
         identity = row.get('broker_asset_id') or row.get('isin') or row['raw_product']
@@ -256,3 +286,6 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
         diagnostics.append('equity_bridge_does_not_reconcile')
         gain = attributed = None
     return Ledger('ledger-v1', tuple(positions), tuple(charges), cash if cash_known else None, external, market, equity, gain, attributed, income, withholding, income-withholding, costs, tuple(sorted(set(diagnostics))))
+
+
+
