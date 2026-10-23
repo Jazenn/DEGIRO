@@ -84,6 +84,7 @@ export async function loadSnapshot(destination, request = fetch) {
     destination.dataset.generation = snapshot.generation_id;
     const performance = document.querySelector('#performance');
     if (performance) renderPerformance(performance, snapshot);
+    document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));
   } catch {
     if (previous) {
       const warning = text('p', 'Snapshot read failed. Showing the previous accepted generation; values have not been refreshed.');

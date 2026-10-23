@@ -8,7 +8,7 @@ const money = value => value === null || value === undefined ? 'Unavailable' : `
 export function renderPerformance(target, snapshot) {
   const history = snapshot.read_model.portfolio_history;
   target.replaceChildren(element('h2', 'What changed over time?'));
-  target.append(element('p', `Generation ${snapshot.generation_id}. Finalized daily history is separate from current intraday holdings.`));
+  target.append(element('p', 'Finalized daily history is separate from current intraday holdings.'));
   if (!history || !Object.keys(history.periods ?? {}).length) {
     target.append(element('p', `Observed history unavailable. ${(history?.diagnostics ?? ['Verified historical prices and coverage have not been supplied.']).join('; ')}`));
     return;
@@ -49,6 +49,7 @@ export function renderPerformance(target, snapshot) {
     for (const asset of period.assets) result.append(element('p', `${asset.symbol ?? asset.broker_asset_id} | retained gain change ${money(asset.retained_gain_change_eur)} | realized gain change ${money(asset.realized_gain_change_eur)}`));
     const details = document.createElement('details');
     details.append(element('summary', 'Observed equity and dated price sources'));
+    details.append(element('p', `Generation ${snapshot.generation_id} | history settings ${history.settings_version} | ledger ${history.ledger_version}`));
     for (const point of points) {
       details.append(element('p', `${point.cutoff} | equity ${money(point.equity_eur)}`));
       for (const [symbol, quote] of Object.entries(point.observed_prices)) details.append(element('p', `${symbol} | ${quote.provider} | observed ${quote.observed_at} | retrieved ${quote.retrieved_at ?? 'unknown'} | ${quote.currency} | ${quote.adjustment_basis}`));

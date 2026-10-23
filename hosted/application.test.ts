@@ -74,7 +74,7 @@ test('HEAD responses have no body and owner-only write routes require the config
   expect((await app()(new Request(env.APP_ORIGIN + '/app.js', { headers }), env)).headers.get('cache-control')).toBe('private, no-store');
 });
 
-test('accepted history must share ledger/settings versions and completed UTC cutoff', async () => {
+test('accepted history must share ledger version and have completed UTC cutoff', async () => {
   const original = JSON.parse(await readFile(new URL('./synthetic.fixture', import.meta.url), 'utf8'));
   const request = new Request(env.APP_ORIGIN + '/api/snapshot', { headers: { Cookie: await token() } });
   for (const history of [
@@ -84,4 +84,16 @@ test('accepted history must share ledger/settings versions and completed UTC cut
     const store = new NeonSnapshotStore(async () => [{ generation_id: 'broken-history', published_at: '2026-10-22T00:00:00Z', data_classification: 'synthetic', read_model: { ...original, portfolio_history: history } }]);
     expect((await app(() => store.readAccepted())(request, env)).status).toBe(503);
   }
+});
+
+
+test('finalized history retains its own financial settings version after target-only edits', async () => {
+  const model = JSON.parse(await readFile(new URL('./synthetic.fixture', import.meta.url), 'utf8'));
+  model.portfolio_history = { schema_version: 'observed-history-v1', ledger_version: model.ledger_version, settings_version: 'original-financial-evidence', cutoff: '2026-01-11T00:00:00Z', periods: {}, diagnostics: ['missing_observed_history'] };
+  model.settings_version = 'new-target-settings';
+  const row = { generation_id: 'independent-cutoffs', published_at: '2026-10-22T00:00:00Z', data_classification: 'synthetic', read_model: model };
+  const store = new NeonSnapshotStore(async () => [row]);
+  const request = new Request(env.APP_ORIGIN + '/api/snapshot', { headers: { Cookie: await token() } });
+  const response = await app(() => store.readAccepted())(request, env);
+  expect(await response.json()).toEqual({ state: 'ready', snapshot: row });
 });

@@ -7,7 +7,7 @@ const strings = (value: unknown) => Array.isArray(value) && value.every(item => 
 export function validHistory(history: unknown, model: RecordValue): boolean {
   if (history === undefined) return true;
   if (!object(history) || history.schema_version !== 'observed-history-v1'
-      || history.ledger_version !== model.ledger_version || history.settings_version !== model.settings_version
+      || history.ledger_version !== model.ledger_version || typeof history.settings_version !== 'string' || !history.settings_version
       || !midnight(history.cutoff) || Date.parse(history.cutoff) > Date.parse(String(model.cutoff)) || !object(history.periods)) return false;
   if (!Object.keys(history.periods).length) return strings(history.diagnostics);
   if (Object.keys(history.periods).sort().join(',') !== ['ALL', 'YTD', '1Y', '3M', '1M', '1W'].sort().join(',')) return false;
