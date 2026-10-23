@@ -61,6 +61,8 @@ def test_unexpected_gap_withholds_period_instead_of_bridging_or_zero():
     assert period['state'] == 'unavailable'
     assert period['points'][2]['equity_eur'] is None
     assert 'attribution' not in period
+    assert period['estimated_return']['state'] == 'unavailable'
+    assert period['estimated_return']['percent'] is None
 
 
 def test_market_closure_preserves_original_price_date_but_requires_calendar_evidence():

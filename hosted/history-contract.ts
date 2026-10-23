@@ -15,6 +15,14 @@ export function validHistory(history: unknown, model: RecordValue): boolean {
     if (!object(period) || !['ready', 'unavailable'].includes(String(period.state))
         || !midnight(period.start) || period.end !== history.cutoff || !midnight(period.requested_start)
         || typeof period.shorter_coverage !== 'boolean' || !strings(period.diagnostics) || !Array.isArray(period.points)) return false;
+    if (period.estimated_return !== undefined) {
+      const estimate = period.estimated_return;
+      if (!object(estimate) || !['ready', 'unavailable'].includes(String(estimate.state))
+          || estimate.method !== 'geometrically_linked_daily_modified_dietz' || estimate.start !== period.start || estimate.cutoff !== period.end
+          || !strings(estimate.diagnostics) || !Array.isArray(estimate.daily)) return false;
+      if (estimate.state === 'ready' ? !decimal(estimate.percent) : estimate.percent !== null) return false;
+      if (period.state !== 'ready' && estimate.state === 'ready') return false;
+    }
     if (period.state === 'unavailable') return period.attribution === undefined;
     if (!object(period.attribution) || !['retained_gain_change_eur', 'realized_gain_change_eur', 'net_income_eur', 'portfolio_costs_eur', 'net_external_flows_eur', 'net_gain_eur'].every(key => decimal(period.attribution && (period.attribution as RecordValue)[key]))
         || !Array.isArray(period.assets) || !period.assets.every(asset => object(asset) && typeof asset.broker_asset_id === 'string' && decimal(asset.retained_gain_change_eur) && decimal(asset.realized_gain_change_eur))) return false;
