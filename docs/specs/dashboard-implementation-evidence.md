@@ -18,7 +18,7 @@ The verified implementation now includes daily history and supported returns, cu
 
 After integrating accepted plans, 124 Python tests and 82 hosted tests passed, with hosted typecheck, the frontend production build and the Worker dry-run build. The latest previously pushed main batch passed remote CI. Repeat synthetic Chrome checks at 390px and 1440px passed navigation bounds, empty personal plan defaults, disabled acceptance before review, target-conflict recovery and retention of the previous accepted Snapshot after a failed read.
 
-An isolated local PostgreSQL engine executed the actual accepted-plan function successfully: identical retries return the original result, operation reuse and stale versions conflict, existing plans require replacement, and BTC acceptance leaves ETH unchanged. This uses synthetic records and one connection; it does not demonstrate Neon concurrency. The same SQL checks reproduced a valuation-publication operator-precedence defect, which is being corrected before the next verified push.
+An isolated local PostgreSQL engine executed the actual accepted-plan function successfully: identical retries return the original result, operation reuse and stale versions conflict, existing plans require replacement, and BTC acceptance leaves ETH unchanged. The SQL checks reproduced and corrected a valuation-publication operator-precedence defect. Two permanent PostgreSQL regressions now cover publication guards, immutable ledger facts, plan acceptance and restricted Worker permissions, and run in CI using a development-only dependency. These checks use synthetic records and one connection; they do not demonstrate Neon concurrency.
 
 ## Outstanding release gates
 
