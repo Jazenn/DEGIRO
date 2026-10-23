@@ -25,7 +25,7 @@ export async function loadSnapshot(destination, request = fetch) {
     const snapshot = result.snapshot;
     const model = snapshot.read_model;
     const ledger = model.ledger;
-    target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data Â· hosting verification only' : 'Private portfolio data'));
+    target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data  |  hosting verification only' : 'Private portfolio data'));
 
     const metrics = document.createElement('section');
     metrics.className = 'shell-summary';
@@ -75,7 +75,7 @@ export async function loadSnapshot(destination, request = fetch) {
     if (!Object.keys(model.observed_prices ?? {}).length) target.append(text('p', 'Observed price provenance unavailable.'));
     target.append(text('p', [...new Set([...(model.diagnostics ?? []), ...(ledger.diagnostics ?? [])])].join('; ') || 'No coverage diagnostics reported. This does not independently verify complete source history.'));
     target.append(text('h3', 'Versions and coverage'));
-    target.append(text('p', `Ledger ${model.ledger_version} Â· financial settings ${model.settings_version} | targets ${model.rebalancing_targets_version ?? 'Unavailable'} Â· calculation ${model.calculation_version}`));
+    target.append(text('p', `Ledger ${model.ledger_version} | financial settings ${model.settings_version} | targets ${model.rebalancing_targets_version ?? 'Unavailable'} | calculation ${model.calculation_version}`));
     target.append(text('p', model.diagnostics.length ? model.diagnostics.join('; ') : 'No calculation diagnostics reported. Synthetic evidence does not certify private source records.'));
     const details = document.createElement('details');
     details.append(text('summary', 'Read exact values, FIFO lots, charges and observed-price provenance'), text('pre', JSON.stringify(model, null, 2)));
