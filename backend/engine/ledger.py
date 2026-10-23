@@ -216,6 +216,9 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
         fee = fees.get(key, ZERO) * qty / quantities[key] if key[1] else ZERO
         fee += fx_cost
         cost_known = rate is not None and amount != ZERO
+        if not cost_known:
+            cash_known = False
+            diagnostics.append('missing_trade_cash_or_cost:' + row['row_hash'])
         if typ == 'BUY':
             state['lots'].append(Lot(row['row_hash'], row['normalized_date'], qty, abs(amount) + fee if cost_known else None))
         else:
@@ -228,6 +231,8 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
                 if taken < lot.quantity:
                     state['lots'].insert(0, Lot(lot.transaction_id, lot.acquired_at, lot.quantity-taken, lot.cost_eur-consumed if consumed is not None else None))
                 remaining -= taken
+            if remaining:
+                raise ValueError('sale_quantity_exceeds_known_inventory:' + identity)
             gain = amount-fee-disposed if cost_known and disposed is not None and remaining == 0 else None
             state['realized'] = state['realized'] + gain if state['realized'] is not None and gain is not None else None
             if gain is None:
@@ -245,6 +250,8 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
     equity = cash+market if cash_known and market is not None else None
     gain = equity-equity_start-external if verified and cutoff_eligible and equity is not None and cost_complete else None
     attributed = sum((p.held_gain_eur+p.realized_gain_eur for p in positions), ZERO)+income-withholding-costs if verified and cutoff_eligible and cost_complete and all(p.held_gain_eur is not None and p.realized_gain_eur is not None for p in positions) else None
+    if attributed is None:
+        gain = None
     if gain is not None and attributed is not None and abs(gain-attributed) > Decimal('0.00000001'):
         diagnostics.append('equity_bridge_does_not_reconcile')
         gain = attributed = None

@@ -166,3 +166,20 @@ def test_empty_ledger_verified_cash_baseline_needs_no_source_timezone():
         ledger_version='v', settings_version='s', cutoff='2026-01-11T00:00:00Z').ledger
     assert (result.net_gain_eur, result.attributed_gain_eur) == (D('0'), D('0'))
     assert not any('timezone' in diagnostic for diagnostic in result.diagnostics)
+
+
+def test_sale_beyond_known_inventory_rejects_generation():
+    import pytest
+    with pytest.raises(ValueError, match='sale_quantity_exceeds_known_inventory'):
+        report(['02-01-2026,09:00,,,Deposit,EUR,1000,',
+                '03-01-2026,09:00,Fund,A,Buy 1 @ 1000 EUR,EUR,-1000,o',
+                '04-01-2026,09:00,Fund,A,Sell 2 @ 1100 EUR,EUR,2200,s'])
+
+
+def test_missing_purchase_posting_withholds_dependent_equity_and_total_gain():
+    ledger = report(['02-01-2026,09:00,,,Deposit,EUR,1000,',
+                     '03-01-2026,09:00,Fund,A,Buy 1 @ 1000 EUR,EUR,0,o'])
+    assert ledger.positions[0].market_value_eur == D('1100')
+    assert ledger.positions[0].retained_cost_eur is None
+    assert (ledger.cash_balance_eur, ledger.equity_eur,
+            ledger.net_gain_eur, ledger.attributed_gain_eur) == (None, None, None, None)
