@@ -46,9 +46,12 @@ export function cryptoStageUI(root, request = fetch, clock = () => Date.now()) {
       for (const stage of value.stages) {
         const article = document.createElement('article');
         article.append(text('h5', `Stage ${stage.stage_id}`), text('p', `${stage.quantity} units; accepted level EUR ${stage.level_eur}; estimated gross proceeds at the current reference price EUR ${stage.gross_proceeds_eur}.`));
-        if (stage.estimated_gain_eur != null && stage.profit_status !== 'profit_unverified') {
+        if (stage.estimated_gain_eur != null && ['estimated_profit_verified_inputs','estimated_loss'].includes(stage.profit_status)) {
           article.append(text('p', `${stage.profit_status === 'estimated_loss' ? 'Estimated loss' : 'Estimated profit with verified inputs'}: EUR ${stage.estimated_gain_eur}. Gain range EUR ${stage.gain_lower_eur} to ${stage.gain_upper_eur}.`));
-        } else article.append(text('p', 'Profit unverified. ' + (reasons[stage.diagnostic] ?? 'The cost and fee bounds do not establish a positive net gain.')));
+        } else {
+          article.append(text('p', 'Profit unverified. ' + (reasons[stage.diagnostic] ?? 'The cost and fee bounds do not establish a positive net gain.')));
+          if (stage.estimated_gain_eur != null) article.append(text('p', `Center estimate EUR ${stage.estimated_gain_eur}; uncertainty range EUR ${stage.gain_lower_eur} to ${stage.gain_upper_eur}.`));
+        }
         if (stage.net_proceeds_lower_eur != null) article.append(text('p', `Estimated net proceeds EUR ${stage.net_proceeds_lower_eur} to ${stage.net_proceeds_upper_eur}; FIFO cost EUR ${stage.canonical_cost_lower_eur} to ${stage.canonical_cost_upper_eur}.`));
         if (stage.fee_evidence) article.append(text('p', `Sale fees ${stage.fee_status}: ${stage.fee_evidence}. Spread allowance: ${stage.spread_evidence}.`));
         state.output.append(article);

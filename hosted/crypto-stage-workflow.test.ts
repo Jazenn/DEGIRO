@@ -28,3 +28,21 @@ test('all reached stages use current proceeds and expire without altering the ac
   expect(request).toHaveBeenCalledTimes(2);
   cleanup(); vi.useRealTimers();
 });
+
+test('rounding-boundary estimates never receive a verified-profit label', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(Date.parse('2026-10-23T12:00:00Z'));
+  document.body.innerHTML='<div id="stages"></div>';
+  const request=async (_url:string,init:RequestInit)=>{
+    const {coin}=JSON.parse(String(init.body));
+    return Response.json(coin==='ETH-EUR'?{state:'unavailable',stages:[]}:{state:'ready',
+      quote:{price_eur:'500',observed_at:'2026-10-23T11:59:00Z',provider:'synthetic'},quote_eligible_until:'2026-10-23T12:04:00Z',
+      available_tactical_quantity:'1',pending_quantity:'0',stages:[{stage_id:'boundary',quantity:'1',level_eur:'400',gross_proceeds_eur:'500',
+        estimated_gain_eur:'0.00',gain_lower_eur:'-0.01',gain_upper_eur:'0.01',profit_status:'profit_unverified_rounding_boundary'}]});
+  };
+  const root=document.querySelector('#stages')!;
+  const cleanup=cryptoStageUI(root,request);
+  await vi.advanceTimersByTimeAsync(0);
+  expect(root.textContent).toContain('Profit unverified');
+  expect(root.textContent).not.toContain('Estimated profit with verified inputs');
+  cleanup();vi.useRealTimers();
+});
