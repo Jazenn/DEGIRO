@@ -10,16 +10,15 @@ export class ImportStore {
   }
   async submit(content: Uint8Array) {
     if (!content.length || content.length > maxBytes) throw Error('invalid_upload_size');
+    let text: string;
+    try { text = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(content); }
+    catch { throw Error('invalid_upload_encoding'); }
     const digest = await crypto.subtle.digest('SHA-256', Uint8Array.from(content).buffer);
     const hash = Array.from(new Uint8Array(digest), b => b.toString(16).padStart(2, '0')).join('');
-    const pieces: string[] = [];
-    for (let offset = 0; offset < content.length; offset += 24576)
-      pieces.push(btoa(String.fromCharCode(...content.subarray(offset, offset + 24576))));
-    const encoded = pieces.join('');
     // One statement makes repeated submissions share the same durable identity.
     return this.query(`INSERT INTO hosted_import_jobs(job_id, content_hash, csv_content)
-      VALUES($1,$2,decode($3,'base64')) ON CONFLICT(content_hash) DO UPDATE SET content_hash=excluded.content_hash
-      RETURNING ${columns}`, [crypto.randomUUID(), hash, encoded]);
+      VALUES($1,$2,convert_to($3,'UTF8')) ON CONFLICT(content_hash) DO UPDATE SET content_hash=excluded.content_hash
+      RETURNING ${columns}`, [crypto.randomUUID(), hash, text]);
   }
   async retry(id: string) {
     // Processing jobs can be recovered only after the runner's ten-minute timeout.
@@ -63,5 +62,9 @@ export async function handleImports(request: Request, env: ImportEnvironment, st
       return Response.json({ jobs }, { status: jobs.length ? 202 : 409 });
     }
     return Response.json({ error: 'method_not_allowed' }, { status: 405 });
-  } catch { return Response.json({ error: 'imports_unavailable' }, { status: 503 }); }
+  } catch (error) {
+    if (error instanceof Error && error.message === 'invalid_upload_encoding')
+      return Response.json({ error: 'utf8_required' }, { status: 400 });
+    return Response.json({ error: 'imports_unavailable' }, { status: 503 });
+  }
 }
