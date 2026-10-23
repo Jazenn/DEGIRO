@@ -1,3 +1,4 @@
+import { createContribution, neonContributionStore } from './contribution-store';
 import { createRefresh, type RefreshStore } from './refresh';
 import { neonRefreshStore } from './valuation-store';
 import { fetchQuote } from './quote-provider';
@@ -18,9 +19,11 @@ export function workerApplication(options: { authQuery?: AuthQuery; refreshStore
       }
       return refresh();
     },
+    contribution: (value, env) => createContribution(neonContributionStore(env.DATABASE_URL))(value),
     handleImports,
     targets: env => neonTargetsStore(env.DATABASE_URL),
     readAccepted: env => neonSnapshotStore(env.DATABASE_URL).readAccepted(),
   });
 }
 export default { fetch: workerApplication() };
+

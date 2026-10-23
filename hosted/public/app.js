@@ -82,6 +82,8 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    destination.acceptedSnapshot = snapshot;
+    document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));
     return true;
   } catch {
     if (previous) {
@@ -93,6 +95,7 @@ export async function loadSnapshot(destination, request = fetch) {
   } finally { clearTimeout(deadline); }
   return false;
 }
+
 
 
 

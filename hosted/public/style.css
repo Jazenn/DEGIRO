@@ -29,3 +29,12 @@ h1 { font-size:clamp(28px,4vw,42px); letter-spacing:-1.3px; }
 .shell-nav a { padding:8px; text-align:center; font-size:14px; }
 @media(max-width:640px) { header { flex-wrap:wrap; } header > p { margin-block:0; } header > form { margin-left:auto; } header > h1 { flex-basis:100%; order:1; margin-block:.5rem 0; } }
 @media(max-width:640px) { body {padding:.5rem .5rem 100px;} header {align-items:flex-start;padding:16px;} main {padding:16px;} .shell-summary {grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;} .shell-summary article:first-child {grid-column:1/-1;} #snapshot .shell-summary article {padding:18px;} #snapshot > section:not(.shell-summary) {padding:18px;} .shell-nav {bottom:0; width:100%;border-radius:14px 14px 0 0;} }
+
+/* Keep all destinations reachable on a phone as workflows are added. */
+.shell-nav { overflow-x:auto; justify-content:flex-start; }
+.shell-nav a { flex:0 0 auto; }
+#contribution { padding:24px; margin-block:24px; background:white; border:1px solid #d0dce7; border-radius:18px; }
+#contribution table { width:100%; border-collapse:collapse; }
+#contribution th, #contribution td { padding:10px; border-bottom:1px solid #d0dce7; text-align:left; }
+#contribution input { min-height:44px; max-width:100%; }
+#contribution form { display:flex; flex-wrap:wrap; align-items:end; gap:12px; }
