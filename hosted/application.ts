@@ -22,6 +22,7 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  cryptoPlans?(method: string, value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoLevels?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
   contribution?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
   refresh?(env: Environment): Promise<Record<string, unknown>>;
@@ -109,6 +110,24 @@ export function createApplication(dependencies: Dependencies) {
       } catch (error) {
         return error instanceof Error && ['invalid_request','invalid_coin','invalid_percentiles'].includes(error.message)
           ? json({ error: error.message }, 400) : json({ error: 'crypto_levels_unavailable' }, 503);
+      }
+    }
+    if (path === '/api/crypto/plans' || path === '/api/crypto/plans/preview') {
+      if (path.endsWith('/preview') && request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
+      if (!['GET','POST'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+      if (request.method === 'POST' && request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try {
+        if (!dependencies.cryptoPlans) throw Error('unavailable');
+        let value: unknown = new URL(request.url).searchParams.get('coin');
+        if (request.method === 'POST') {
+          try { const body = await request.text(); if (body.length > 10000) throw Error(); value = JSON.parse(body); }
+          catch { return json({ error: 'invalid_crypto_plan' }, 400); }
+        }
+        const result = await dependencies.cryptoPlans(path.endsWith('/preview') ? 'PREVIEW' : request.method, value, env);
+        return json(result, ['conflict','replacement_required'].includes(String(result.state)) ? 409 : result.state === 'unavailable' ? 503 : 200);
+      } catch (error) {
+        const known = ['invalid_crypto_plan','invalid_percentiles','reviewed_sale_quantity_terms_required','verified_crypto_holding_required','positive_tactical_quantity_required','stage_below_reviewed_minimum'];
+        return error instanceof Error && known.includes(error.message) ? json({ error: error.message }, 400) : json({ error: 'crypto_plan_unavailable' }, 503);
       }
     }
     if (path === '/api/contribution') {
