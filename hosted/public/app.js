@@ -1,3 +1,4 @@
+import { renderExposure } from './exposure.js';
 // This entrypoint consumes persisted JSON only. No ledger, provider or privileged browser storage.
 import { renderPerformance } from './performance.js';
 const amount = value => value === null || value === undefined ? 'Unavailable' : `EUR ${value}`;
@@ -82,6 +83,7 @@ export async function loadSnapshot(destination, request = fetch) {
     target.append(details);
     destination.replaceChildren(...target.childNodes);
     destination.dataset.generation = snapshot.generation_id;
+    renderExposure(document.querySelector('#exposure'), snapshot);
     const performance = document.querySelector('#performance');
     if (performance) renderPerformance(performance, snapshot);
     document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));

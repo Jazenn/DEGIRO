@@ -1,4 +1,4 @@
-# Private CSV import runner
+# Private CSV import runner (operator deployment guide)
 
 The authenticated Worker stages private UTF-8 CSV bytes in `hosted_import_jobs`.
 The Python Actions workflow processes the durable queue hourly while the owner's
