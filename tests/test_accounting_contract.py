@@ -112,7 +112,7 @@ def test_verified_dated_fx_converts_actual_cash_and_lot_cost():
     frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n03-01-2026,09:00,Fund,A,Buy 1 @ 1000 USD,USD,-1000,o\n')
     row_id = frame.iloc[0]['row_hash']
     result = calculate_portfolio(frame, observed_prices={'ETF': ObservedPrice(1000, '2026-01-10T00:00:00Z', 'synthetic')},
-        settings={'cost_history': {'verified': True, 'evidence': 'complete synthetic history'}, 'fx_evidence': {row_id: {'verified': True, 'date': '2026-01-03', 'currency': 'USD', 'eur_per_unit': '0.9', 'provider': 'synthetic'}},
+        settings={'source_timezone': {'name': 'UTC', 'verified': True, 'evidence': 'synthetic'}, 'cost_history': {'verified': True, 'evidence': 'complete synthetic history'}, 'fx_evidence': {row_id: {'verified': True, 'date': '2026-01-03', 'currency': 'USD', 'eur_per_unit': '0.9', 'provider': 'synthetic'}},
                   'asset_evidence': {'A': {'verified': True, 'evidence': 'synthetic', 'symbol': 'ETF', 'kind': 'ETF'}}},
         ledger_version='v', settings_version='s', cutoff='2026-01-11T00:00:00Z')
     assert result.ledger.positions[0].retained_cost_eur == D('900')
@@ -139,3 +139,30 @@ def test_mixed_export_overlap_does_not_deduct_inline_and_separate_fee_twice():
     result = calculate_portfolio(pd.concat([account.transactions, trades.transactions]), observed_prices={}, settings={}, ledger_version='v', settings_version='s', cutoff='2026-01-11T00:00:00Z')
     assert result.ledger.positions[0].retained_cost_eur == D('1005')
     assert len(result.ledger.charges) == 1
+
+
+def test_unverified_source_timezone_withholds_every_cutoff_dependent_gain():
+    ledger = report(['02-01-2026,09:00,,,Deposit,EUR,1000,',
+                     '03-01-2026,09:00,Fund,A,Buy 1 @ 1000 EUR,EUR,-1000,o',
+                     '04-01-2026,09:00,Fund,A,Sell 0.5 @ 1100 EUR,EUR,550,s'], source_timezone={})
+    position = ledger.positions[0]
+    assert position.retained_cost_eur == D('500')
+    assert (position.held_gain_eur, position.realized_gain_eur,
+            ledger.attributed_gain_eur, ledger.net_gain_eur) == (None, None, None, None)
+
+
+def test_unverified_opening_baseline_withholds_total_attribution_but_keeps_known_lot_gain():
+    ledger = report(['03-01-2026,09:00,Fund,A,Buy 1 @ 1000 EUR,EUR,-1000,o'], opening_baseline={})
+    assert ledger.positions[0].held_gain_eur == D('100')
+    assert ledger.net_gain_eur is None
+    assert ledger.attributed_gain_eur is None
+
+
+def test_empty_ledger_verified_cash_baseline_needs_no_source_timezone():
+    import pandas as pd
+    result = calculate_portfolio(pd.DataFrame(), observed_prices={},
+        settings={'opening_baseline': {'at': '2026-01-01T00:00:00Z', 'cash_eur': '100', 'equity_eur': '100', 'verified': True, 'evidence': 'synthetic'},
+                  'cost_history': {'verified': True, 'evidence': 'empty synthetic ledger'}},
+        ledger_version='v', settings_version='s', cutoff='2026-01-11T00:00:00Z').ledger
+    assert (result.net_gain_eur, result.attributed_gain_eur) == (D('0'), D('0'))
+    assert not any('timezone' in diagnostic for diagnostic in result.diagnostics)

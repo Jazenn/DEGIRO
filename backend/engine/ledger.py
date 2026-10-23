@@ -120,16 +120,16 @@ class Ledger:
     diagnostics: tuple[str, ...]
 
 
-def calculate_ledger(frame, prices, settings, cutoff):
+def calculate_ledger(frame, prices, settings, cutoff, *, cutoff_eligible):
     with localcontext() as ctx:
         ctx.prec = 40
-        return _calculate(frame, prices, settings, cutoff)
+        return _calculate(frame, prices, settings, cutoff, cutoff_eligible)
 
 
-def _calculate(frame, prices, settings, cutoff):
+def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
     diagnostics = []
     timezone = settings.get('source_timezone', {})
-    if not (timezone.get('verified') is True and timezone.get('evidence')):
+    if not cutoff_eligible:
         diagnostics.append('source_timezone_unverified:cutoff_eligibility_unavailable')
     cost_evidence = settings.get('cost_history', {})
     cost_complete = cost_evidence.get('verified') is True and bool(cost_evidence.get('evidence'))
@@ -240,11 +240,11 @@ def _calculate(frame, prices, settings, cutoff):
         value = qty*number(quote.price_eur) if quote else ZERO if qty == 0 else None
         if value is None:
             diagnostics.append('missing_observed_value:' + identity)
-        positions.append(Position(identity, state['symbol'], state['kind'], qty, tuple(state['lots']), cost, 'verified_complete' if cost_complete else 'recorded_only_incomplete', value, value-cost if value is not None and cost is not None and cost_complete else None, state['realized'] if cost_complete else None))
+        positions.append(Position(identity, state['symbol'], state['kind'], qty, tuple(state['lots']), cost, 'verified_complete' if cost_complete else 'recorded_only_incomplete', value, value-cost if value is not None and cost is not None and cost_complete and cutoff_eligible else None, state['realized'] if cost_complete and cutoff_eligible else None))
     market = sum((p.market_value_eur for p in positions), ZERO) if all(p.market_value_eur is not None for p in positions) else None
     equity = cash+market if cash_known and market is not None else None
-    gain = equity-equity_start-external if verified and equity is not None and cost_complete else None
-    attributed = sum((p.held_gain_eur+p.realized_gain_eur for p in positions), ZERO)+income-withholding-costs if all(p.held_gain_eur is not None and p.realized_gain_eur is not None for p in positions) else None
+    gain = equity-equity_start-external if verified and cutoff_eligible and equity is not None and cost_complete else None
+    attributed = sum((p.held_gain_eur+p.realized_gain_eur for p in positions), ZERO)+income-withholding-costs if verified and cutoff_eligible and cost_complete and all(p.held_gain_eur is not None and p.realized_gain_eur is not None for p in positions) else None
     if gain is not None and attributed is not None and abs(gain-attributed) > Decimal('0.00000001'):
         diagnostics.append('equity_bridge_does_not_reconcile')
         gain = attributed = None

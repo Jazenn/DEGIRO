@@ -98,9 +98,9 @@ def calculate_portfolio(
     if "amount_currency" in frame and (~frame["amount_currency"].fillna("").isin(["", "EUR"])).any():
         if any(eur_rate(row, settings) is None for row in frame.to_dict("records") if row.get("amount_currency") not in ("", "EUR")):
             raise ValueError("non_eur_cash_requires_dated_fx: cannot publish an EUR cash balance")
+    timezone = settings.get("source_timezone", {})
+    verified_timezone = timezone.get("verified") is True and bool(timezone.get("evidence"))
     if not frame.empty:
-        timezone = settings.get("source_timezone", {})
-        verified_timezone = timezone.get("verified") is True and bool(timezone.get("evidence"))
         if not verified_timezone:
             diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
         times = frame.get("time", pd.Series("00:00", index=frame.index))
@@ -125,7 +125,7 @@ def calculate_portfolio(
         for symbol in holdings["symbol"]:
             if symbol not in prices:
                 diagnostics.append(f"missing_observed_price:{symbol}:legacy_cost_valuation")
-    ledger = calculate_ledger(frame, observed_prices, settings, end)
+    ledger = calculate_ledger(frame, observed_prices, settings, end, cutoff_eligible=transactions.empty or verified_timezone)
     legacy_cash_frame = frame.copy()
     if not frame.empty:
         legacy_cash_frame["amount"] = [float(number(row["amount"]) * (eur_rate(row, settings) or Decimal(1))) for row in frame.to_dict("records")]
