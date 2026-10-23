@@ -14,3 +14,4 @@ dist/
 .dev.vars*
 .wrangler/
 !hosted/tsconfig.json
+.neon
