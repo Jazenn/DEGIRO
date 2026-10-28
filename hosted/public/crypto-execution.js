@@ -33,6 +33,7 @@ export function cryptoExecutionUI(root, request = fetch) {
     const note = field('Private note (optional)', 'note'); note.type = 'text'; note.maxLength = 1000;
     const reportButton = node('button', 'Report sale as pending'); reportButton.type = 'submit';
     const matchButton = node('button', 'Match selected execution'); matchButton.type = 'button'; form.append(reportButton, matchButton);
+    const cancelButton=node('button','Cancel pending remainder');cancelButton.type='button';form.append(cancelButton);
     const controls = () => form.querySelectorAll('input,select,button').forEach(input => { input.disabled = state.busy || !state.context; });
     function options(select, label, rows) {
       const previous = select.value; select.replaceChildren(); const empty = node('option', label); empty.value = ''; select.append(empty);
@@ -62,7 +63,7 @@ export function cryptoExecutionUI(root, request = fetch) {
         } else records.append(node('p', 'Allocation recorded; actual gain remains unverified.'));
       }
       options(stage, 'Choose an accepted stage', (value.plan?.stages ?? []).map(row => [row.stage_id, `${row.stage_id} (${row.quantity} original units)`]));
-      options(report, 'Create and match a report together', (value.reports ?? []).filter(row => row.status !== 'completed').map(row => [row.report_id, `${row.report_id}: pending ${row.pending_quantity}`]));
+      options(report, 'Create and match a report together', (value.reports ?? []).filter(row => (!row.plan_id || row.plan_id===value.plan?.plan_id) && ['open','pending'].includes(row.status) && Number(row.pending_quantity)>0).map(row => [row.report_id, `${row.report_id}: pending ${row.pending_quantity}`]));
       options(execution, 'Choose an actual imported execution', executions.filter(row => row.eligible === true).map(row => [row.execution_id, `${row.execution_id}: ${row.available_quantity} available units` ]));
     }
     async function read() {
@@ -81,10 +82,12 @@ export function cryptoExecutionUI(root, request = fetch) {
       finally { clearTimeout(deadline); if (!disposed && epoch === state.epoch) controls(); }
     }
     async function submit(action) {
-      if (state.busy || !state.context || !form.reportValidity()) return;
+      if (state.busy || !state.context || (action!=='cancel'&&!form.reportValidity())) return;
+      if(action==='cancel'&&(!report.value||note.value.trim().length<10)){status.textContent='Explain the cancellation in at least ten characters and select the pending report. Matched executions will remain recorded.';return;}
       if (action === 'match' && !execution.value) { status.textContent = 'Choose an actual imported execution before matching. No sale was matched.'; return; }
       const intent = { action, coin, plan_id: state.context.plan?.plan_id, stage_id: stage.value, quantity: quantity.value.trim(),
-        ...(note.value.trim() ? { note: note.value.trim() } : {}), ...(action === 'match' ? { execution_id: execution.value, ...(report.value ? { report_id: report.value } : {}) } : {}) };
+        ...(note.value.trim() ? { note: note.value.trim() } : {}), ...(action === 'match' ? { execution_id: execution.value, ...(report.value ? { report_id: report.value } : {}) } : {}),
+        ...(action==='cancel'?{report_id:report.value}:{}) };
       const fingerprint = JSON.stringify(intent);
       if (state.pending?.fingerprint !== fingerprint) state.pending = { fingerprint, body: { ...intent, operation_id: crypto.randomUUID(), expected_version: state.context.version, generation_id: state.context.generation_id } };
       state.busy = true; controls(); const controller = new AbortController(), deadline = setTimeout(() => controller.abort(), 10000);
@@ -93,13 +96,14 @@ export function cryptoExecutionUI(root, request = fetch) {
         const result = await response.json(); if (disposed) return;
         if (response.status === 409) { state.pending = null; state.context = null; status.textContent = (reasons[result.reason ?? result.error] ?? 'Shared sales or holdings changed.') + ' Your draft remains. Reload sales and executions before reviewing again.'; return; }
         if (response.status === 400) { state.pending = null; status.textContent = 'The sale request was rejected. Review the selected stage, positive exact quantity and execution. Your draft remains.'; return; }
-        if (!response.ok || !['reported', 'matched'].includes(result.state)) throw Error('Operation failed');
+        if (!response.ok || !['reported', 'matched','cancelled'].includes(result.state)) throw Error('Operation failed');
         state.pending = null; quantity.value = ''; note.value = ''; await read();
         document.dispatchEvent(new CustomEvent('crypto-execution-updated', { detail: { coin } }));
       } catch { if (!disposed) status.textContent = 'Sale operation was not confirmed. Your draft remains; retrying unchanged keeps its operation identity. Reload shared history to check the recorded outcome.'; }
       finally { clearTimeout(deadline); state.busy = false; if (!disposed) controls(); }
     }
     form.addEventListener('submit', event => { event.preventDefault(); submit('report'); }); matchButton.addEventListener('click', () => submit('match'));
+    cancelButton.addEventListener('click',()=>submit('cancel'));
     state.read = read; read();
   }
   const load = () => { if (!disposed) for (const state of states.values()) state.read(); };

@@ -9,6 +9,7 @@ export interface PlanStore {
   prior(request: PlanRequest): Promise<{ same: boolean; result: Record<string, any> } | null>;
   context(coin: string, templates: Templates): Promise<{ snapshot: any; terms: PlanTerms | null; market: Record<string, any> }>;
   commit(request: PlanRequest, plan: Record<string, any>): Promise<Record<string, any>>;
+  replacement?(request: PlanRequest): Promise<Record<string, any>>;
 }
 export function cryptoPlans(store: PlanStore, clock = () => new Date().toISOString()) {
   return async (method: string, input: unknown): Promise<Record<string, any>> => {
@@ -21,7 +22,12 @@ export function cryptoPlans(store: PlanStore, clock = () => new Date().toISOStri
     if (previous) return previous.same ? previous.result : { state: 'conflict', reason: 'operation_id_reused' };
     const state = await store.read(request.coin);
     if (state.version !== request.expected_version) return { state: 'conflict', reason: 'plan_changed' };
-    if (state.plan) return { state: 'replacement_required', reason: 'accepted_plan_is_immutable' };
+    if (state.plan && !request.replace_plan_id) return { state: 'replacement_required', reason: 'accepted_plan_is_immutable' };
+    if (request.replace_plan_id && request.replace_plan_id !== state.plan?.plan_id) return { state:'conflict', reason:'replacement_plan_changed' };
+    if (request.replace_plan_id) {
+      const check = await store.replacement?.(request);
+      if (!check || check.state !== 'ready') return check ?? {state:'unavailable',reason:'execution_reconciliation_required'};
+    }
     const context = await store.context(request.coin, request.templates);
     if (!context.snapshot || context.snapshot.generation_id !== request.generation_id) return { state: 'conflict', reason: 'snapshot_changed' };
     if (context.market.market_version !== request.market_version) return { state: 'conflict', reason: 'market_history_changed' };
@@ -67,6 +73,10 @@ export class NeonCryptoPlanStore implements PlanStore {
   }
   async commit(request: PlanRequest, plan: Record<string, any>) {
     const rows = await this.query('SELECT hosted_accept_crypto_plan($1::jsonb,$2::jsonb) AS result', [JSON.stringify(request), JSON.stringify(plan)]);
+    return rows[0].result;
+  }
+  async replacement(request: PlanRequest) {
+    const rows = await this.query('SELECT hosted_review_crypto_replacement($1::jsonb) AS result',[JSON.stringify(request)]);
     return rows[0].result;
   }
 }

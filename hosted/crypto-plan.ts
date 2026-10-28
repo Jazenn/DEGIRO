@@ -12,6 +12,7 @@ export interface PlanRequest {
   coin: string; operation_id: string; expected_version: string; generation_id: string; market_version: string;
   terms_revision: string; core_quantity: string; proportions: string[]; levels_eur: string[];
   templates: Templates;
+  replace_plan_id?: string; expected_execution_version?: string; replacement_reason?: string;
 }
 export const validCoin = (coin: unknown): coin is string => coin === 'BTC-EUR' || coin === 'ETH-EUR';
 const numeric = (value: unknown): value is string => typeof value === 'string' && /^\d{1,18}(?:\.\d{1,18})?$/.test(value);
@@ -26,10 +27,14 @@ export function validatePlanRequest(value: unknown): PlanRequest {
       || ![...input.proportions, ...input.levels_eur].every(value => numeric(value) && new D(value).gt(0))
       || !input.proportions.reduce((sum, value) => sum.plus(value), new D(0)).eq(100)
       || input.levels_eur.some((value, index) => index > 0 && !new D(value).gt(input.levels_eur[index - 1]))) throw Error('invalid_crypto_plan');
+  if (input.replace_plan_id !== undefined && (typeof input.replace_plan_id !== 'string' || !/^plan-[\w-]{8,100}$/.test(input.replace_plan_id)
+      || typeof input.expected_execution_version !== 'string' || !/^\d{1,18}$/.test(input.expected_execution_version)
+      || typeof input.replacement_reason !== 'string' || input.replacement_reason.trim().length < 10 || input.replacement_reason.length > 1000)) throw Error('invalid_crypto_plan');
   // Retain only declared request fields so idempotency compares a stable contract.
   return { coin: input.coin, operation_id: input.operation_id, expected_version: input.expected_version,
     generation_id: input.generation_id, market_version: input.market_version, terms_revision: input.terms_revision,
-    core_quantity: input.core_quantity, proportions: [...input.proportions], levels_eur: [...input.levels_eur], templates: validateTemplates(input.templates) };
+    core_quantity: input.core_quantity, proportions: [...input.proportions], levels_eur: [...input.levels_eur], templates: validateTemplates(input.templates),
+    ...(input.replace_plan_id === undefined ? {} : {replace_plan_id:input.replace_plan_id,expected_execution_version:input.expected_execution_version,replacement_reason:input.replacement_reason}) };
 }
 export function prepareCryptoPlan(snapshot: any, terms: PlanTerms, request: PlanRequest, now: string, market: Record<string, unknown>) {
   const input = validatePlanRequest(request);
@@ -59,6 +64,7 @@ export function prepareCryptoPlan(snapshot: any, terms: PlanTerms, request: Plan
   const total = stages.reduce((sum, stage) => sum.plus(stage.quantity), new D(0));
   if (total.gt(tactical)) throw Error('core_protection_invariant');
   return { plan_id: planId, coin: input.coin, asset_id: terms.asset_id, symbol: terms.symbol, accepted_at: now,
+    ...(input.replace_plan_id ? {replaces_plan_id:input.replace_plan_id,replacement_reason:input.replacement_reason,reviewed_execution_version:input.expected_execution_version} : {}),
     plan_version: new D(input.expected_version).plus(1).toFixed(),
     accepted_generation_id: snapshot.generation_id, ledger_version: model.ledger_version,
     financial_settings_version: model.settings_version, calculation_version: model.calculation_version,
