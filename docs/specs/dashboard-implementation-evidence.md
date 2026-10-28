@@ -56,6 +56,8 @@ The full-database recovery package is manual and staging-only. It captures a con
 
 Combined local verification passed 173 Python tests, 99 hosted tests and five PostgreSQL regressions, hosted typecheck, frontend production build and the pinned Worker dry-run build. The unused Auth, Functions, Object Storage, AI Gateway and Realtime skill directories were archived outside `.agents/skills`; all 20 files retained their original hashes. The overview and database guides remain discoverable.
 
+The [manual hosted import rehearsal](https://github.com/Jazenn/DEGIRO/actions/runs/40750605517) and [CI](https://github.com/Jazenn/DEGIRO/actions/runs/40750567734) passed on `da1d916`. Ticket #46 is closed with its live target evidence. The first full-recovery job stopped at the missing PostgreSQL client prerequisite before connecting to the database; the workflow now installs missing major-17 clients from the official signed package source and verifies both versions before using staging secrets. A separate authenticated staging crypto job is prepared with a default-off daily schedule; it requires a Demo key and preserves each coin's previous series independently if its new completed-day window is incomplete. No production flags or secrets were changed.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
