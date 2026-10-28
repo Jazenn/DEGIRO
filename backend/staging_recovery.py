@@ -18,11 +18,14 @@ from urllib.parse import parse_qs, urlsplit
 import psycopg2
 from psycopg2 import sql
 from psycopg2.extensions import parse_dsn
+from backend.staging_connection import checked_staging_url
 
 
 def approved_source(environment):
     """Resolve only the independently configured, direct staging endpoint."""
-    url = environment['STAGING_PUBLISHER_DATABASE_URL']
+    url = checked_staging_url(environment['STAGING_PUBLISHER_DATABASE_URL'],
+                              environment.get('STAGING_EXPECTED_HOST'),
+                              environment.get('STAGING_EXPECTED_DATABASE'))
     parts = urlsplit(url)
     if (environment.get('STAGING_BRANCH_ID') != 'br-tiny-moon-al8b0u31'
             or not environment.get('STAGING_EXPECTED_HOST')
@@ -123,7 +126,8 @@ def pg_environment(url, database=None):
     for key, value in settings.items():
         environment[{'dbname': 'PGDATABASE', 'host': 'PGHOST', 'port': 'PGPORT',
                      'user': 'PGUSER', 'password': 'PGPASSWORD', 'sslmode': 'PGSSLMODE',
-                     'channel_binding': 'PGCHANNELBINDING', 'options': 'PGOPTIONS'}[key]] = value
+                     'channel_binding': 'PGCHANNELBINDING', 'connect_timeout': 'PGCONNECT_TIMEOUT',
+                     'application_name': 'PGAPPNAME'}[key]] = value
     if database:
         environment['PGDATABASE'] = database
     environment['PGCONNECT_TIMEOUT'] = '15'

@@ -139,6 +139,7 @@ def recovery_driver(monkeypatch, tmp_path):
 
 
 def test_full_rehearsal_releases_restored_connections_before_database_cleanup(recovery_driver):
+    recovery_driver.environment['STAGING_PUBLISHER_DATABASE_URL'] += '&channel_binding=require&application_name=staging%20rehearsal&connect_timeout=5'
     result = rehearse(recovery_driver.environment)
     assert result['state'] == 'passed'
     assert all(connection.closed for connection in recovery_driver.connections)
@@ -154,6 +155,24 @@ def test_unreviewed_application_relations_stop_export_before_any_archive_or_rest
     assert 'archive command executed' not in recovery_driver.events
     assert 'owned database created' not in recovery_driver.events
     assert all(connection.closed for connection in recovery_driver.connections)
+
+
+@pytest.mark.parametrize('override', ['host=other.example', 'dbname=otherdb',
+                                     'hostaddr=127.0.0.1', 'service=other'])
+def test_recovery_rejects_libpq_destination_overrides_before_driver_or_archive(recovery_driver, override):
+    recovery_driver.environment['STAGING_PUBLISHER_DATABASE_URL'] += '&'+override
+    with pytest.raises(ValueError):
+        rehearse(recovery_driver.environment)
+    assert recovery_driver.connections == []
+    assert recovery_driver.events == []
+
+
+def test_recovery_rejects_ambient_host_address_before_any_connection(recovery_driver, monkeypatch):
+    monkeypatch.setenv('PGHOSTADDR', '127.0.0.1')
+    with pytest.raises(ValueError):
+        rehearse(recovery_driver.environment)
+    assert recovery_driver.connections == []
+    assert recovery_driver.events == []
 
 
 def test_recovery_cli_requires_real_postgres_clients_before_connecting(tmp_path):
