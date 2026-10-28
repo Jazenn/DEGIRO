@@ -53,4 +53,3 @@ test('replacement after a partial execution preserves consumed identities and ca
     assert.equal((await query("SELECT version::text FROM hosted_crypto_plan_state WHERE coin='ETH-EUR'"))[0].version,'0');
   }finally{await db.close();}
 });
-
