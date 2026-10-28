@@ -43,9 +43,31 @@ def report_client_failure(process):
     category = next((name for name, pattern in patterns if re.search(pattern, errors, re.I)), None)
     if category is None and re.search(rb'connection.*(?:failed|refused|timed out)|could not connect', process.stderr, re.I):
         category = 'connection_failed'
+    command = process.stderr.split(b'Command was:', 1)[1].lstrip() if b'Command was:' in process.stderr else b''
+    statement_patterns = [
+        ('schema_comment', rb'^COMMENT\s+ON\s+SCHEMA\b'),
+        ('schema_acl', rb'^(?:GRANT|REVOKE)\b[^;]*\bON\s+SCHEMA\b'),
+        ('schema_owner', rb'^ALTER\s+SCHEMA\b[^;]*\bOWNER\b'),
+        ('default_privileges', rb'^ALTER\s+DEFAULT\s+PRIVILEGES\b'),
+        ('role_switch', rb'^SET\s+(?:SESSION\s+AUTHORIZATION|ROLE)\b'),
+        ('extension', rb'^(?:CREATE|ALTER|COMMENT\s+ON)\s+EXTENSION\b'),
+        ('object_acl', rb'^(?:GRANT|REVOKE)\b'),
+        ('object_comment', rb'^COMMENT\s+ON\b'),
+        ('object_owner', rb'^ALTER\b[^;]*\bOWNER\b'),
+        ('object_create', rb'^CREATE\b'),
+        ('table_alter', rb'^ALTER\s+TABLE\b'),
+        ('copy_data', rb'^COPY\b'),
+        ('sequence_state', rb'^SELECT\s+pg_catalog\.setval\b'),
+        ('session_setting', rb'^SET\b'),
+    ]
+    statement_kind = next((name for name, pattern in statement_patterns if re.search(pattern, command, re.I)), 'other')
+    permission_kind = next((kind for kind in ('schema', 'table', 'sequence', 'function', 'role', 'extension', 'database')
+                            if re.search(rb'(?:permission denied for|must be owner of)\s+'+kind.encode()+rb'\b', errors, re.I)), None)
     print(json.dumps({'client_exit_code': process.returncode,
                       'client_warning_present': bool(process.stderr),
-                      'client_failure_categories': [category or 'other']}), flush=True)
+                      'client_failure_categories': [category or 'other'],
+                      'client_failure_statement_kind': statement_kind,
+                      'permission_target_kind': permission_kind}), flush=True)
 
 
 def verify_capture(restored, expected):
@@ -223,7 +245,11 @@ def rehearse(environment):
                 raise ValueError('Archive inspection failed')
             creates_public = bool(re.search(rb'^CREATE SCHEMA (?:public|"public");\s*$',
                                             schema_script.read_bytes(), re.M))
-            print(json.dumps({'archive_creates_public_schema': creates_public}), flush=True)
+            private_schema_sql = schema_script.read_bytes()
+            print(json.dumps({'archive_creates_public_schema': creates_public,
+                              'archive_comments_public_schema': bool(re.search(rb'^COMMENT ON SCHEMA (?:public|"public")\b', private_schema_sql, re.M)),
+                              'archive_has_default_privileges': bool(re.search(rb'^ALTER DEFAULT PRIVILEGES\b', private_schema_sql, re.M)),
+                              'archive_has_role_switch': bool(re.search(rb'^SET (?:ROLE|SESSION AUTHORIZATION)\b', private_schema_sql, re.M))}), flush=True)
             # Snapshot remains open through the dump and comparison capture.
             source.rollback()
             admin = psycopg2.connect(url, connect_timeout=15)
