@@ -134,6 +134,11 @@ def recovery_driver(monkeypatch, tmp_path):
                 self.rows = [('hosted_snapshot_generations',)]
             elif 'SELECT md5(row_to_json(t)' in query:
                 self.rows = [('synthetic-record-digest',)]
+            elif 'c.relname,c.relkind,' in query:
+                if 'aclexplode' in query:
+                    self.rows = [('synthetic-table', 'r', [fixture.restored_grant if self.connection.restored else ['owner', 'owner', 'SELECT', False]], 'id', [])]
+                else:
+                    self.rows = [('synthetic-table', 'r', '' if self.connection.restored else '{owner=r/owner}', 'id', '')]
             elif "data_classification<>'synthetic'" in query:
                 self.rows = [(True, False)]
             elif 'SELECT EXISTS(' in query:
@@ -216,6 +221,7 @@ def recovery_driver(monkeypatch, tmp_path):
                               restored_application_defaults=None,
                               worker_can_mutate=False,
                               worker_can_mutate_columns=False,
+                              restored_grant=['owner', 'owner', 'SELECT', False],
                               toc_script=b'10; 826 10 DEFAULT ACL public DEFAULT PRIVILEGES FOR SEQUENCES cloud_admin\n11; 826 11 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES cloud_admin\n20; 0 0 ACL public TABLE hosted_snapshot_generations owner\n')
     monkeypatch.setattr(psycopg2, 'connect', connect)
     monkeypatch.setattr(subprocess, 'run', process)
@@ -279,6 +285,23 @@ def test_column_only_worker_mutation_privilege_stops_recovery_before_archive(rec
         rehearse(recovery_driver.environment)
     assert 'archive command executed' not in recovery_driver.events
     assert 'owned database created' not in recovery_driver.events
+
+
+def test_explicit_default_and_null_relation_acls_compare_equally(recovery_driver):
+    assert rehearse(recovery_driver.environment)['state'] == 'application_recovery_passed'
+
+
+@pytest.mark.parametrize('changed_grant', [
+    ['other', 'owner', 'SELECT', False],
+    ['owner', 'other', 'SELECT', False],
+    ['owner', 'owner', 'UPDATE', False],
+    ['owner', 'owner', 'SELECT', True],
+])
+def test_relation_privilege_drift_fails_comparison(recovery_driver, changed_grant):
+    recovery_driver.restored_grant = changed_grant
+    with pytest.raises(ValueError, match='Recovery comparison failed'):
+        rehearse(recovery_driver.environment)
+    assert 'owned database dropped' in recovery_driver.events
 
 
 def test_unreviewed_application_relations_stop_export_before_any_archive_or_restore(recovery_driver):

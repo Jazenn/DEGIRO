@@ -216,8 +216,21 @@ def capture(connection):
             coalesce(p.proacl::text,'') FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
             WHERE n.nspname='public' AND p.prokind='f' ORDER BY 1,2""")
         functions = cursor.fetchall()
-        cursor.execute("""SELECT c.relname,c.relkind,coalesce(c.relacl::text,''),
-            a.attname,coalesce(a.attacl::text,'') FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+        # NULL relation ACLs mean the built-in owner defaults, not no grants.
+        # Compare expanded, sorted privileges so dump/restore normalization and
+        # aclitem ordering cannot hide or invent a permission difference.
+        cursor.execute("""SELECT c.relname,c.relkind,
+            (SELECT coalesce(jsonb_agg(jsonb_build_array(
+                pg_get_userbyid(x.grantor),CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END,
+                x.privilege_type,x.is_grantable) ORDER BY x.grantor,x.grantee,x.privilege_type,x.is_grantable),'[]'::jsonb)
+             FROM aclexplode(nullif(coalesce(c.relacl,acldefault(
+                CASE WHEN c.relkind='S' THEN 's'::\"char\" ELSE 'r'::\"char\" END,c.relowner)),'{}'::aclitem[])) x),
+            a.attname,
+            (SELECT coalesce(jsonb_agg(jsonb_build_array(
+                pg_get_userbyid(x.grantor),CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE pg_get_userbyid(x.grantee) END,
+                x.privilege_type,x.is_grantable) ORDER BY x.grantor,x.grantee,x.privilege_type,x.is_grantable),'[]'::jsonb)
+             FROM aclexplode(nullif(a.attacl,'{}'::aclitem[])) x)
+            FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
             LEFT JOIN pg_attribute a ON a.attrelid=c.oid AND a.attnum>0 AND NOT a.attisdropped
             WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','S') ORDER BY 1,4""")
         grants = cursor.fetchall()
