@@ -2,7 +2,7 @@
 BEGIN;
 CREATE TABLE IF NOT EXISTS hosted_quote_mappings (
   symbol text PRIMARY KEY,
-  provider text NOT NULL CHECK(provider IN ('binance','yahoo')),
+  provider text NOT NULL CHECK(provider IN ('binance','yahoo','kraken')),
   provider_symbol text NOT NULL,
   evidence text NOT NULL CHECK(length(evidence)>0)
 );
