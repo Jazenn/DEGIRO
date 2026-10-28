@@ -56,6 +56,27 @@ def test_restore_error_classifier_distinguishes_public_schema_collision_without_
     assert 'owned database dropped' in recovery_driver.events
 
 
+@pytest.mark.parametrize('command,kind', [
+    (b'COMMENT ON SCHEMA public IS \'private-comment\';', 'schema_comment'),
+    (b'GRANT USAGE ON SCHEMA public TO private_role;', 'schema_acl'),
+    (b'ALTER DEFAULT PRIVILEGES FOR ROLE private_role GRANT SELECT ON TABLES TO private_role;', 'default_privileges'),
+    (b'SET SESSION AUTHORIZATION private_role;', 'role_switch'),
+    (b'CREATE EXTENSION private_extension;', 'extension'),
+])
+def test_restore_permission_classifier_reports_only_safe_statement_kind(recovery_driver, monkeypatch, capsys, command, kind):
+    from backend.staging_recovery import main
+    for key, value in recovery_driver.environment.items():
+        monkeypatch.setenv(key, value)
+    recovery_driver.restore_stderr = b'pg_restore: error: could not execute query: ERROR:  permission denied for schema public\nCommand was: '+command
+    assert main() == 1
+    output = capsys.readouterr()
+    assert '"client_failure_statement_kind": "'+kind+'"' in output.out
+    assert '"permission_target_kind": "schema"' in output.out
+    assert 'private-comment' not in output.out + output.err
+    assert 'private_role' not in output.out + output.err
+    assert 'private_extension' not in output.out + output.err
+
+
 @pytest.fixture
 def recovery_driver(monkeypatch, tmp_path):
     """External driver/process seam; psycopg contexts deliberately stay open."""
