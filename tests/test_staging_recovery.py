@@ -1,5 +1,6 @@
 """Recovery CLI must reject unapproved destinations before any database access."""
 import os
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -19,9 +20,25 @@ def test_recovery_cli_rejects_unapproved_endpoint_without_exposing_credentials()
     result = subprocess.run([sys.executable, '-m', 'backend.staging_recovery'],
                             env=environment, capture_output=True, text=True)
     assert result.returncode == 1
-    assert result.stdout.strip() == 'Staging recovery rehearsal failed; credentials and database content withheld.'
+    assert 'Staging recovery rehearsal failed; credentials and database content withheld.' in result.stdout
     assert 'never-print-this' not in result.stdout + result.stderr
     assert result.stderr == ''
+
+
+def test_recovery_failure_reports_safe_phase_and_exception_without_private_diagnostics(recovery_driver, monkeypatch, capsys):
+    from backend.staging_recovery import main
+    for key, value in recovery_driver.environment.items():
+        monkeypatch.setenv(key, value)
+    recovery_driver.private_stderr = b'password=never-print-this private financial record'
+    assert main() == 1
+    output = capsys.readouterr()
+    assert 'never-print-this' not in output.out + output.err
+    assert 'private financial record' not in output.out + output.err
+    assert '"recovery_phase": "dump_archive"' in output.out
+    diagnostic = json.loads(output.out.splitlines()[-1])
+    assert diagnostic['state'] == 'failed'
+    assert diagnostic['exception_type'] == 'ValueError'
+    assert isinstance(diagnostic['line'], int)
 
 
 @pytest.fixture
@@ -123,7 +140,7 @@ def recovery_driver(monkeypatch, tmp_path):
         for argument in command:
             if argument.startswith('--file='):
                 Path(argument[7:]).write_bytes(b'invented-private-archive')
-        return SimpleNamespace(stdout=b'', stderr=b'', returncode=0)
+        return SimpleNamespace(stdout=b'', stderr=fixture.private_stderr, returncode=0)
 
     for name in ('pg_dump', 'pg_restore'):
         (tmp_path / name).write_text('synthetic client placeholder')
@@ -132,7 +149,7 @@ def recovery_driver(monkeypatch, tmp_path):
                    'STAGING_EXPECTED_HOST': 'ep-synthetic-only.neon.tech',
                    'STAGING_EXPECTED_DATABASE': 'neondb',
                    'STAGING_BRANCH_ID': 'br-tiny-moon-al8b0u31', 'PG_BIN': str(tmp_path)}
-    fixture = SimpleNamespace(environment=environment, connections=connections, events=events, unexpected=False)
+    fixture = SimpleNamespace(environment=environment, connections=connections, events=events, unexpected=False, private_stderr=b'')
     monkeypatch.setattr(psycopg2, 'connect', connect)
     monkeypatch.setattr(subprocess, 'run', process)
     return fixture
@@ -185,5 +202,5 @@ def test_recovery_cli_requires_real_postgres_clients_before_connecting(tmp_path)
     result = subprocess.run([sys.executable, '-m', 'backend.staging_recovery'],
                             env=environment, capture_output=True, text=True)
     assert result.returncode == 1
-    assert result.stdout.strip() == 'Staging recovery rehearsal failed; credentials and database content withheld.'
+    assert 'Staging recovery rehearsal failed; credentials and database content withheld.' in result.stdout
     assert result.stderr == ''
