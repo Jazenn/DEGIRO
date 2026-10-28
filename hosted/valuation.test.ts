@@ -24,6 +24,18 @@ test('revalues reconciled quantities coherently without changing costs, cash, re
 import { vi } from 'vitest';
 import { createRefresh } from './refresh';
 
+test('provider HTTP failure retains the generation and exposes only safe provider status', async () => {
+  const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  const mapping = { symbol: 'SYNTHETIC', provider: 'binance' as const, provider_symbol: 'BTCEUR', evidence: 'invented holding' };
+  const publish = vi.fn();
+  const refresh = createRefresh({
+    read: async () => ({ snapshot: { generation_id: 'before', published_at: '2026-01-11T00:00:00Z', data_classification: 'synthetic' as const, read_model: model }, settings: { version: '0', targets: [] }, mappings: [mapping] }),
+    publish,
+  }, (selected, signal) => fetchQuote(selected, signal, async () => new Response('private provider response and credentials must stay hidden', { status: 451 })));
+  expect(await refresh()).toEqual({ state: 'retained', reason: 'provider_unavailable', generation_id: 'before', diagnostics: [{ provider: 'binance', http_status: 451 }] });
+  expect(publish).not.toHaveBeenCalled();
+});
+
 test('incomplete batches and ten-second timeout preserve the accepted generation', async () => {
   const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
   const accepted = { generation_id: 'before', published_at: '2026-01-11T00:00:00Z', data_classification: 'synthetic' as const, read_model: model };

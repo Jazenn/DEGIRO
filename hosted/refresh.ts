@@ -2,7 +2,7 @@ import Decimal from 'decimal.js';
 import type { AcceptedSnapshot } from './application';
 import type { Targets } from './targets';
 import { revalue, type Quote } from './valuation';
-import type { QuoteMapping } from './quote-provider';
+import { QuoteProviderHttpError, type QuoteMapping } from './quote-provider';
 export interface RefreshInput { snapshot: AcceptedSnapshot; settings: Targets; mappings: QuoteMapping[]; planning_symbols?: string[] }
 export interface RefreshStore {
   read(signal: AbortSignal): Promise<RefreshInput | null>;
@@ -53,6 +53,9 @@ export function createRefresh(store: RefreshStore, quote: (mapping: QuoteMapping
           const saved = await store.publish(input, next, id, new Date(start + 10000).toISOString(), controller.signal);
           return saved ? { state: 'refreshed', generation_id: id } : { state: 'retained', reason: 'concurrent_change', generation_id: generation };
         } catch (error) {
+          if (!timedOut && error instanceof QuoteProviderHttpError)
+            return { state: 'retained', reason: 'provider_unavailable', generation_id: generation,
+              diagnostics: [{ provider: error.provider, http_status: error.status }] };
           const known = error instanceof Error && ['mapping_required','incomplete_quote_batch','reconciled_valuation_required'].includes(error.message) ? error.message : 'refresh_failed';
           return { state: 'retained', reason: timedOut ? 'refresh_timeout' : known, generation_id: generation };
         }
