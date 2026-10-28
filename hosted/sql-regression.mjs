@@ -6,6 +6,19 @@ import { test } from 'node:test';
 
 const source = name => readFile(new URL(`./${name}.sql`, import.meta.url), 'utf8');
 
+test('quote source migration preserves existing mappings and requires explicit Kraken configuration', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec("CREATE TABLE hosted_quote_mappings(symbol text PRIMARY KEY,provider text NOT NULL CHECK(provider IN ('binance','yahoo')),provider_symbol text NOT NULL,evidence text NOT NULL); INSERT INTO hosted_quote_mappings VALUES('BTC-EUR','binance','BTCEUR','invented existing mapping')");
+    await db.exec(await source('kraken-quotes-schema'));
+    const rows = (await db.query('SELECT * FROM hosted_quote_mappings')).rows;
+    assert.deepEqual(rows, [{ symbol: 'BTC-EUR', provider: 'binance', provider_symbol: 'BTCEUR', evidence: 'invented existing mapping' }]);
+    await db.exec("INSERT INTO hosted_quote_mappings VALUES('ETH-EUR','kraken','XETHZEUR','invented explicit mapping')");
+    assert.equal((await db.query("SELECT provider FROM hosted_quote_mappings WHERE symbol='ETH-EUR'")).rows[0].provider, 'kraken');
+    await assert.rejects(db.exec("INSERT INTO hosted_quote_mappings VALUES('OTHER','unapproved','OTHER','unapproved')"), /check constraint/);
+  } finally { await db.close(); }
+});
+
 test('PostgreSQL target retries and valuation publication preserve immutable ledger facts', async () => {
   const db = new PGlite();
   try {

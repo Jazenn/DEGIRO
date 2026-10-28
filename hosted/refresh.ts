@@ -53,6 +53,7 @@ export function createRefresh(store: RefreshStore, quote: (mapping: QuoteMapping
           const saved = await store.publish(input, next, id, new Date(start + 10000).toISOString(), controller.signal);
           return saved ? { state: 'refreshed', generation_id: id } : { state: 'retained', reason: 'concurrent_change', generation_id: generation };
         } catch (error) {
+          controller.abort();
           if (!timedOut && error instanceof QuoteProviderHttpError)
             return { state: 'retained', reason: 'provider_unavailable', generation_id: generation,
               diagnostics: [{ provider: error.provider, http_status: error.status }] };

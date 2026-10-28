@@ -36,6 +36,24 @@ test('provider HTTP failure retains the generation and exposes only safe provide
   expect(publish).not.toHaveBeenCalled();
 });
 
+test('a failed provider cancels the other in-flight quote requests', async () => {
+  const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  model.ledger.positions = ['FIRST', 'SECOND'].map(symbol => ({ ...model.ledger.positions[0], symbol }));
+  let cancelled = false;
+  const mappings = ['BTCEUR', 'ETHEUR'].map((pair, i) => ({ symbol: i ? 'SECOND' : 'FIRST', provider: 'binance' as const, provider_symbol: pair, evidence: 'invented mapping' }));
+  const publish = vi.fn();
+  const refresh = createRefresh({
+    read: async () => ({ snapshot: { generation_id: 'before', published_at: '2026-01-11T00:00:00Z', data_classification: 'synthetic' as const, read_model: model }, settings: { version: '0', targets: [] }, mappings }),
+    publish,
+  }, (mapping, signal) => fetchQuote(mapping, signal, async url => {
+    if (String(url).includes('BTCEUR')) return new Response('', { status: 403 });
+    return new Promise((_resolve, reject) => signal.addEventListener('abort', () => { cancelled = true; reject(new DOMException('Aborted', 'AbortError')); }, { once: true }));
+  }));
+  expect((await refresh()).state).toBe('retained');
+  expect(cancelled).toBe(true);
+  expect(publish).not.toHaveBeenCalled();
+});
+
 test('incomplete batches and ten-second timeout preserve the accepted generation', async () => {
   const model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
   const accepted = { generation_id: 'before', published_at: '2026-01-11T00:00:00Z', data_classification: 'synthetic' as const, read_model: model };
@@ -98,6 +116,13 @@ test('database refresh wire returns canonical UTC timestamp and rejects malforme
   expect((await store.read(new AbortController().signal))?.snapshot.published_at).toBe('2026-10-23T10:00:00.000000Z');
   row.rebalancing_targets_version = 'corrupt';
   await expect(store.read(new AbortController().signal)).rejects.toThrow('invalid_snapshot');
+});
+
+test('current refresh storage accepts an explicitly reviewed Kraken EUR mapping', async () => {
+  const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  const store = valuationStore(async () => [{ generation_id: 'g1', published_at: '2026-10-23T10:00:00.000000Z', data_classification: 'synthetic', read_model,
+    rebalancing_targets_version: '0', targets: [], mappings: [{ symbol: 'BTC-EUR', provider: 'kraken', provider_symbol: 'XXBTZEUR', evidence: 'reviewed public EUR pair for an invented holding' }] }]);
+  expect((await store.read(new AbortController().signal))?.mappings[0].provider).toBe('kraken');
 });
 
 test('provider prices retain decimal lexemes and actual trade observation times independently of retrieval', async () => {

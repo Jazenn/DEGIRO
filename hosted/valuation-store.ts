@@ -19,7 +19,7 @@ export function valuationStore(query: Query): RefreshStore {
         || (row.planning_symbols !== undefined && (!Array.isArray(row.planning_symbols) || !row.planning_symbols.every((symbol: unknown) => typeof symbol === 'string' && symbol.length > 0)))
         || !row.targets.every((target: any) => target && typeof target.asset_id === 'string' && typeof target.target_pct === 'string')
         || !row.mappings.every((mapping: any) => mapping && typeof mapping.symbol === 'string' && typeof mapping.evidence === 'string' && mapping.evidence.length > 0
-          && ['binance','yahoo'].includes(mapping.provider) && typeof mapping.provider_symbol === 'string')) throw Error('invalid_snapshot');
+          && ['binance','yahoo','kraken'].includes(mapping.provider) && typeof mapping.provider_symbol === 'string')) throw Error('invalid_snapshot');
       return { snapshot: { generation_id: row.generation_id, published_at: row.published_at, data_classification: row.data_classification, read_model: row.read_model },
         settings: { version: row.rebalancing_targets_version, targets: row.targets }, mappings: row.mappings, planning_symbols: row.planning_symbols ?? [] } as RefreshInput;
     },
