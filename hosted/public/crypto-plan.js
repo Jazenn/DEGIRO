@@ -31,7 +31,7 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
     const form = document.createElement('form'); form.setAttribute('aria-label', `${coin} plan choices`);
     const output = document.createElement('div'), accepted = document.createElement('div'), comparison = document.createElement('p'), holdings = document.createElement('p');
     const status = node('p', 'Reading accepted plan...'); status.setAttribute('role', 'status');
-    const state = { coin, version: null, terms: null, plan: null, market: null, payload: null, epoch: 0, busy: false };
+    const state = { coin, version: null, terms: null, plan: null, history:[], market: null, payload: null, epoch: 0, busy: false, replacing:false, executionVersion:null };
     states.set(coin, state);
     section.append(node('h4', coin), accepted, holdings, comparison, form, output, status); root.append(section);
     function input(label, name) {
@@ -42,6 +42,9 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
     const core = input('Your Long-Term Crypto Core (units, required)', 'core');
     const shares = [1,2,3].map(index => input(`Stage ${index} share of original tactical quantity (%)`, `share-${index}`));
     const levels = [1,2,3].map(index => input(`Reviewed stage ${index} level (EUR)`, `level-${index}`));
+    const reason = input('Reason for reviewed replacement (required for replacement)', 'replacement-reason'); reason.required=false; reason.hidden=true; reason.parentElement.hidden=true;
+    const replace=node('button','Review replacement'); replace.type='button'; section.insertBefore(replace,form);
+    replace.hidden=true;
     const copy = node('button', 'Copy reviewed suggested sale levels'); copy.type = 'button';
     const preview = node('button', 'Preview quantities'); preview.type = 'submit';
     const reviewLabel = document.createElement('label'), review = document.createElement('input'); review.type = 'checkbox'; review.name = 'review';
@@ -67,19 +70,42 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
         accepted.append(node('p', `Rounding residual retained: ${plan.rounding_residual_quantity} units. New purchases do not resize this plan. An existing plan requires an explicitly reviewed replacement.`),
           node('p', `Accepted ledger ${plan.ledger_version}; financial settings ${plan.financial_settings_version}; market series ${plan.source_market.market_version}.`));
       } else accepted.append(node('p', 'No accepted plan recorded.'));
-      form.querySelectorAll('input,button').forEach(control => { control.disabled = !!state.plan; });
+      const history=document.createElement('details');history.append(node('summary','Previous accepted plans'));
+      for(const plan of state.history.filter(row=>row.plan_id!==state.plan?.plan_id)){
+        history.append(node('p',`Plan ${plan.plan_id}; version ${plan.plan_version}; accepted ${plan.accepted_at}; core ${plan.core_quantity}; tactical ${plan.original_tactical_quantity}.`));
+        for(const stage of plan.stages??[])history.append(node('p',`${stage.stage_id}: ${stage.quantity} original units at EUR ${stage.level_eur}.`));
+      }
+      accepted.append(history);
+      replace.hidden=!state.plan; replace.disabled=state.busy;
+      form.querySelectorAll('input,button').forEach(control => { control.disabled = !!state.plan && !state.replacing; });
       accept.disabled = true; comparisonText();
     }
     async function read() {
       invalidate();
       try {
         const value = await http('/api/crypto/plans?coin=' + encodeURIComponent(coin));
-        state.version = value.version; state.terms = value.terms; state.plan = value.plan; showPlan();
+        state.version = value.version; state.terms = value.terms; state.plan = value.plan; state.history=value.history??[]; state.replacing=false; showPlan();
         status.textContent = state.plan ? 'Accepted plan loaded. Acceptance is not execution.' : state.terms
           ? `Reviewed sale quantity rules ${state.terms.revision}: step ${state.terms.quantity_step}, minimum ${state.terms.minimum_quantity}, minimum notional EUR ${state.terms.minimum_notional_eur}. ${state.terms.evidence}`
           : 'Reviewed sale permissions and quantity/minimum rules are unavailable. Acceptance requires verified broker evidence.';
       } catch { status.textContent = 'Accepted-plan read failed. Any previously displayed plan is retained. Reload to confirm shared state.'; }
     }
+    replace.addEventListener('click',async()=>{
+      if(state.busy||!state.plan)return;
+      invalidate();const epoch=state.epoch;state.busy=true;replace.disabled=true;
+      try{
+        const sales=await http('/api/crypto/executions?coin='+encodeURIComponent(coin));
+        if(epoch!==state.epoch)return;
+        if(sales.plan?.plan_id!==state.plan.plan_id||typeof sales.version!=='string')throw Error('Plan changed. Reload accepted plans.');
+        state.executionVersion=sales.version;state.replacing=true;
+        core.value=state.plan.core_quantity;
+        shares.forEach((field,index)=>field.value=state.plan.stages[index].proportion_pct);
+        levels.forEach((field,index)=>field.value=state.plan.stages[index].level_eur);
+        reason.hidden=false;reason.parentElement.hidden=false;reason.required=true;reason.value='';
+        showPlan();status.textContent=`Shared sales version ${sales.version}. Review current holdings, resolve pending reports, explain the replacement, then preview. Old identities and execution history are retained.`;
+      }catch(error){status.textContent=error.message;}
+      finally{state.busy=false;replace.disabled=false;}
+    });
     form.addEventListener('input', event => {
       if (event.target === review) accept.disabled = !review.checked || !state.payload || state.busy;
       else invalidate('Choices changed. Preview quantities again before accepting.');
@@ -91,13 +117,14 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
     });
     form.addEventListener('submit', async event => {
       event.preventDefault();
-      if (state.busy || state.plan) return;
+      if (state.busy || (state.plan && !state.replacing)) return;
       invalidate();
       if (!snapshot || !state.terms || state.version === null || !state.market || state.market.state === 'paused' || Date.parse(state.market.valid_until) <= clock()) { status.textContent = 'Load current holdings, reviewed sale rules and complete suggested levels before previewing.'; return; }
       const epoch = state.epoch;
       const payload = { coin, operation_id: crypto.randomUUID(), expected_version: state.version, generation_id: snapshot.generation_id,
         market_version: state.market.market_version, terms_revision: state.terms.revision, templates: state.market.templates,
-        core_quantity: core.value, proportions: shares.map(field=>field.value), levels_eur: levels.map(field=>field.value) };
+        core_quantity: core.value, proportions: shares.map(field=>field.value), levels_eur: levels.map(field=>field.value),
+        ...(state.replacing?{replace_plan_id:state.plan.plan_id,expected_execution_version:state.executionVersion,replacement_reason:reason.value}:{}) };
       state.busy = true; preview.disabled = true;
       try {
         const result = await http('/api/crypto/plans/preview', payload);
@@ -109,7 +136,7 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
         output.append(node('p', `Rounding residual retained: ${plan.rounding_residual_quantity} units. Combined stages cannot consume your core.`));
         state.payload = payload; status.textContent = 'Review the preview, check the confirmation, then accept explicitly. No Transaction will be executed.';
       } catch (error) { if (epoch === state.epoch) status.textContent = error.message + '. Correct the inputs or reload shared state.'; }
-      finally { state.busy = false; preview.disabled = !!state.plan; }
+      finally { state.busy = false; preview.disabled = !!state.plan && !state.replacing; }
     });
     accept.addEventListener('click', async () => {
       if (!review.checked || !state.payload || state.busy) return;
@@ -117,10 +144,11 @@ export function cryptoPlanUI(root, request = fetch, clock = () => Date.now()) {
       try {
         const result = await http('/api/crypto/plans', state.payload);
         if (result.state !== 'accepted') throw Error(result.reason ?? 'Acceptance unavailable');
-        state.plan = result.plan; state.version = result.version; invalidate(); showPlan(); status.textContent = 'Plan accepted and saved across devices. No Transaction was executed.';
+        if(state.plan&&!state.history.some(row=>row.plan_id===state.plan.plan_id))state.history.push(state.plan);
+        state.plan = result.plan; state.version = result.version; state.replacing=false; invalidate(); showPlan(); status.textContent = 'Plan accepted and saved across devices. No Transaction was executed.';
         document.dispatchEvent(new CustomEvent('crypto-plan-accepted', { detail: { coin, plan_id: state.plan.plan_id } }));
       } catch (error) { status.textContent = error.message + '. Reload shared state after a conflict; retrying an unchanged uncertain acceptance keeps its operation identity.'; }
-      finally { state.busy = false; accept.disabled = !state.payload || !review.checked || !!state.plan; }
+      finally { state.busy = false; accept.disabled = !state.payload || !review.checked || (!!state.plan && !state.replacing); }
     });
     state.read = read; state.invalidate = invalidate; state.comparisonText = comparisonText;
     read();

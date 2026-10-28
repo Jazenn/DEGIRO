@@ -42,7 +42,7 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp A
 DECLARE current_state hosted_crypto_plan_state; prior hosted_crypto_plan_operations;
   permission hosted_crypto_sale_permissions; quantity_terms hosted_execution_terms;
   generation text; model jsonb; position jsonb; market_version text; response jsonb;
-  stages_total numeric; holding numeric; core numeric; tactical numeric;
+  stages_total numeric; holding numeric; core numeric; tactical numeric; replacement_check jsonb; old_plan_id text;
 BEGIN
   IF requested->>'coin' NOT IN ('BTC-EUR','ETH-EUR') OR requested->>'operation_id' !~ '^[A-Za-z0-9_-]{8,100}$' THEN RAISE EXCEPTION 'Invalid plan operation'; END IF;
   -- Same operation across either coin is serialized before all state locks.
@@ -57,9 +57,19 @@ BEGIN
     WHERE p.singleton=true FOR SHARE OF p;
   SELECT * INTO current_state FROM hosted_crypto_plan_state WHERE coin=requested->>'coin' FOR UPDATE;
   IF NOT FOUND THEN RAISE EXCEPTION 'Missing coin state'; END IF;
+  old_plan_id:=current_state.current_plan_id;
+  IF requested ? 'replace_plan_id' THEN
+    -- Same lock order as execution commands: Snapshot, plan, then execution state.
+    PERFORM 1 FROM hosted_crypto_execution_state WHERE coin=current_state.coin FOR UPDATE;
+    replacement_check:=hosted_review_crypto_replacement(requested);
+  END IF;
   IF generation IS DISTINCT FROM requested->>'generation_id' OR current_state.version::text<>requested->>'expected_version' THEN
     response:=jsonb_build_object('state','conflict','reason','snapshot_or_plan_changed','version',current_state.version::text);
-  ELSIF current_state.current_plan_id IS NOT NULL THEN
+  ELSIF requested ? 'replace_plan_id' AND (requested->>'replace_plan_id' IS DISTINCT FROM old_plan_id OR old_plan_id IS NULL) THEN
+    response:=jsonb_build_object('state','conflict','reason','replacement_plan_changed');
+  ELSIF requested ? 'replace_plan_id' AND replacement_check->>'state'<>'ready' THEN
+    response:=replacement_check;
+  ELSIF current_state.current_plan_id IS NOT NULL AND NOT (requested ? 'replace_plan_id') THEN
     response:=jsonb_build_object('state','replacement_required','reason','accepted_plan_is_immutable','version',current_state.version::text);
   ELSE
     SELECT * INTO permission FROM hosted_crypto_sale_permissions WHERE coin=current_state.coin FOR SHARE;
@@ -75,6 +85,13 @@ BEGIN
        OR clock_timestamp()>=(proposed->'source_market'->>'valid_until')::timestamptz THEN
       response:=jsonb_build_object('state','conflict','reason','reviewed_inputs_changed');
     ELSE
+      IF requested ? 'replace_plan_id' AND (length(trim(requested->>'replacement_reason'))<10
+        OR length(requested->>'replacement_reason')>1000 OR requested->>'replacement_reason' IS NULL
+        OR proposed->>'replaces_plan_id' IS DISTINCT FROM old_plan_id
+        OR proposed->>'replacement_reason' IS DISTINCT FROM requested->>'replacement_reason'
+        OR proposed->>'reviewed_execution_version' IS DISTINCT FROM requested->>'expected_execution_version') THEN
+        RAISE EXCEPTION 'Invalid reviewed replacement';
+      END IF;
       holding:=(position->>'quantity')::numeric;
       core:=(proposed->>'core_quantity')::numeric;
       tactical:=(proposed->>'original_tactical_quantity')::numeric;
@@ -110,7 +127,8 @@ BEGIN
         VALUES(proposed->>'plan_id',current_state.coin,(proposed->>'accepted_at')::timestamptz,proposed);
       UPDATE hosted_crypto_plan_state SET version=version+1,current_plan_id=proposed->>'plan_id' WHERE coin=current_state.coin RETURNING * INTO current_state;
       INSERT INTO hosted_crypto_plan_events(event_id,coin,plan_id,operation_id,event_type,event_body)
-        VALUES('accept-'||(requested->>'operation_id'),current_state.coin,proposed->>'plan_id',requested->>'operation_id','accepted',proposed);
+        VALUES('accept-'||(requested->>'operation_id'),current_state.coin,proposed->>'plan_id',requested->>'operation_id',
+          CASE WHEN old_plan_id IS NULL THEN 'accepted' ELSE 'replacement_accepted' END,proposed);
       response:=jsonb_build_object('state','accepted','coin',current_state.coin,'version',current_state.version::text,'plan',proposed);
     END IF;
   END IF;
