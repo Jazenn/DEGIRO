@@ -1,0 +1,6 @@
+Fund Holdings as of,"27/Oct/2026"
+
+Ticker,Name,Sector,Asset Class,Market Value,Weight (%),Notional Value,Shares,Price,Location,Exchange,Market Currency
+"SAME","Synthetic Issuer A","Industrials","Equity","700.00","70.00","700.00","7.00","100.00","Netherlands","Synthetic Exchange A","EUR"
+"SAME","Synthetic Issuer B","Health Care","Equity","299.70","29.97","299.70","3.00","99.90","Germany","Synthetic Exchange B","EUR"
+
