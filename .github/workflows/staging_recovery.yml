@@ -23,11 +23,30 @@ jobs:
           python-version: '3.12'
           cache: pip
       - run: pip install -r requirements.txt
-      - name: Verify compatible preinstalled PostgreSQL clients
+      - name: Ensure compatible PostgreSQL 17 clients
         shell: bash
         run: |
+          if [[ ! -x /usr/lib/postgresql/17/bin/pg_dump || ! -x /usr/lib/postgresql/17/bin/pg_restore ]]; then
+            . /etc/os-release
+            test "$ID" = ubuntu
+            test "$VERSION_CODENAME" = noble
+            if ! apt-cache show postgresql-client-17 > /dev/null 2>&1; then
+              sudo install -d /usr/share/postgresql-common/pgdg
+              sudo curl --fail --silent --show-error --location \
+                --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+                https://www.postgresql.org/media/keys/ACCC4CF8.asc
+              printf '%s\n' 'Types: deb' 'URIs: https://apt.postgresql.org/pub/repos/apt' \
+                'Suites: noble-pgdg' 'Components: main' \
+                'Signed-By: /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc' \
+                | sudo tee /etc/apt/sources.list.d/degiro-pgdg.sources > /dev/null
+            fi
+            sudo apt-get update
+            sudo apt-get install --yes --no-install-recommends postgresql-client-17
+          fi
           test -x /usr/lib/postgresql/17/bin/pg_dump
           test -x /usr/lib/postgresql/17/bin/pg_restore
+          /usr/lib/postgresql/17/bin/pg_dump --version | grep -E '\(PostgreSQL\) 17\.'
+          /usr/lib/postgresql/17/bin/pg_restore --version | grep -E '\(PostgreSQL\) 17\.'
       - name: Rehearse full export, isolated restore and rollback privately
         env:
           STAGING_PUBLISHER_DATABASE_URL: ${{ secrets.STAGING_PUBLISHER_DATABASE_URL }}

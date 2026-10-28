@@ -96,6 +96,11 @@ authority/path. Query options are limited to `sslmode`, `channel_binding`,
 `connect_timeout` and `application_name`; destination/service overrides and
 ambient `PGHOSTADDR`/`PGSERVICE`/`PGSERVICEFILE` defaults are rejected before any
 connection or archive command.
+The Ubuntu 24.04 runner verifies both PostgreSQL 17 client executables and installs
+the major-specific `postgresql-client-17` package from the PostgreSQL project's
+[signed APT repository](https://www.postgresql.org/download/linux/ubuntu/) if they
+are missing. It installs client tools only, verifies both reported major versions,
+and leaves the server-version guard intact; runner preinstallation is not assumed.
 The root coordinator supplies only the already authorized staging credentials.
 
 The module exports a consistent database snapshot and captures each public table's
