@@ -44,6 +44,18 @@ The rehearsal reproduced a canonical calculation defect when valid imports mixed
 
 Cloudflare's sampled aggregate metrics recorded 92 invocations with zero runtime errors. This small rehearsal does not establish sustained free-tier CPU/resource fit; retain the [resource limits](https://developers.cloudflare.com/workers/platform/limits/) and [CPU rollover](https://developers.cloudflare.com/workers/observability/metrics-and-analytics/#cpu-time-per-execution) caveats when assessing the complete workload. Private imports remain disabled until the publisher job and its configuration are verified. No production cutover is claimed.
 
+## Import, recovery and provider follow-up — 28 October 2026
+
+The deployed dashboard passed hidden Chrome checks with independent sessions at 390px and 1440px: canonical overview values fit, a stale target edit displayed conflict recovery without losing its draft, reload recovered the shared version, and both coin forms retained empty personal core/stage defaults. Temporary browser sessions were revoked afterward. Together with the earlier live retry/version checks, this completes the shared-target behavior in #46.
+
+The actual Python import publisher passed an isolated Neon staging rehearsal using invented records. Failed imports and retries retained the previous generation; identical uploads reused a completed job; overlapping source files preserved EUR1005 fee-inclusive acquisition cost, EUR1100 observed value and EUR95 gain. Missing historical observations remained explicitly unavailable. The disposable schema was removed and the public staging pointer stayed unchanged. A dedicated manual Actions workflow uses environment-scoped staging credentials and leaves private-import feature flags disabled.
+
+Actual public CoinGecko requests supplied the required 365 completed UTC observations for BTC and ETH, and both series passed through the deployed authenticated suggestion interface with 90-day context. The verified window was 28 October 2025 through 27 October 2026. These anonymous probes do not establish the documented authenticated Demo contract or account quota; no paid provider was introduced. The official iShares CSV adapter also parsed 398 rows dated 27 October 2026, retaining its reported 99.97% partial coverage, unknown stable identifiers and unavailable exact cross-provider overlap. Synthetic regressions verify those limitations and source/transport validation; this is not a private broker mapping.
+
+The full-database recovery package is manual and staging-only. It captures a consistent `pg_dump` plus private data/schema/grant fingerprints, restores into a newly owned empty database on the same staging branch, and checks rollback and immutability on the restored copy. Unexpected application schemas and unsupported relations fail before export. Both staging CLIs reject libpq URI/ambient destination overrides before any connection. Review reproduced that destination defect before repair; both review axes now report it resolved. Hosted recovery execution remains pending until the manual job runs; its temporary archive is not a retained durable backup.
+
+Combined local verification passed 173 Python tests, 99 hosted tests and five PostgreSQL regressions, hosted typecheck, frontend production build and the pinned Worker dry-run build. The unused Auth, Functions, Object Storage, AI Gateway and Realtime skill directories were archived outside `.agents/skills`; all 20 files retained their original hashes. The overview and database guides remain discoverable.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
@@ -53,7 +65,7 @@ PostgreSQL regressions, including the new execution scenarios. See
 [execution reconciliation](crypto-execution-reconciliation.md) for the contract and
 remaining staged verification gates. The final combined counts above supersede these interim counts and skips. The dated staging section records subsequent live checks; no private import or production cutover is claimed.
 
-- Reviewed staging schemas, restricted grants and real durable target conflicts are verified. Demonstrate upload retry/publication behavior after configuring the publisher job.
+- Reviewed staging schemas, restricted grants, real durable target conflicts and isolated publisher retry/publication behavior are verified. Complete the separate manual hosted-job checks before enabling private imports.
 - Configure and verify the hosted Python job with server-only publisher credentials and reviewed calculation settings. Keep import feature gates disabled until this passes. No private CSV or settings belong in repository files, Actions logs or public issue comments.
 - Verify exact broker Asset identities, source timezone, quantity precision/minimums, historical coverage and fee assumptions before dependent recommendations are complete.
 - Verify current/historical provider integration, coherent publication, recovery and free-tier resource usage using actual staged requests. Local clocks and dry-run builds are not latency or quota evidence.
