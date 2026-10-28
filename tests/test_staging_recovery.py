@@ -113,6 +113,21 @@ def recovery_driver(monkeypatch, tmp_path):
                 self.rows = [('neondb', 'owner')]
             elif 'pg_export_snapshot()' in query:
                 self.rows = [('00000001-1',)]
+            elif 'FROM pg_default_acl d' in query:
+                app_defaults = fixture.restored_application_defaults if self.connection.restored and fixture.restored_application_defaults is not None else fixture.application_defaults
+                self.rows = ([] if self.connection.restored else fixture.provider_defaults) + app_defaults
+            elif 'SELECT DISTINCT r.rolname' in query:
+                self.rows = [('synthetic-worker',)]
+            elif 'has_column_privilege' in query:
+                self.rows = [(False,)]
+            elif 'SELECT bool_and(NOT has_table_privilege' in query:
+                self.rows = [(not fixture.worker_can_mutate,)]
+            elif 'SELECT bool_and(has_table_privilege' in query or 'SELECT bool_and(has_function_privilege' in query:
+                self.rows = [(True,)]
+            elif 'has_table_privilege' in query or 'has_function_privilege' in query:
+                permission = params[-1]
+                self.rows = [(permission in ('SELECT', 'EXECUTE') or params[1] == 'public.hosted_sessions'
+                              or (params[1] == 'public.hosted_owner_identity' and permission == 'INSERT'),)]
             elif "SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY" in query:
                 self.rows = [('hosted_snapshot_generations',)]
             elif 'SELECT md5(row_to_json(t)' in query:
@@ -175,7 +190,10 @@ def recovery_driver(monkeypatch, tmp_path):
         events.append('archive command executed')
         for argument in command:
             if argument.startswith('--file='):
-                Path(argument[7:]).write_bytes(fixture.schema_script if '--schema-only' in command else b'invented-private-archive')
+                content = fixture.schema_script if '--schema-only' in command else fixture.toc_script if '--list' in command else b'invented-private-archive'
+                Path(argument[7:]).write_bytes(content)
+            if argument.startswith('--use-list='):
+                fixture.restore_list = Path(argument[11:]).read_bytes()
         if any(argument.startswith('--dbname=') for argument in command):
             return SimpleNamespace(stdout=b'', stderr=fixture.restore_stderr,
                                    returncode=1 if fixture.restore_stderr else 0)
@@ -189,7 +207,13 @@ def recovery_driver(monkeypatch, tmp_path):
                    'STAGING_EXPECTED_DATABASE': 'neondb',
                    'STAGING_BRANCH_ID': 'br-tiny-moon-al8b0u31', 'PG_BIN': str(tmp_path)}
     fixture = SimpleNamespace(environment=environment, connections=connections, events=events,
-                              unexpected=False, private_stderr=b'', restore_stderr=b'', schema_script=b'')
+                              unexpected=False, private_stderr=b'', restore_stderr=b'', schema_script=b'',
+                              provider_defaults=[(10, 826, 'cloud_admin', 'public', 'S', 'provider-sequence-acl', 2),
+                                                 (11, 826, 'cloud_admin', 'public', 'r', 'provider-table-acl', 7)],
+                              application_defaults=[], restore_list=None,
+                              restored_application_defaults=None,
+                              worker_can_mutate=False,
+                              toc_script=b'10; 826 10 DEFAULT ACL public DEFAULT PRIVILEGES FOR SEQUENCES cloud_admin\n11; 826 11 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES cloud_admin\n20; 0 0 ACL public TABLE hosted_snapshot_generations owner\n')
     monkeypatch.setattr(psycopg2, 'connect', connect)
     monkeypatch.setattr(subprocess, 'run', process)
     return fixture
@@ -198,11 +222,51 @@ def recovery_driver(monkeypatch, tmp_path):
 def test_full_rehearsal_releases_restored_connections_before_database_cleanup(recovery_driver):
     recovery_driver.environment['STAGING_PUBLISHER_DATABASE_URL'] += '&channel_binding=require&application_name=staging%20rehearsal&connect_timeout=5'
     result = rehearse(recovery_driver.environment)
-    assert result['state'] == 'passed'
+    assert result['state'] == 'application_recovery_passed'
     assert all(connection.closed for connection in recovery_driver.connections)
     assert recovery_driver.events.count('restored connection closed') == 2
     assert recovery_driver.events.index('owned database dropped') > max(
         index for index, event in enumerate(recovery_driver.events) if event == 'restored connection closed')
+
+
+def test_restore_omits_only_reviewed_provider_default_oids_and_reports_reduced_scope(recovery_driver):
+    application_line = b'30; 826 30 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES owner\n'
+    recovery_driver.application_defaults = [(30, 826, 'owner', 'public', 'r', 'application-acl', 1)]
+    recovery_driver.toc_script += application_line
+    result = rehearse(recovery_driver.environment)
+    assert result['state'] == 'application_recovery_passed'
+    assert result['provider_default_acl_entries_not_restored'] == 2
+    assert result['provider_default_grants_not_restored'] == 9
+    assert result['full_platform_metadata_equal'] is False
+    assert result['worker_effective_privileges_verified'] is True
+    assert b';10; 826 10 DEFAULT ACL' in recovery_driver.restore_list
+    assert b';11; 826 11 DEFAULT ACL' in recovery_driver.restore_list
+    assert b'20; 0 0 ACL public TABLE hosted_snapshot_generations owner\n' in recovery_driver.restore_list
+    assert application_line in recovery_driver.restore_list
+
+
+def test_unmapped_provider_default_toc_entry_stops_before_database_creation(recovery_driver):
+    recovery_driver.toc_script = recovery_driver.toc_script.replace(b'11; 826 11 DEFAULT ACL', b'11; 1255 11 FUNCTION')
+    with pytest.raises(ValueError):
+        rehearse(recovery_driver.environment)
+    assert 'owned database created' not in recovery_driver.events
+
+
+def test_application_default_privilege_loss_cannot_pass_recovery(recovery_driver):
+    recovery_driver.application_defaults = [(30, 826, 'owner', 'public', 'r', 'application-acl', 1)]
+    recovery_driver.restored_application_defaults = []
+    recovery_driver.toc_script += b'30; 826 30 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES owner\n'
+    with pytest.raises(ValueError, match='Recovery comparison failed'):
+        rehearse(recovery_driver.environment)
+    assert 'owned database dropped' in recovery_driver.events
+
+
+def test_forbidden_worker_mutation_privilege_stops_recovery_before_archive(recovery_driver):
+    recovery_driver.worker_can_mutate = True
+    with pytest.raises(ValueError, match='Worker can directly mutate protected state'):
+        rehearse(recovery_driver.environment)
+    assert 'archive command executed' not in recovery_driver.events
+    assert 'owned database created' not in recovery_driver.events
 
 
 def test_unreviewed_application_relations_stop_export_before_any_archive_or_restore(recovery_driver):
