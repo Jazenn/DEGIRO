@@ -1,13 +1,18 @@
 import type { Quote } from './valuation';
 export interface QuoteMapping { symbol: string; provider: 'binance' | 'yahoo'; provider_symbol: string; evidence: string }
+export class QuoteProviderHttpError extends Error {
+  constructor(readonly provider: QuoteMapping['provider'], readonly status: number) {
+    super('provider_unavailable');
+  }
+}
 export async function fetchQuote(mapping: QuoteMapping, signal: AbortSignal, request: typeof fetch = fetch): Promise<Quote> {
-  if (!mapping.evidence || !/^[A-Za-z0-9.^=:-]{1,80}$/.test(mapping.provider_symbol)) throw Error('unverified_quote_mapping');
+  if (!['binance','yahoo'].includes(mapping.provider) || !mapping.evidence || !/^[A-Za-z0-9.^=:-]{1,80}$/.test(mapping.provider_symbol)) throw Error('unverified_quote_mapping');
   let price: string, observed: string;
   const url = mapping.provider === 'binance'
     ? 'https://api.binance.com/api/v3/aggTrades?limit=1&symbol=' + encodeURIComponent(mapping.provider_symbol)
     : 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(mapping.provider_symbol) + '?interval=1d&range=1d';
   const response = await request(url, { signal });
-  if (!response.ok) throw Error('provider_unavailable');
+  if (!response.ok) throw new QuoteProviderHttpError(mapping.provider, response.status);
   const body = await response.text();
   const result = JSON.parse(body);
   if (mapping.provider === 'binance') {
