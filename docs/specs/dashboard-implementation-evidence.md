@@ -24,14 +24,20 @@ Reached-stage review now consumes canonical bounded cost projections and separat
 
 Reviewed Crypto Plan replacements retain old plan/stage identities and all report/allocation history. Pending remainders must be resolved first; explicit cancellation records the original report and reason without releasing matched execution capacity. Replacement checks the Snapshot, plan and shared execution versions under the same locking order as matching. A synthetic PostgreSQL regression covers partial execution, reduced holdings, pending rejection, cancellation retry/audit, stale execution conflicts, replacement retries and independent ETH state. Following execution reconciliation integration, 99 hosted tests and five actual PostgreSQL regressions passed, with hosted typecheck and the frontend production build. Browser workflow tests verify explicit replacement review and reason-based cancellation. These are local synthetic checks; live concurrency and private correction/reversal reconciliation remain release gates. See [Crypto Plan replacements](../crypto-plan-replacements.md).
 
+## Final combined local verification — 28 October 2026
+
+The combined integration passed 141 Python tests, 99 hosted tests, 156 frontend tests and five actual PostgreSQL regressions, plus typechecks, the frontend production build and the pinned Worker dry-run build. Synthetic hidden Chrome checks at 390px and 1440px verified sale reports, partial execution matching and the actual allocation receipt without horizontal overflow. Standards review reported zero findings through `eb86fc5`; specification review reported zero findings through `fa84eb3`.
+
+These results establish local behavior with synthetic records. They do not establish live integration, measured production concurrency/latency, private financial reconciliation, deployment or cutover. Follow the [private reconciliation and recovery runbook](private-reconciliation-and-recovery.md) before satisfying the remaining release gates.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
-canonical actual-disposal receipts and reached-stage progress. Local checks passed
+canonical actual-disposal receipts and reached-stage progress. Its interim checks passed
 131 Python tests (two environment-dependent skips), 95 hosted tests and four actual
 PostgreSQL regressions, including the new execution scenarios. See
 [execution reconciliation](crypto-execution-reconciliation.md) for the contract and
-remaining staged verification gates. No real deployment or private import is claimed.
+remaining staged verification gates. The final combined counts above supersede these interim counts and skips. No real deployment or private import is claimed.
 
 - Apply reviewed new schemas and least-privilege grants to the authorized staging destination; demonstrate real durable target conflicts and upload retry/publication behavior.
 - Configure and verify the hosted Python job with server-only publisher credentials and reviewed calculation settings. Keep import feature gates disabled until this passes. No private CSV or settings belong in repository files, Actions logs or public issue comments.

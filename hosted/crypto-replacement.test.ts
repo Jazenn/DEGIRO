@@ -29,4 +29,3 @@ test('cancellation validates a reason without requiring a new stage quantity',as
   await expect(run('POST',{...cancel,note:'short'})).rejects.toThrow('invalid_crypto_execution');
   expect(commands).toHaveLength(1);
 });
-

@@ -254,4 +254,3 @@ BEGIN
 END; $$;
 REVOKE ALL ON FUNCTION hosted_execution_facts(jsonb),hosted_read_crypto_executions(text),hosted_record_crypto_execution(jsonb) FROM PUBLIC;
 COMMIT;
-

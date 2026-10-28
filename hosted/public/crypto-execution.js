@@ -115,4 +115,3 @@ export function cryptoExecutionUI(root, request = fetch) {
 }
 const root = document.querySelector('#crypto-execution');
 if (root) cryptoExecutionUI(root);
-
