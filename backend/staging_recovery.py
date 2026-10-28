@@ -1,7 +1,9 @@
-"""Full database recovery rehearsal restricted to approved synthetic staging.
+"""Full-archive application recovery restricted to approved synthetic staging.
 
 Archives and private subprocess diagnostics live only in a restricted temporary
 directory. The source is read-only; rollback checks run on the disposable copy.
+The reviewed cloud_admin-owned future-object defaults are explicitly excluded
+from replay; full platform metadata equality is never claimed.
 """
 import json
 import os
@@ -72,10 +74,103 @@ def report_client_failure(process):
 
 def verify_capture(restored, expected):
     actual = capture(restored)
-    differences = [category for category in expected if actual[category] != expected[category]]
+    # Provider-owned future-object defaults are the one explicitly reviewed
+    # exception. Every application-owned default and every explicit ACL remains
+    # part of exact equality, including unexpected destination defaults.
+    application_expected = {**expected, 'default_privileges': [row for row in expected['default_privileges'] if row[0] != 'cloud_admin']}
+    differences = [category for category in application_expected if actual[category] != application_expected[category]]
     if differences:
         print(json.dumps({'comparison_mismatch_categories': differences}), flush=True)
         raise ValueError('Recovery comparison failed')
+
+
+def default_acl_records(connection):
+    with connection.cursor() as cursor:
+        cursor.execute("""SELECT d.oid::bigint,'pg_default_acl'::regclass::oid::bigint,
+            pg_get_userbyid(d.defaclrole),coalesce(n.nspname,''),d.defaclobjtype::text,d.defaclacl::text,
+            (SELECT count(*) FROM aclexplode(d.defaclacl))
+            FROM pg_default_acl d LEFT JOIN pg_namespace n ON n.oid=d.defaclnamespace
+            ORDER BY 3,4,5""")
+        return cursor.fetchall()
+
+
+def reviewed_provider_defaults(records):
+    provider = [row for row in records if row[2] == 'cloud_admin']
+    # This is the exact observed and reviewed staging exception, not a general
+    # policy of discarding unassumable roles or all DEFAULT ACL records.
+    if (len(provider) != 2 or sum(row[6] for row in provider) != 9
+            or {row[4] for row in provider} != {'r', 'S'}
+            or any(row[3] not in ('', 'public') for row in provider)):
+        raise ValueError('Provider default privilege exception changed')
+    return provider
+
+
+def selected_restore_list(content, provider):
+    wanted = {(row[1], row[0]) for row in provider}
+    seen, selected = set(), []
+    for line in content.splitlines(keepends=True):
+        record = re.match(rb'^\d+;\s+(\d+)\s+(\d+)\s+(.+)', line)
+        key = (int(record[1]), int(record[2])) if record else None
+        if key in wanted:
+            if key in seen or not record[3].startswith(b'DEFAULT ACL '):
+                raise ValueError('Unmapped provider default ACL archive entry')
+            seen.add(key)
+            selected.append(b';'+line)
+        else:
+            selected.append(line)
+    if seen != wanted:
+        raise ValueError('Provider default ACL archive entry missing')
+    return b''.join(selected)
+
+
+def verify_worker_privileges(connection, role=None):
+    with connection.cursor() as cursor:
+        if role is None:
+            cursor.execute("""SELECT DISTINCT r.rolname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                CROSS JOIN LATERAL aclexplode(c.relacl) a JOIN pg_roles r ON r.oid=a.grantee
+                WHERE n.nspname='public' AND c.relname='hosted_snapshot_generations'
+                AND a.privilege_type='SELECT' AND r.oid<>c.relowner AND r.rolcanlogin
+                AND has_table_privilege(r.oid,'public.hosted_sessions','INSERT')
+                AND has_table_privilege(r.oid,'public.hosted_sessions','DELETE')
+                AND NOT has_table_privilege(r.oid,'public.hosted_snapshot_generations','UPDATE')""")
+            candidates = cursor.fetchall()
+            if len(candidates) != 1:
+                raise ValueError('Expected one restricted Worker role')
+            role = candidates[0][0]
+        reads = ['hosted_snapshot_generations', 'hosted_snapshot_pointer', 'hosted_targets',
+                 'hosted_execution_terms', 'hosted_contribution_assets', 'hosted_quote_mappings',
+                 'hosted_crypto_market_history', 'hosted_crypto_sale_permissions', 'hosted_crypto_plan_state',
+                 'hosted_crypto_plan_history', 'hosted_crypto_plan_operations', 'hosted_crypto_sale_costs',
+                 'hosted_owner_identity', 'hosted_sessions']
+        cursor.execute("SELECT bool_and(has_table_privilege(%s,t,'SELECT')) FROM unnest(%s::text[]) t",
+                       (role, ['public.'+table for table in reads]))
+        if cursor.fetchone()[0] is not True:
+            raise ValueError('Worker read privileges changed')
+        functions = ['hosted_save_targets(text,bigint,jsonb)',
+                     'hosted_publish_valuation(text,text,bigint,jsonb,timestamptz)',
+                     'hosted_accept_crypto_plan(jsonb,jsonb)', 'hosted_read_crypto_executions(text)',
+                     'hosted_record_crypto_execution(jsonb)', 'hosted_review_crypto_replacement(jsonb)',
+                     'hosted_cancel_crypto_report(jsonb)', 'hosted_read_crypto_report_events(text)']
+        cursor.execute("SELECT bool_and(has_function_privilege(%s,f,'EXECUTE')) FROM unnest(%s::text[]) f",
+                       (role, ['public.'+function for function in functions]))
+        if cursor.fetchone()[0] is not True:
+            raise ValueError('Worker operation privileges changed')
+        protected = ['hosted_snapshot_generations', 'hosted_snapshot_pointer', 'hosted_crypto_plan_state',
+                     'hosted_crypto_plan_history', 'hosted_crypto_plan_events', 'hosted_crypto_reports',
+                     'hosted_crypto_match_allocations', 'hosted_crypto_execution_capacity', 'hosted_crypto_execution_state',
+                     'hosted_crypto_report_events', 'hosted_crypto_execution_operations', 'hosted_crypto_plan_operations']
+        cursor.execute("SELECT bool_and(NOT has_table_privilege(%s,t,p)) FROM unnest(%s::text[]) t CROSS JOIN unnest(%s::text[]) p",
+                       (role, ['public.'+table for table in protected], ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']))
+        if cursor.fetchone()[0] is not True:
+            raise ValueError('Worker can directly mutate protected state')
+        cursor.execute("SELECT has_column_privilege(%s,'public.hosted_import_jobs','csv_content','SELECT')", (role,))
+        if cursor.fetchone()[0] is not False:
+            raise ValueError('Worker can read raw source bytes')
+        for table, permission in [('hosted_owner_identity', 'INSERT'), ('hosted_sessions', 'INSERT'), ('hosted_sessions', 'DELETE')]:
+            cursor.execute('SELECT has_table_privilege(%s,%s,%s)', (role, 'public.'+table, permission))
+            if cursor.fetchone()[0] is not True:
+                raise ValueError('Worker session privileges changed')
+    return role
 
 
 def approved_source(environment):
@@ -138,7 +233,8 @@ def capture(connection):
         schema_grants = cursor.fetchall()
     return dict(data=data, functions=functions, grants=grants, triggers=triggers,
                 constraints=constraints, indexes=indexes, sequences=sequences,
-                schema_grants=schema_grants)
+                schema_grants=schema_grants,
+                default_privileges=[row[2:] for row in default_acl_records(connection)])
 
 
 def synthetic_only(connection):
@@ -224,6 +320,9 @@ def rehearse(environment):
         synthetic_only(source)
         phase('fingerprint_source')
         expected = capture(source)
+        provider_defaults = reviewed_provider_defaults(default_acl_records(source))
+        phase('verify_source_worker_privileges')
+        worker_role = verify_worker_privileges(source)
         with tempfile.TemporaryDirectory(prefix='degiro-private-recovery-') as directory:
             os.chmod(directory, 0o700)
             archive = Path(directory) / 'database.dump'
@@ -250,6 +349,18 @@ def rehearse(environment):
                               'archive_comments_public_schema': bool(re.search(rb'^COMMENT ON SCHEMA (?:public|"public")\b', private_schema_sql, re.M)),
                               'archive_has_default_privileges': bool(re.search(rb'^ALTER DEFAULT PRIVILEGES\b', private_schema_sql, re.M)),
                               'archive_has_role_switch': bool(re.search(rb'^SET (?:ROLE|SESSION AUTHORIZATION)\b', private_schema_sql, re.M))}), flush=True)
+            phase('select_reviewed_provider_default_exception')
+            original_list = Path(directory) / 'complete.list'
+            listing = subprocess.run([str(clients[1]), '--list', '--file='+str(original_list), str(archive)],
+                                     env=pg_environment(url), capture_output=True, timeout=60)
+            if listing.returncode or listing.stderr:
+                report_client_failure(listing)
+                raise ValueError('Archive listing failed')
+            restore_list = Path(directory) / 'application-restore.list'
+            restore_list.write_bytes(selected_restore_list(original_list.read_bytes(), provider_defaults))
+            print(json.dumps({'provider_default_acl_entries_not_restored': len(provider_defaults),
+                              'provider_default_grants_not_restored': sum(row[6] for row in provider_defaults),
+                              'full_platform_metadata_equal': False}), flush=True)
             # Snapshot remains open through the dump and comparison capture.
             source.rollback()
             admin = psycopg2.connect(url, connect_timeout=15)
@@ -266,12 +377,13 @@ def rehearse(environment):
                     cursor.execute("SELECT EXISTS(SELECT FROM pg_tables WHERE schemaname='public')")
                     if cursor.fetchone()[0]:
                         raise ValueError('Restore destination is not empty')
-            # Same reviewed staging cluster and existing roles only. Preserve the
-            # archive's ACLs, including PUBLIC revocations, then compare them.
+            # All explicit ACLs and application defaults remain selected. Only
+            # the reviewed provider-owned DEFAULT ACL catalog OIDs are excluded;
+            # the complete archive itself remains unchanged.
             # No --clean or --create option can target the source database.
             phase('restore_archive')
             process = subprocess.run([str(clients[1]), '--dbname='+destination, '--single-transaction',
-                                      '--exit-on-error', '--no-owner', str(archive)],
+                                      '--exit-on-error', '--no-owner', '--use-list='+str(restore_list), str(archive)],
                                      env=pg_environment(url, destination), capture_output=True, timeout=240)
             if process.returncode or process.stderr:
                 report_client_failure(process)
@@ -279,6 +391,8 @@ def rehearse(environment):
             with closing(psycopg2.connect(**restored_url)) as restored:
                 phase('compare_restored_capture')
                 verify_capture(restored, expected)
+                phase('verify_restored_worker_privileges')
+                verify_worker_privileges(restored, worker_role)
                 restored.rollback()
                 phase('verify_restored_rollback')
                 with restored.cursor() as cursor:
@@ -306,9 +420,13 @@ def rehearse(environment):
                     raise ValueError('Immutable generation accepted mutation')
                 phase('compare_after_rollback')
                 verify_capture(restored, expected)
-            return {'state': 'passed', 'scope': 'full synthetic staging database',
+            return {'state': 'application_recovery_passed', 'scope': 'synthetic application recovery; provider defaults excluded',
                     'public_tables': len(expected['data']), 'archive_sha256': archive_digest,
-                    'data_schema_grants_equal': True, 'rollback_and_immutability_verified': True,
+                    'application_data_schema_explicit_grants_equal': True,
+                    'worker_effective_privileges_verified': True,
+                    'provider_default_acl_entries_not_restored': len(provider_defaults),
+                    'provider_default_grants_not_restored': sum(row[6] for row in provider_defaults),
+                    'full_platform_metadata_equal': False, 'rollback_and_immutability_verified': True,
                     'duration_seconds': round(time.monotonic()-started, 2),
                     'archive_retention': 'ephemeral private runner only; no durable backup claimed'}
     finally:

@@ -1,4 +1,4 @@
-name: Synthetic staging full recovery rehearsal
+name: Synthetic staging application recovery rehearsal
 
 # Intentionally manual: never use production flags or run on a schedule.
 on:

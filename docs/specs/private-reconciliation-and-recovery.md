@@ -80,7 +80,7 @@ Stop cutover on failed technical checks and fix them. Return a specific infeasib
 
 ## Evidence in this implementation
 
-The manual **Synthetic staging full recovery rehearsal** Actions workflow runs
+The manual **Synthetic staging application recovery rehearsal** Actions workflow runs
 `python -m backend.staging_recovery` using only the distinct
 `STAGING_PUBLISHER_DATABASE_URL`, `STAGING_EXPECTED_HOST` and
 `STAGING_EXPECTED_DATABASE` secrets in the `synthetic-staging` environment. It does not
@@ -105,18 +105,41 @@ The root coordinator supplies only the already authorized staging credentials.
 
 The module exports a consistent database snapshot and captures each public table's
 row count/private digest plus functions, schema/table/column/function grants,
-constraints, triggers, indexes and sequences from that same snapshot. `pg_dump`
+constraints, triggers, indexes, sequences and default privileges from that same snapshot. `pg_dump`
 writes a full custom archive into a restricted temporary directory. It creates a
 uniquely named empty database on the same approved staging branch, revokes PUBLIC
 CONNECT there, and restores with `--single-transaction --exit-on-error --no-owner`.
-This trusted same-cluster rehearsal deliberately restores existing-role ACLs from
-the archive and compares them exactly, including PUBLIC revocations. It does not
-create cluster roles or demonstrate independently reviewed grants on a new cluster;
-the private production procedure above still requires that review.
+The complete archive is retained unchanged during the rehearsal. Replay uses a
+private `pg_restore --use-list` selection with one narrow, measured exception:
+exactly two source `pg_default_acl` entries, containing nine expanded grants,
+owned by Neon's reserved `cloud_admin` role cannot be recreated by the publisher.
+The source catalog OIDs must map exactly to `DEFAULT ACL` archive entries; only
+those entries are commented out. Their reviewed object kinds are tables and
+sequences, scoped globally or to `public`. A changed count, scope, owner, object
+kind or unmapped/duplicate archive entry stops the rehearsal. No blanket
+`--no-acl`, role escalation, source mutation or omission of application-owned
+default privileges is permitted.
+
+Every application object ACL, column ACL, PUBLIC revocation and application-owned
+default privilege remains selected and must compare exactly. The two provider
+defaults are **not** already present in the fresh destination and are not claimed
+to be restored: the result reports `application_recovery_passed`, the two/nine
+omission counts and `full_platform_metadata_equal=false`. Source defaults remain
+in the full private archive. This is application recovery evidence with a provider
+metadata exception; the strict full-platform recovery and private cutover gate
+remains open. Neon documents [ownership limits](https://neon.com/docs/import/migrate-from-postgres)
+and [provider-specific privilege portability limits](https://neon.com/docs/import/migrate-schema-only).
+PostgreSQL documents [selective archive replay](https://www.postgresql.org/docs/current/app-pgrestore.html)
+and that [default privileges concern future objects of the target creator role](https://www.postgresql.org/docs/current/sql-alterdefaultprivileges.html).
 
 After exact data/schema/grant comparison, the module exercises publication CAS,
 rollback and immutable-generation rejection **only on the restored database**,
-then confirms all captured histories remain unchanged. Only the uniquely named
+then confirms all captured application histories remain unchanged. On both source
+and restored copy it independently verifies the restricted Worker's required
+SELECT, operation EXECUTE and session privileges, rejection of direct protected
+state mutations, and inability to SELECT raw CSV bytes. The Worker role is
+identified uniquely from explicit Snapshot/read and session grants; its identity
+is never logged. Only the uniquely named
 database successfully created by that invocation can be dropped; no source writes,
 existing-destination overwrite, forced disconnect, `--clean` or `--create` restore
 is allowed. The archive and private command diagnostics are never uploaded as an
@@ -127,8 +150,8 @@ failed stages; comparison failures name only categories such as `data` or
 warning with a zero exit status. A closed-set client failure category and a boolean
 indicating whether the private archive creates `public` distinguish restore
 prerequisites without exposing archive SQL, object names or server error text.
-Successful execution proves that capture's full restore round
-trip; its temporary archive is **not an independently retained durable backup**,
+Successful execution proves that capture's application restore round
+trip with the explicit provider-default exception; its temporary archive is **not an independently retained durable backup**,
 and it does not prove private source reconciliation, application cutover, restored
 hosted access or recovery of later activity. The job shares the
 `synthetic-staging-verification` concurrency group with other staging rehearsals.
@@ -137,7 +160,11 @@ Local CLI regressions exercise early rejection before any database connection:
 an unapproved endpoint cannot expose credential text, and missing PostgreSQL
 clients cannot silently pass. Driver/process-boundary regressions verify that
 both restored connections close before database cleanup and an unexpected
-application relation prevents every archive/restore command. Live export/restore execution remains separate
+application relation prevents every archive/restore command. Other regressions
+verify exact provider-OID selection, preservation of application defaults and
+explicit ACL selection, failure on missing/mistyped TOC entries or lost application
+defaults, and refusal of forbidden Worker mutation privileges before export.
+Live export/restore execution remains separate
 evidence until the coordinator runs the manual workflow.
 
 Eight local synthetic regressions cover the read-only comparator/CLI: the EUR1000+EUR5/EUR1100 example, holdings/charge differences, missing gains/costs, cutoff/evidence validation, duplicate identities, nonfinite decimals, exclusive private reports and repository path rejection. No private reconciliation, new database export/restore, staging schema application, benchmark, live resource check, deployment or production cutover is claimed.
