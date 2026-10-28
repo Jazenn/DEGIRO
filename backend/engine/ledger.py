@@ -120,6 +120,7 @@ class Ledger:
     net_income_eur: Decimal
     portfolio_costs_eur: Decimal
     diagnostics: tuple[str, ...]
+    disposals: tuple[dict, ...] = ()
 
 
 def calculate_ledger(frame, prices, settings, cutoff, *, cutoff_eligible):
@@ -159,7 +160,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
     ordered = sort_transactions_chronologically(frame).to_dict('records')
     cash, external, income, withholding, costs = opening, ZERO, ZERO, ZERO, ZERO
     cash_known = verified
-    states, charges = {}, []
+    states, charges, disposals = {}, [], []
     fees = {}
     inline_fx = {}
     for row in ordered:
@@ -253,6 +254,8 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             state['lots'].append(Lot(row['row_hash'], row['normalized_date'], qty, abs(amount) + fee if cost_known else None))
         else:
             remaining, disposed = qty, ZERO
+            consumed_lots = []
+            cost_points = [{'quantity': ZERO, 'cost_eur': ZERO}]
             while remaining and state['lots']:
                 lot = state['lots'].pop(0)
                 taken = min(remaining, lot.quantity)
@@ -261,10 +264,27 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
                 if taken < lot.quantity:
                     state['lots'].insert(0, Lot(lot.transaction_id, lot.acquired_at, lot.quantity-taken, lot.cost_eur-consumed if consumed is not None else None))
                 remaining -= taken
+                consumed_lots.append({'acquisition_id': lot.transaction_id, 'quantity': taken, 'cost_eur': consumed})
+                if disposed is not None:
+                    cost_points.append({'quantity': qty-remaining, 'cost_eur': disposed})
             if remaining:
                 raise ValueError('sale_quantity_exceeds_known_inventory:' + identity)
             gain = amount-fee-disposed if cost_known and disposed is not None and remaining == 0 else None
             state['realized'] = state['realized'] + gain if state['realized'] is not None and gain is not None else None
+            executed_at = None
+            if cutoff_eligible and row.get('time'):
+                executed_at = pd.Timestamp(row['normalized_date']+' '+row['time']).tz_localize(timezone['name'], ambiguous='raise', nonexistent='raise').isoformat()
+            verified_disposal = cost_complete and cost_known and disposed is not None and cutoff_eligible and executed_at is not None and mapped
+            disposals.append({'schema_version': 'canonical-disposal-v1', 'execution_id': row['row_hash'],
+                'identity_version': row.get('identity_version'), 'identity_fingerprint': row.get('identity_fingerprint'),
+                'identity_occurrence': str(row.get('identity_occurrence', '')), 'broker_asset_id': identity,
+                'symbol': state['symbol'], 'asset_kind': state['kind'], 'order_id': row.get('order_id'),
+                'executed_at': executed_at, 'quantity': qty, 'gross_proceeds_eur': amount if rate is not None else None,
+                'recorded_fees_eur': fee if rate is not None else None, 'fees_eur': fee if verified_disposal else None,
+                'disposed_cost_eur': disposed if verified_disposal else None, 'realized_gain_eur': gain if verified_disposal else None,
+                'coverage': 'verified_complete' if verified_disposal else 'unverified',
+                'allocation_policy': 'canonical40-breakpoints-exact-rational-v1',
+                'cost_breakpoints': cost_points if verified_disposal else [], 'consumed_lots': consumed_lots})
             if gain is None:
                 diagnostics.append('missing_disposed_cost:' + identity)
     positions = []
@@ -285,7 +305,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
     if gain is not None and attributed is not None and abs(gain-attributed) > Decimal('0.00000001'):
         diagnostics.append('equity_bridge_does_not_reconcile')
         gain = attributed = None
-    return Ledger('ledger-v1', tuple(positions), tuple(charges), cash if cash_known else None, external, market, equity, gain, attributed, income, withholding, income-withholding, costs, tuple(sorted(set(diagnostics))))
+    return Ledger('ledger-v1', tuple(positions), tuple(charges), cash if cash_known else None, external, market, equity, gain, attributed, income, withholding, income-withholding, costs, tuple(sorted(set(diagnostics))), tuple(disposals))
 
 
 

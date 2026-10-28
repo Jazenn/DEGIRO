@@ -22,6 +22,7 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  cryptoExecutions?(method: string, value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoStageReview?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoPlans?(method: string, value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoLevels?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
@@ -97,6 +98,23 @@ export function createApplication(dependencies: Dependencies) {
       try { await store.revokeSession(token!); }
       catch { return json({ state: 'error', error: 'authentication_unavailable' }, 503); }
       return privateResponse(null, 303, { Location: '/login', 'Set-Cookie': cookie(sessionCookie, '', 0) });
+    }
+    if (path === '/api/crypto/executions') {
+      if (!['GET','POST'].includes(request.method)) return json({ error: 'method_not_allowed' }, 405);
+      if (request.method === 'POST' && request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);
+      try {
+        if (!dependencies.cryptoExecutions) throw Error('unavailable');
+        let value: unknown = url.searchParams.get('coin');
+        if (request.method === 'POST') {
+          try { const body = await request.text(); if (body.length > 10000) throw Error(); value = JSON.parse(body); }
+          catch { return json({ error: 'invalid_crypto_execution' }, 400); }
+        }
+        const result = await dependencies.cryptoExecutions(request.method, value, env);
+        return json(result, result.state === 'conflict' ? 409 : 200);
+      } catch (error) {
+        return error instanceof Error && error.message === 'invalid_crypto_execution' ? json({ error: error.message }, 400)
+          : json({ state: 'unavailable', reason: 'crypto_executions_unavailable' }, 503);
+      }
     }
     if (path === '/api/crypto/stages/preview') {
       if (request.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);

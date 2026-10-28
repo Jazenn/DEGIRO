@@ -42,6 +42,7 @@ export function cryptoExecutionUI(root, request = fetch) {
     function display(value) {
       records.replaceChildren();
       const progress = value.progress ?? {};
+      if (progress.reconciliation_required) records.append(node('p', 'An imported execution changed or disappeared. Recorded matches remain in history; reconcile the correction and review a replacement before acting on this plan.'));
       records.append(node('p', `Shared sales version ${value.version}. Pending ${progress.pending_quantity ?? 'unavailable'} units; matched ${progress.matched_quantity ?? 'unavailable'} units.`));
       for (const row of value.reports ?? []) records.append(node('p', `Report ${row.report_id}; stage ${row.stage_id}; ${row.quantity} units. Pending ${row.pending_quantity}; matched ${row.matched_quantity}; ${row.status}.`));
       const executions = value.executions ?? [];
@@ -62,7 +63,7 @@ export function cryptoExecutionUI(root, request = fetch) {
         } else records.append(node('p', 'Allocation recorded; actual gain remains unverified.'));
       }
       options(stage, 'Choose an accepted stage', (value.plan?.stages ?? []).map(row => [row.stage_id, `${row.stage_id} (${row.quantity} original units)`]));
-      options(report, 'Create and match a report together', (value.reports ?? []).filter(row => row.status !== 'completed').map(row => [row.report_id, `${row.report_id}: pending ${row.pending_quantity}`]));
+      options(report, 'Create and match a report together', (value.reports ?? []).filter(row => row.status === 'open' && (!row.plan_id || row.plan_id === value.plan?.plan_id)).map(row => [row.report_id, `${row.report_id}: pending ${row.pending_quantity}`]));
       options(execution, 'Choose an actual imported execution', executions.filter(row => row.eligible === true).map(row => [row.execution_id, `${row.execution_id}: ${row.available_quantity} available units` ]));
     }
     async function read() {
