@@ -124,7 +124,10 @@ artifact or printed. Only sanitized counts, timings, an archive hash and pass/fa
 leave the runner. Static phase labels and failure class/line/SQLSTATE identify
 failed stages; comparison failures name only categories such as `data` or
 `grants`. Client diagnostics remain withheld, including when a client emits a
-warning with a zero exit status. Successful execution proves that capture's full restore round
+warning with a zero exit status. A closed-set client failure category and a boolean
+indicating whether the private archive creates `public` distinguish restore
+prerequisites without exposing archive SQL, object names or server error text.
+Successful execution proves that capture's full restore round
 trip; its temporary archive is **not an independently retained durable backup**,
 and it does not prove private source reconciliation, application cutover, restored
 hosted access or recovery of later activity. The job shares the

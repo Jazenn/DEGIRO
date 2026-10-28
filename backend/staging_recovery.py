@@ -26,6 +26,28 @@ def phase(name):
     print(json.dumps({'recovery_phase': name}), flush=True)
 
 
+def report_client_failure(process):
+    """Closed diagnostic vocabulary; raw client/server messages never escape."""
+    errors = b'\n'.join(line.split(b'ERROR:', 1)[1].strip()
+                        for line in process.stderr.splitlines() if b'ERROR:' in line)
+    patterns = [
+        ('public_schema_exists', rb'schema\s+"public"\s+already exists'),
+        ('schema_exists', rb'schema\s+"[^"\r\n]+"\s+already exists'),
+        ('relation_exists', rb'relation\s+"[^"\r\n]+"\s+already exists'),
+        ('permission_denied', rb'permission denied|must be (?:owner|superuser)|only superuser'),
+        ('missing_role', rb'role\s+"[^"\r\n]+"\s+does not exist'),
+        ('extension_unavailable', rb'extension.*(?:not available|does not exist|not installed)'),
+        ('unrecognized_setting', rb'unrecognized configuration parameter'),
+        ('snapshot_unavailable', rb'(?:invalid|does not exist|could not import).*snapshot'),
+    ]
+    category = next((name for name, pattern in patterns if re.search(pattern, errors, re.I)), None)
+    if category is None and re.search(rb'connection.*(?:failed|refused|timed out)|could not connect', process.stderr, re.I):
+        category = 'connection_failed'
+    print(json.dumps({'client_exit_code': process.returncode,
+                      'client_warning_present': bool(process.stderr),
+                      'client_failure_categories': [category or 'other']}), flush=True)
+
+
 def verify_capture(restored, expected):
     actual = capture(restored)
     differences = [category for category in expected if actual[category] != expected[category]]
@@ -188,10 +210,20 @@ def rehearse(environment):
                                       '--file='+str(archive)], env=pg_environment(url),
                                      capture_output=True, timeout=240)
             if process.returncode or process.stderr:
-                print(json.dumps({'client_exit_code': process.returncode,
-                                  'client_warning_present': bool(process.stderr)}), flush=True)
+                report_client_failure(process)
                 raise ValueError('Dump failed or emitted a warning')
             archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
+            phase('inspect_archive_schema')
+            schema_script = Path(directory) / 'schema.sql'
+            inspection = subprocess.run([str(clients[1]), '--schema-only', '--no-owner',
+                                         '--file='+str(schema_script), str(archive)],
+                                        env=pg_environment(url), capture_output=True, timeout=60)
+            if inspection.returncode or inspection.stderr:
+                report_client_failure(inspection)
+                raise ValueError('Archive inspection failed')
+            creates_public = bool(re.search(rb'^CREATE SCHEMA (?:public|"public");\s*$',
+                                            schema_script.read_bytes(), re.M))
+            print(json.dumps({'archive_creates_public_schema': creates_public}), flush=True)
             # Snapshot remains open through the dump and comparison capture.
             source.rollback()
             admin = psycopg2.connect(url, connect_timeout=15)
@@ -216,8 +248,7 @@ def rehearse(environment):
                                       '--exit-on-error', '--no-owner', str(archive)],
                                      env=pg_environment(url, destination), capture_output=True, timeout=240)
             if process.returncode or process.stderr:
-                print(json.dumps({'client_exit_code': process.returncode,
-                                  'client_warning_present': bool(process.stderr)}), flush=True)
+                report_client_failure(process)
                 raise ValueError('Restore failed or emitted a warning')
             with closing(psycopg2.connect(**restored_url)) as restored:
                 phase('compare_restored_capture')
