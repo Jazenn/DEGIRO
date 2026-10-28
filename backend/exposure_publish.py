@@ -26,7 +26,7 @@ def main():
         sources = load_sources(args.manifest)
     else:
         manifest = json.loads(os.environ['ETF_EXPOSURE_MANIFEST'])
-        if any(config.get('adapter') != 'vanguard-page' for config in manifest.values()):
+        if any(config.get('adapter') not in ('vanguard-page', 'ishares-csv') for config in manifest.values()):
             raise ValueError('Hosted exposure job accepts only official source adapters')
         with TemporaryDirectory() as directory:
             path = Path(directory) / 'sources.json'
