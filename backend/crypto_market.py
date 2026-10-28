@@ -3,7 +3,7 @@
 The daily hosted job reuses the observed CoinGecko adapter. It does not rebuild
 private Portfolio History or require holdings, source timezone, cost or baseline.
 """
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 import os
 from uuid import uuid4
 
@@ -19,12 +19,22 @@ def fetch_market_coin(symbol, *, now, api_key=None):
     return {at: quotes[symbol] for at, quotes in data['daily_prices'].items() if symbol in quotes}
 
 
-def publish_market_history(connection, *, now, api_key=None):
+def publish_market_history(connection, *, now, api_key=None, require_complete=False):
     from psycopg2.extras import Json
+    at = datetime.fromisoformat(now.replace('Z', '+00:00'))
+    if at.tzinfo is None:
+        raise ValueError('Market history publication requires a timezone')
+    midnight = at.astimezone(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+    expected = {(midnight - timedelta(days=n)).isoformat().replace('+00:00', 'Z')
+                for n in range(365)}
+    results = {}
     for symbol in ['BTC-EUR', 'ETH-EUR']:
         observations, diagnostics = None, []
         try:
             observations = fetch_market_coin(symbol, now=now, api_key=api_key)
+            if require_complete and not expected.issubset(observations):
+                observations = None
+                diagnostics = ['complete_daily_window_required_previous_series_retained']
         except Exception:
             diagnostics = ['provider_request_failed_previous_series_retained']
         with connection.cursor() as cursor:
@@ -36,6 +46,10 @@ def publish_market_history(connection, *, now, api_key=None):
                 (symbol, str(uuid4()), Json(observations) if observations is not None else None, now,
                  Json(diagnostics), Json(observations) if observations is not None else None))
         connection.commit()
+        results[symbol] = ({'state': 'retained', 'reason': diagnostics[0]}
+                           if observations is None else
+                           {'state': 'published', 'completed_days': str(len(expected.intersection(observations)))})
+    return results
 
 
 def main():
