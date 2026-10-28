@@ -147,7 +147,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
         if at.tzinfo is None or at > cutoff or equity_start != opening:
             raise ValueError('Opening baseline requires dated verified cash-only equity; opening holdings require reconciled lots')
         if not frame.empty:
-            earliest = pd.to_datetime(frame['normalized_date'] + ' ' + frame['time']).min()
+            earliest = pd.to_datetime(frame['normalized_date'] + ' ' + frame['time'], format='mixed').min()
             zone = settings.get('source_timezone', {})
             if zone.get('verified') and zone.get('evidence'):
                 earliest = earliest.tz_localize(zone['name'], ambiguous='raise', nonexistent='raise')

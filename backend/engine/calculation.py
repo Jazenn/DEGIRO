@@ -117,7 +117,7 @@ def calculate_portfolio(
         if not verified_timezone:
             diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
         times = frame.get("time", pd.Series("00:00", index=frame.index))
-        dates = pd.to_datetime(frame.get("normalized_date", frame["date"]).astype(str) + " " + times.astype(str), dayfirst="normalized_date" not in frame, errors="coerce")
+        dates = pd.to_datetime(frame.get("normalized_date", frame["date"]).astype(str) + " " + times.astype(str), format="mixed", dayfirst="normalized_date" not in frame, errors="coerce")
         if dates.isna().any():
             raise ValueError("Normalized Transactions contain invalid dates")
         if verified_timezone:

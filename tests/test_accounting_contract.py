@@ -22,6 +22,17 @@ def test_acquisition_fee_is_in_retained_cost_and_equity_bridge():
     assert ledger.attributed_gain_eur == D('95')
 
 
+def test_imports_with_mixed_time_precision_preserve_chronology_and_actual_disposal():
+    ledger = report(['02-01-2026,09:00,,,Deposit,EUR,1005,',
+                     '03-01-2026,09:00:00.125,Fund,A,Buy 1 @ 1000 EUR,EUR,-1000,buy',
+                     '03-01-2026,09:00:00.250,Fund,A,Transaction fee,EUR,-5,buy',
+                     '04-01-2026,09:00:00,Fund,A,Sell 0.5 @ 1100 EUR,EUR,550,sale'])
+    assert ledger.positions[0].quantity == D('0.5')
+    assert ledger.positions[0].retained_cost_eur == D('502.5')
+    assert ledger.positions[0].realized_gain_eur == D('47.5')
+    assert ledger.net_gain_eur == D('95')
+
+
 def test_growth_income_and_portfolio_cost_reconcile_once():
     ledger = report(['02-01-2026,09:00,,,Deposit,EUR,1000,',
                      '03-01-2026,09:00,Fund,A,Buy 1 @ 1000 EUR,EUR,-1000,o',

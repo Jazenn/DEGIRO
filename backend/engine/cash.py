@@ -23,6 +23,7 @@ def sort_transactions_chronologically(df: pd.DataFrame) -> pd.DataFrame:
         # Parse day-first dates (e.g. 15-10-2026)
         df_out["_dt"] = pd.to_datetime(
             date_str + " " + time_str,
+            format="mixed",
             dayfirst="normalized_date" not in df_out,
             errors="coerce",
         )
