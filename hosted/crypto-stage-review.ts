@@ -4,7 +4,7 @@ const D = Decimal.clone({ precision: 80, rounding: Decimal.ROUND_HALF_EVEN });
 const decimal = (value: unknown) => typeof value === 'string' && /^\d+(?:\.\d+)?(?:E[+-]?\d+)?$/i.test(value) && new D(value).isFinite();
 const down = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_FLOOR);
 const up = (value: Decimal) => value.toDecimalPlaces(2, Decimal.ROUND_CEIL);
-export interface Progress { matched_quantity: string; pending_quantity: string; reconciled_ledger_version?: string; stages: Record<string, { matched_quantity: string; pending_quantity: string }> }
+export interface Progress { matched_quantity: string; pending_quantity: string; reconciled_ledger_version?: string; reconciliation_required?: boolean; stages: Record<string, { matched_quantity: string; pending_quantity: string }> }
 export const noReports: Progress = { matched_quantity: '0', pending_quantity: '0', stages: {} };
 function prepareCostProjection(curve: any, model: any, position: any) {
   if (!curve || curve.state !== 'available' || curve.schema_version !== 'bounded-disposal-curve-v1'
@@ -59,6 +59,7 @@ export function reviewReachedStages(snapshot: any, state: any, fees: any, now: s
   const result: Record<string, any> = { state: 'unavailable', reason: 'accepted_plan_required', generation_id: snapshot?.generation_id ?? null,
     plan_version: state.version, plan_id: plan?.plan_id ?? null, stages: [], proceeds_destination: 'Review manually executed net proceeds for ETF contribution planning; no sale or contribution is executed.' };
   if (!plan) return result;
+  if (progress.reconciliation_required) return { ...result, state: 'review', reason: 'execution_facts_changed_review' };
   const model = snapshot?.read_model, position = model?.ledger.positions.find((row: any) => row.broker_asset_id === plan.asset_id);
   if (plan.ledger_version && plan.ledger_version !== model?.ledger_version && progress.reconciled_ledger_version !== model?.ledger_version)
     return { ...result, state: 'review', reason: 'changed_ledger_requires_execution_reconciliation' };

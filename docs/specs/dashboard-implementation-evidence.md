@@ -24,6 +24,13 @@ Reached-stage review now consumes canonical bounded cost projections and separat
 
 ## Outstanding release gates
 
+Ticket #58 now connects the sale reporting UI to owner-only durable operations,
+canonical actual-disposal receipts and reached-stage progress. Local checks passed
+131 Python tests (two environment-dependent skips), 95 hosted tests and four actual
+PostgreSQL regressions, including the new execution scenarios. See
+[execution reconciliation](crypto-execution-reconciliation.md) for the contract and
+remaining staged verification gates. No real deployment or private import is claimed.
+
 - Apply reviewed new schemas and least-privilege grants to the authorized staging destination; demonstrate real durable target conflicts and upload retry/publication behavior.
 - Configure and verify the hosted Python job with server-only publisher credentials and reviewed calculation settings. Keep import feature gates disabled until this passes. No private CSV or settings belong in repository files, Actions logs or public issue comments.
 - Verify exact broker Asset identities, source timezone, quantity precision/minimums, historical coverage and fee assumptions before dependent recommendations are complete.

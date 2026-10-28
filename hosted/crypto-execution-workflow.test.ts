@@ -12,7 +12,7 @@ test('past sales remain reportable with stale quotes and matching requires an ex
       plan:{plan_id:'plan1',stages:[{stage_id:'plan1:1',quantity:'0.6'}]},progress:{pending_quantity:reports.length?'0.6':'0',matched_quantity:allocations.length?'0.6':'0'},reports,allocations,
       executions:[{execution_id:'fill-a',quantity:'0.6',available_quantity:'0.6',eligible:true,executed_at:'2026-10-22T12:00:00Z',gross_proceeds_eur:'500',fees_eur:'5',disposed_cost_eur:'480',realized_gain_eur:'15',coverage:'verified_complete'}],diagnostics:[]});
     const body=JSON.parse(String(init.body)); commands.push(body); version=String(Number(version)+1);
-    if(body.action==='report') reports=[{report_id:'report1',stage_id:'plan1:1',quantity:'0.6',pending_quantity:'0.6',matched_quantity:'0',status:'pending'}];
+    if(body.action==='report') reports=[{report_id:'report1',plan_id:'plan1',stage_id:'plan1:1',quantity:'0.6',pending_quantity:'0.6',matched_quantity:'0',status:'open'}];
     else allocations=[{execution_id:'fill-a',quantity:'0.6',receipt:{state:'verified',display:{gross_proceeds_eur:'500.00',fees_eur:'5.00',disposed_cost_eur:'480.00',realized_gain_eur:'15.00'},rounding_note:'Display rounded; exact receipt retained.'}}];
     return Response.json({state:body.action==='report'?'reported':'matched',version});
   });
