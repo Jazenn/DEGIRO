@@ -4,7 +4,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: synthetic-staging-import-rehearsal
+  group: synthetic-staging-verification
   cancel-in-progress: false
 jobs:
   rehearse:
