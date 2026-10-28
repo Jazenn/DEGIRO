@@ -15,3 +15,7 @@ dist/
 .wrangler/
 !hosted/tsconfig.json
 .neon
+.scratch/
+.worktrees/
+.playwright-mcp/
+.pytest_cache/
