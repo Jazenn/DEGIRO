@@ -122,6 +122,8 @@ def recovery_driver(monkeypatch, tmp_path):
                 self.rows = [(False,)]
             elif 'SELECT bool_and(NOT has_table_privilege' in query:
                 self.rows = [(not fixture.worker_can_mutate,)]
+            elif 'SELECT bool_and(NOT has_any_column_privilege' in query:
+                self.rows = [(not fixture.worker_can_mutate_columns,)]
             elif 'SELECT bool_and(has_table_privilege' in query or 'SELECT bool_and(has_function_privilege' in query:
                 self.rows = [(True,)]
             elif 'has_table_privilege' in query or 'has_function_privilege' in query:
@@ -213,6 +215,7 @@ def recovery_driver(monkeypatch, tmp_path):
                               application_defaults=[], restore_list=None,
                               restored_application_defaults=None,
                               worker_can_mutate=False,
+                              worker_can_mutate_columns=False,
                               toc_script=b'10; 826 10 DEFAULT ACL public DEFAULT PRIVILEGES FOR SEQUENCES cloud_admin\n11; 826 11 DEFAULT ACL public DEFAULT PRIVILEGES FOR TABLES cloud_admin\n20; 0 0 ACL public TABLE hosted_snapshot_generations owner\n')
     monkeypatch.setattr(psycopg2, 'connect', connect)
     monkeypatch.setattr(subprocess, 'run', process)
@@ -263,6 +266,15 @@ def test_application_default_privilege_loss_cannot_pass_recovery(recovery_driver
 
 def test_forbidden_worker_mutation_privilege_stops_recovery_before_archive(recovery_driver):
     recovery_driver.worker_can_mutate = True
+    with pytest.raises(ValueError, match='Worker can directly mutate protected state'):
+        rehearse(recovery_driver.environment)
+    assert 'archive command executed' not in recovery_driver.events
+    assert 'owned database created' not in recovery_driver.events
+
+
+def test_column_only_worker_mutation_privilege_stops_recovery_before_archive(recovery_driver):
+    recovery_driver.worker_can_mutate_columns = True
+    assert recovery_driver.worker_can_mutate is False
     with pytest.raises(ValueError, match='Worker can directly mutate protected state'):
         rehearse(recovery_driver.environment)
     assert 'archive command executed' not in recovery_driver.events

@@ -163,6 +163,10 @@ def verify_worker_privileges(connection, role=None):
                        (role, ['public.'+table for table in protected], ['INSERT', 'UPDATE', 'DELETE', 'TRUNCATE']))
         if cursor.fetchone()[0] is not True:
             raise ValueError('Worker can directly mutate protected state')
+        cursor.execute("SELECT bool_and(NOT has_any_column_privilege(%s,t,p)) FROM unnest(%s::text[]) t CROSS JOIN unnest(%s::text[]) p",
+                       (role, ['public.'+table for table in protected], ['INSERT', 'UPDATE']))
+        if cursor.fetchone()[0] is not True:
+            raise ValueError('Worker can directly mutate protected state')
         cursor.execute("SELECT has_column_privilege(%s,'public.hosted_import_jobs','csv_content','SELECT')", (role,))
         if cursor.fetchone()[0] is not False:
             raise ValueError('Worker can read raw source bytes')
