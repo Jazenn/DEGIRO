@@ -37,3 +37,18 @@ private broker identity, executable DEGIRO prices or account-specific fee/quanti
 rules. Actual deployed refresh, canonical equality and resource fit remain staged
 checks until the coordinator runs them with explicit synthetic mappings. The
 existing Binance/Yahoo mappings are never silently rewritten.
+
+## Deployed verification — 28 October 2026
+
+The authenticated staging Worker received HTTP 403 from Binance and retained the
+previous complete generation. After the reviewed provider-name schema extension
+and Worker deployment, explicit temporary Kraken mappings with invented holdings
+refreshed successfully in 518ms end to end. The atomic Snapshot read matched the
+canonical Python calculator's market value, cash, equity and gain results using
+the returned observed quotes. Financial, ledger and target identities remained
+consistent; source timestamps were eligible and a second request reused the short
+cache's generation. The prior accepted synthetic generation was restored and the
+probe mappings/session removed. This verifies Worker source reachability and
+coherent publication, not private broker mappings, order terms or sustained
+free-tier resource fit. Local checks passed 104 hosted tests, six PostgreSQL
+regressions, typecheck and the pinned Worker dry-run build.
