@@ -88,6 +88,9 @@ enable scheduled import/history jobs or reuse production secrets. The independen
 configured host must match a direct TLS connection to the checkpointed synthetic
 branch's `neondb`; PostgreSQL server/client major 17 is required. Private source
 generations, nonempty legacy tables or retained raw uploads stop the rehearsal.
+It also rejects non-extension application relations/routines outside `public`,
+views/materialized views/foreign tables and unlogged/temporary application
+relations before export, rather than silently omitting them from comparison.
 The root coordinator supplies only the already authorized staging credentials.
 
 The module exports a consistent database snapshot and captures each public table's
@@ -116,7 +119,9 @@ hosted access or recovery of later activity. The job shares the
 
 Local CLI regressions exercise early rejection before any database connection:
 an unapproved endpoint cannot expose credential text, and missing PostgreSQL
-clients cannot silently pass. Live export/restore execution remains separate
+clients cannot silently pass. Driver/process-boundary regressions verify that
+both restored connections close before database cleanup and an unexpected
+application relation prevents every archive/restore command. Live export/restore execution remains separate
 evidence until the coordinator runs the manual workflow.
 
 Eight local synthetic regressions cover the read-only comparator/CLI: the EUR1000+EUR5/EUR1100 example, holdings/charge differences, missing gains/costs, cutoff/evidence validation, duplicate identities, nonfinite decimals, exclusive private reports and repository path rejection. No private reconciliation, new database export/restore, staging schema application, benchmark, live resource check, deployment or production cutover is claimed.
