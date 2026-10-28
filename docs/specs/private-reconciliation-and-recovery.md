@@ -91,6 +91,11 @@ generations, nonempty legacy tables or retained raw uploads stop the rehearsal.
 It also rejects non-extension application relations/routines outside `public`,
 views/materialized views/foreign tables and unlogged/temporary application
 relations before export, rather than silently omitting them from comparison.
+Both staging CLIs validate libpq's effective host/database as well as the URL
+authority/path. Query options are limited to `sslmode`, `channel_binding`,
+`connect_timeout` and `application_name`; destination/service overrides and
+ambient `PGHOSTADDR`/`PGSERVICE`/`PGSERVICEFILE` defaults are rejected before any
+connection or archive command.
 The root coordinator supplies only the already authorized staging credentials.
 
 The module exports a consistent database snapshot and captures each public table's

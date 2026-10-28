@@ -8,8 +8,8 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from urllib.parse import unquote, urlsplit
 from uuid import uuid4
+from backend.staging_connection import checked_staging_url
 
 
 def fixture():
@@ -143,16 +143,15 @@ def rehearse(connection):
 
 def main():
     url = os.environ.get('STAGING_PUBLISHER_DATABASE_URL', '')
-    destination = urlsplit(url)
-    if (os.environ.get('STAGING_IMPORT_REHEARSAL_APPROVED') != 'synthetic-staging-only'
-            or destination.scheme not in ('postgres', 'postgresql')
-            or not destination.hostname
-            or destination.hostname != os.environ.get('STAGING_EXPECTED_HOST')
-            or '-pooler' in destination.hostname
-            or unquote(destination.path.lstrip('/')) != os.environ.get('STAGING_EXPECTED_DATABASE')):
+    try:
+        if os.environ.get('STAGING_IMPORT_REHEARSAL_APPROVED') != 'synthetic-staging-only':
+            raise ValueError('Approval required')
+        checked_staging_url(url, os.environ.get('STAGING_EXPECTED_HOST'),
+                            os.environ.get('STAGING_EXPECTED_DATABASE'))
+    except Exception:
         print('{"state":"failed","reason":"destination_rejected"}')
         return 1
-    # The destination check deliberately precedes driver import/network access.
+    # Both URL and effective libpq checks precede any network access.
     import psycopg2
     try:
         with psycopg2.connect(url, connect_timeout=15) as connection:
