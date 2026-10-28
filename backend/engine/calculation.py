@@ -65,7 +65,8 @@ class CalculationReport:
             "ledger_cutoff": self.cutoff,
             "latest_recorded_transaction_at": self.latest_recorded_transaction_at,
             "source_coverage_through": None,
-            "ledger": asdict(self.ledger),
+            "ledger": {**asdict(self.ledger), "disposals": [{**row, "ledger_version": self.ledger_version,
+                "financial_settings_version": self.settings_version, "ledger_cutoff": self.cutoff} for row in self.ledger.disposals]},
             "disposal_cost_projections": {position.broker_asset_id: disposal_projection(position,
                 ledger_version=self.ledger_version, financial_settings_version=self.settings_version,
                 cutoff_eligible=cutoff_eligible, ledger_cutoff=self.cutoff) for position in self.ledger.positions

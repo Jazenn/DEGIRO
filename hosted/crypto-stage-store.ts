@@ -29,7 +29,8 @@ export function neonStageReviewReader(url: string): StageReader {
         'permission_valid_from',to_char(p.valid_from AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
         'permission_valid_until',to_char(p.valid_until AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
         'quantity_valid_from',to_char(q.valid_from AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"'),
-        'quantity_valid_until',to_char(q.valid_until AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) AS fees
+        'quantity_valid_until',to_char(q.valid_until AT TIME ZONE 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"')) AS fees,
+      hosted_read_crypto_executions(s.coin)->'progress' AS progress
       FROM hosted_crypto_plan_state s LEFT JOIN hosted_crypto_plan_history h ON h.plan_id=s.current_plan_id
       LEFT JOIN hosted_snapshot_pointer ptr ON ptr.singleton=true LEFT JOIN hosted_snapshot_generations g ON g.generation_id=ptr.generation_id
       LEFT JOIN hosted_crypto_sale_permissions p ON p.coin=s.coin AND p.quantity_rules_apply_to_sales
@@ -38,8 +39,7 @@ export function neonStageReviewReader(url: string): StageReader {
     const row = rows[0];
     if (!row) return null;
     if (row.read_model && !validReadModel(row.read_model)) throw Error('invalid_snapshot');
-    // #58 extends this same coherent read with durable execution/report progress.
     return { snapshot: row.generation_id ? { generation_id: row.generation_id, read_model: row.read_model } : null,
-      state: { version: row.plan_version, plan: row.plan }, fees: row.fees };
+      state: { version: row.plan_version, plan: row.plan }, fees: row.fees, progress: row.progress };
   } };
 }
