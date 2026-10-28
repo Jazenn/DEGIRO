@@ -1,0 +1,38 @@
+name: Synthetic staging full recovery rehearsal
+
+# Intentionally manual: never use production flags or run on a schedule.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: synthetic-staging-verification
+  cancel-in-progress: false
+
+jobs:
+  recovery:
+    runs-on: ubuntu-24.04
+    environment: synthetic-staging
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Verify compatible preinstalled PostgreSQL clients
+        shell: bash
+        run: |
+          test -x /usr/lib/postgresql/17/bin/pg_dump
+          test -x /usr/lib/postgresql/17/bin/pg_restore
+      - name: Rehearse full export, isolated restore and rollback privately
+        env:
+          STAGING_PUBLISHER_DATABASE_URL: ${{ secrets.STAGING_PUBLISHER_DATABASE_URL }}
+          STAGING_EXPECTED_HOST: ${{ secrets.STAGING_EXPECTED_HOST }}
+          STAGING_EXPECTED_DATABASE: ${{ secrets.STAGING_EXPECTED_DATABASE }}
+          STAGING_BRANCH_ID: br-tiny-moon-al8b0u31
+          PG_BIN: /usr/lib/postgresql/17/bin
+        run: python -m backend.staging_recovery
