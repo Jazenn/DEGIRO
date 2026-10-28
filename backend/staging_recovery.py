@@ -83,6 +83,22 @@ def capture(connection):
 
 def synthetic_only(connection):
     with connection.cursor() as cursor:
+        # This rehearsal compares the application's public-schema layout. Never
+        # export unclassified user data in another schema or an unsupported kind
+        # of relation and then falsely claim that it was compared.
+        cursor.execute("""SELECT EXISTS(SELECT FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+            WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
+            AND c.relkind IN ('r','p','v','m','f','S','c')
+            AND NOT EXISTS(SELECT FROM pg_depend d WHERE d.classid='pg_class'::regclass AND d.objid=c.oid AND d.deptype='e')
+            AND (n.nspname<>'public' OR c.relkind NOT IN ('r','p','S') OR c.relpersistence<>'p'))""")
+        if cursor.fetchone()[0]:
+            raise ValueError('Unexpected application schema or relation kind')
+        cursor.execute("""SELECT EXISTS(SELECT FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+            WHERE n.nspname NOT IN ('pg_catalog','information_schema') AND n.nspname NOT LIKE 'pg\\_%' ESCAPE '\\'
+            AND NOT EXISTS(SELECT FROM pg_depend d WHERE d.classid='pg_proc'::regclass AND d.objid=p.oid AND d.deptype='e')
+            AND (n.nspname<>'public' OR p.prokind<>'f'))""")
+        if cursor.fetchone()[0]:
+            raise ValueError('Unexpected application routine schema or kind')
         cursor.execute("SELECT EXISTS(SELECT FROM hosted_snapshot_generations), EXISTS(SELECT FROM hosted_snapshot_generations WHERE data_classification<>'synthetic')")
         populated, private = cursor.fetchone()
         if not populated or private:
