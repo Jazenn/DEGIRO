@@ -121,7 +121,10 @@ database successfully created by that invocation can be dropped; no source write
 existing-destination overwrite, forced disconnect, `--clean` or `--create` restore
 is allowed. The archive and private command diagnostics are never uploaded as an
 artifact or printed. Only sanitized counts, timings, an archive hash and pass/fail
-leave the runner. Successful execution proves that capture's full restore round
+leave the runner. Static phase labels and failure class/line/SQLSTATE identify
+failed stages; comparison failures name only categories such as `data` or
+`grants`. Client diagnostics remain withheld, including when a client emits a
+warning with a zero exit status. Successful execution proves that capture's full restore round
 trip; its temporary archive is **not an independently retained durable backup**,
 and it does not prove private source reconciliation, application cutover, restored
 hosted access or recovery of later activity. The job shares the

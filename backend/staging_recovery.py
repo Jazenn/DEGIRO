@@ -21,6 +21,19 @@ from psycopg2.extensions import parse_dsn
 from backend.staging_connection import checked_staging_url
 
 
+def phase(name):
+    """Static progress labels only: never exception text, SQL or object values."""
+    print(json.dumps({'recovery_phase': name}), flush=True)
+
+
+def verify_capture(restored, expected):
+    actual = capture(restored)
+    differences = [category for category in expected if actual[category] != expected[category]]
+    if differences:
+        print(json.dumps({'comparison_mismatch_categories': differences}), flush=True)
+        raise ValueError('Recovery comparison failed')
+
+
 def approved_source(environment):
     """Resolve only the independently configured, direct staging endpoint."""
     url = checked_staging_url(environment['STAGING_PUBLISHER_DATABASE_URL'],
@@ -136,6 +149,7 @@ def pg_environment(url, database=None):
 
 def rehearse(environment):
     url = approved_source(environment)
+    phase('verify_clients')
     binary = Path(environment.get('PG_BIN', '/usr/lib/postgresql/17/bin'))
     clients = [binary / name for name in ('pg_dump', 'pg_restore')]
     if not all(client.is_file() for client in clients):
@@ -144,12 +158,14 @@ def rehearse(environment):
         version = subprocess.run([str(client), '--version'], capture_output=True, check=True, timeout=15)
         if not re.search(rb'\(PostgreSQL\) 17\.', version.stdout):
             raise ValueError('Review a server/client version change first')
+    phase('connect_source')
     source = psycopg2.connect(url, connect_timeout=15)
     admin = None
     destination = 'degiro_recovery_probe_' + uuid4().hex
     created = False
     started = time.monotonic()
     try:
+        phase('capture_source_snapshot')
         source.set_session(isolation_level='REPEATABLE READ', readonly=True)
         with source.cursor() as cursor:
             cursor.execute('SHOW server_version_num')
@@ -162,25 +178,31 @@ def rehearse(environment):
             cursor.execute('SELECT pg_export_snapshot()')
             snapshot = cursor.fetchone()[0]
         synthetic_only(source)
+        phase('fingerprint_source')
         expected = capture(source)
         with tempfile.TemporaryDirectory(prefix='degiro-private-recovery-') as directory:
             os.chmod(directory, 0o700)
             archive = Path(directory) / 'database.dump'
+            phase('dump_archive')
             process = subprocess.run([str(clients[0]), '--format=custom', '--snapshot='+snapshot,
                                       '--file='+str(archive)], env=pg_environment(url),
                                      capture_output=True, timeout=240)
             if process.returncode or process.stderr:
+                print(json.dumps({'client_exit_code': process.returncode,
+                                  'client_warning_present': bool(process.stderr)}), flush=True)
                 raise ValueError('Dump failed or emitted a warning')
             archive_digest = hashlib.sha256(archive.read_bytes()).hexdigest()
             # Snapshot remains open through the dump and comparison capture.
             source.rollback()
             admin = psycopg2.connect(url, connect_timeout=15)
             admin.autocommit = True
+            phase('create_isolated_database')
             with admin.cursor() as cursor:
                 cursor.execute(sql.SQL('CREATE DATABASE {} TEMPLATE template0 OWNER {}').format(sql.Identifier(destination), sql.Identifier(owner)))
                 created = True
                 cursor.execute(sql.SQL('REVOKE CONNECT ON DATABASE {} FROM PUBLIC').format(sql.Identifier(destination)))
             restored_url = {**parse_dsn(url), 'dbname': destination}
+            phase('verify_empty_destination')
             with closing(psycopg2.connect(**restored_url)) as restored:
                 with restored.cursor() as cursor:
                     cursor.execute("SELECT EXISTS(SELECT FROM pg_tables WHERE schemaname='public')")
@@ -189,15 +211,19 @@ def rehearse(environment):
             # Same reviewed staging cluster and existing roles only. Preserve the
             # archive's ACLs, including PUBLIC revocations, then compare them.
             # No --clean or --create option can target the source database.
+            phase('restore_archive')
             process = subprocess.run([str(clients[1]), '--dbname='+destination, '--single-transaction',
                                       '--exit-on-error', '--no-owner', str(archive)],
                                      env=pg_environment(url, destination), capture_output=True, timeout=240)
             if process.returncode or process.stderr:
+                print(json.dumps({'client_exit_code': process.returncode,
+                                  'client_warning_present': bool(process.stderr)}), flush=True)
                 raise ValueError('Restore failed or emitted a warning')
             with closing(psycopg2.connect(**restored_url)) as restored:
-                if capture(restored) != expected:
-                    raise ValueError('Restored data/schema/grants differ')
+                phase('compare_restored_capture')
+                verify_capture(restored, expected)
                 restored.rollback()
+                phase('verify_restored_rollback')
                 with restored.cursor() as cursor:
                     cursor.execute('SELECT generation_id FROM hosted_snapshot_pointer WHERE singleton FOR UPDATE')
                     accepted = cursor.fetchone()[0]
@@ -212,6 +238,7 @@ def rehearse(environment):
                     if cursor.fetchone()[0] != accepted:
                         raise ValueError('Rollback lost accepted generation')
                 try:
+                    phase('verify_restored_immutability')
                     with restored.cursor() as cursor:
                         cursor.execute('UPDATE hosted_snapshot_generations SET published_at=published_at WHERE generation_id=%s', (accepted,))
                 except psycopg2.Error as error:
@@ -220,14 +247,15 @@ def rehearse(environment):
                     restored.rollback()
                 else:
                     raise ValueError('Immutable generation accepted mutation')
-                if capture(restored) != expected:
-                    raise ValueError('Rollback changed restored histories')
+                phase('compare_after_rollback')
+                verify_capture(restored, expected)
             return {'state': 'passed', 'scope': 'full synthetic staging database',
                     'public_tables': len(expected['data']), 'archive_sha256': archive_digest,
                     'data_schema_grants_equal': True, 'rollback_and_immutability_verified': True,
                     'duration_seconds': round(time.monotonic()-started, 2),
                     'archive_retention': 'ephemeral private runner only; no durable backup claimed'}
     finally:
+        phase('cleanup_owned_resources')
         source.close()
         if admin:
             if created:
@@ -243,8 +271,15 @@ def rehearse(environment):
 def main():
     try:
         result = rehearse(os.environ)
-    except Exception:
+    except Exception as error:
         print('Staging recovery rehearsal failed; credentials and database content withheld.')
+        trace = error.__traceback__
+        while trace.tb_next:
+            trace = trace.tb_next
+        sqlstate = getattr(error, 'pgcode', None)
+        print(json.dumps({'state': 'failed', 'exception_type': type(error).__name__,
+                          'line': trace.tb_lineno,
+                          'sqlstate': sqlstate if isinstance(sqlstate, str) and re.fullmatch(r'[A-Z0-9]{5}', sqlstate) else None}))
         return 1
     print(json.dumps(result))
     return 0
