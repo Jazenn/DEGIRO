@@ -41,6 +41,21 @@ def test_recovery_failure_reports_safe_phase_and_exception_without_private_diagn
     assert isinstance(diagnostic['line'], int)
 
 
+def test_restore_error_classifier_distinguishes_public_schema_collision_without_private_sql(recovery_driver, monkeypatch, capsys):
+    from backend.staging_recovery import main
+    for key, value in recovery_driver.environment.items():
+        monkeypatch.setenv(key, value)
+    recovery_driver.schema_script = b'CREATE SCHEMA public;\n-- private-schema-text\n'
+    recovery_driver.restore_stderr = b'pg_restore: error: could not execute query: ERROR:  schema "public" already exists\nCommand was: private-sql-content'
+    assert main() == 1
+    output = capsys.readouterr()
+    assert '"archive_creates_public_schema": true' in output.out
+    assert '"client_failure_categories": ["public_schema_exists"]' in output.out
+    assert 'private-schema-text' not in output.out + output.err
+    assert 'private-sql-content' not in output.out + output.err
+    assert 'owned database dropped' in recovery_driver.events
+
+
 @pytest.fixture
 def recovery_driver(monkeypatch, tmp_path):
     """External driver/process seam; psycopg contexts deliberately stay open."""
@@ -139,7 +154,10 @@ def recovery_driver(monkeypatch, tmp_path):
         events.append('archive command executed')
         for argument in command:
             if argument.startswith('--file='):
-                Path(argument[7:]).write_bytes(b'invented-private-archive')
+                Path(argument[7:]).write_bytes(fixture.schema_script if '--schema-only' in command else b'invented-private-archive')
+        if any(argument.startswith('--dbname=') for argument in command):
+            return SimpleNamespace(stdout=b'', stderr=fixture.restore_stderr,
+                                   returncode=1 if fixture.restore_stderr else 0)
         return SimpleNamespace(stdout=b'', stderr=fixture.private_stderr, returncode=0)
 
     for name in ('pg_dump', 'pg_restore'):
@@ -149,7 +167,8 @@ def recovery_driver(monkeypatch, tmp_path):
                    'STAGING_EXPECTED_HOST': 'ep-synthetic-only.neon.tech',
                    'STAGING_EXPECTED_DATABASE': 'neondb',
                    'STAGING_BRANCH_ID': 'br-tiny-moon-al8b0u31', 'PG_BIN': str(tmp_path)}
-    fixture = SimpleNamespace(environment=environment, connections=connections, events=events, unexpected=False, private_stderr=b'')
+    fixture = SimpleNamespace(environment=environment, connections=connections, events=events,
+                              unexpected=False, private_stderr=b'', restore_stderr=b'', schema_script=b'')
     monkeypatch.setattr(psycopg2, 'connect', connect)
     monkeypatch.setattr(subprocess, 'run', process)
     return fixture
