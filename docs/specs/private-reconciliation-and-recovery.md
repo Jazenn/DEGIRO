@@ -80,4 +80,43 @@ Stop cutover on failed technical checks and fix them. Return a specific infeasib
 
 ## Evidence in this implementation
 
+The manual **Synthetic staging full recovery rehearsal** Actions workflow runs
+`python -m backend.staging_recovery` using only the distinct
+`STAGING_PUBLISHER_DATABASE_URL`, `STAGING_EXPECTED_HOST` and
+`STAGING_EXPECTED_DATABASE` secrets in the `synthetic-staging` environment. It does not
+enable scheduled import/history jobs or reuse production secrets. The independently
+configured host must match a direct TLS connection to the checkpointed synthetic
+branch's `neondb`; PostgreSQL server/client major 17 is required. Private source
+generations, nonempty legacy tables or retained raw uploads stop the rehearsal.
+The root coordinator supplies only the already authorized staging credentials.
+
+The module exports a consistent database snapshot and captures each public table's
+row count/private digest plus functions, schema/table/column/function grants,
+constraints, triggers, indexes and sequences from that same snapshot. `pg_dump`
+writes a full custom archive into a restricted temporary directory. It creates a
+uniquely named empty database on the same approved staging branch, revokes PUBLIC
+CONNECT there, and restores with `--single-transaction --exit-on-error --no-owner`.
+This trusted same-cluster rehearsal deliberately restores existing-role ACLs from
+the archive and compares them exactly, including PUBLIC revocations. It does not
+create cluster roles or demonstrate independently reviewed grants on a new cluster;
+the private production procedure above still requires that review.
+
+After exact data/schema/grant comparison, the module exercises publication CAS,
+rollback and immutable-generation rejection **only on the restored database**,
+then confirms all captured histories remain unchanged. Only the uniquely named
+database successfully created by that invocation can be dropped; no source writes,
+existing-destination overwrite, forced disconnect, `--clean` or `--create` restore
+is allowed. The archive and private command diagnostics are never uploaded as an
+artifact or printed. Only sanitized counts, timings, an archive hash and pass/fail
+leave the runner. Successful execution proves that capture's full restore round
+trip; its temporary archive is **not an independently retained durable backup**,
+and it does not prove private source reconciliation, application cutover, restored
+hosted access or recovery of later activity. The job shares the
+`synthetic-staging-verification` concurrency group with other staging rehearsals.
+
+Local CLI regressions exercise early rejection before any database connection:
+an unapproved endpoint cannot expose credential text, and missing PostgreSQL
+clients cannot silently pass. Live export/restore execution remains separate
+evidence until the coordinator runs the manual workflow.
+
 Eight local synthetic regressions cover the read-only comparator/CLI: the EUR1000+EUR5/EUR1100 example, holdings/charge differences, missing gains/costs, cutoff/evidence validation, duplicate identities, nonfinite decimals, exclusive private reports and repository path rejection. No private reconciliation, new database export/restore, staging schema application, benchmark, live resource check, deployment or production cutover is claimed.

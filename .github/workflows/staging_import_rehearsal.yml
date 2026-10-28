@@ -1,0 +1,28 @@
+name: Synthetic staging import rehearsal
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: synthetic-staging-verification
+  cancel-in-progress: false
+jobs:
+  rehearse:
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/integration/useful-dashboard'
+    environment: synthetic-staging
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Verify synthetic staging publisher without enabling private imports
+        env:
+          STAGING_PUBLISHER_DATABASE_URL: ${{ secrets.STAGING_PUBLISHER_DATABASE_URL }}
+          STAGING_EXPECTED_HOST: ${{ secrets.STAGING_EXPECTED_HOST }}
+          STAGING_EXPECTED_DATABASE: ${{ secrets.STAGING_EXPECTED_DATABASE }}
+          STAGING_IMPORT_REHEARSAL_APPROVED: synthetic-staging-only
+        run: python -m backend.staging_imports
