@@ -46,6 +46,7 @@ export function cryptoExecutionUI(root, request = fetch) {
       if (progress.reconciliation_required) records.append(node('p', 'An imported execution changed or disappeared. Recorded matches remain in history; reconcile the correction and review a replacement before acting on this plan.'));
       records.append(node('p', `Shared sales version ${value.version}. Pending ${progress.pending_quantity ?? 'unavailable'} units; matched ${progress.matched_quantity ?? 'unavailable'} units.`));
       for (const row of value.reports ?? []) records.append(node('p', `Report ${row.report_id}; stage ${row.stage_id}; ${row.quantity} units. Pending ${row.pending_quantity}; matched ${row.matched_quantity}; ${row.status}.`));
+      for(const event of value.report_events??[])records.append(node('p',`Report ${event.report_id}: ${event.event_type} at ${event.created_at}. Reason: ${event.reason}. Original report and matched executions retained.`));
       const executions = value.executions ?? [];
       records.append(node('h5', 'Imported executions'));
       for (const row of executions) {

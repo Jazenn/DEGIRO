@@ -47,6 +47,8 @@ test('replacement after a partial execution preserves consumed identities and ca
     assert.equal((await query("SELECT count(*)::text AS n FROM hosted_crypto_plan_history"))[0].n,'2');
     assert.equal((await query("SELECT allocated_quantity::text AS n FROM hosted_crypto_execution_capacity WHERE execution_id='fill1'"))[0].n,'0.2');
     assert.equal((await query("SELECT previous_report->>'status' AS status FROM hosted_crypto_report_events"))[0].status,'open');
+    const events=(await query("SELECT hosted_read_crypto_report_events('BTC-EUR') AS events"))[0].events;
+    assert.equal(events[0].reason,cancel.note);assert.equal(events[0].previous_report.quantity,0.4);
     assert.equal((await query("SELECT version::text FROM hosted_crypto_execution_state WHERE coin='ETH-EUR'"))[0].version,'0');
     assert.equal((await query("SELECT version::text FROM hosted_crypto_plan_state WHERE coin='ETH-EUR'"))[0].version,'0');
   }finally{await db.close();}

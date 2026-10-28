@@ -20,6 +20,12 @@ CREATE TABLE IF NOT EXISTS hosted_crypto_report_events (
   event_type text NOT NULL CHECK(event_type='cancelled'), reason text NOT NULL,
   previous_report jsonb NOT NULL, created_at timestamptz NOT NULL DEFAULT now()
 );
+CREATE OR REPLACE FUNCTION hosted_read_crypto_report_events(selected_coin text)
+RETURNS jsonb LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $$
+  SELECT coalesce(jsonb_agg(to_jsonb(e) ORDER BY e.created_at,e.operation_id),'[]'::jsonb)
+    FROM hosted_crypto_report_events e JOIN hosted_crypto_reports r USING(report_id) WHERE r.coin=selected_coin
+$$;
+REVOKE ALL ON FUNCTION hosted_read_crypto_report_events(text) FROM PUBLIC;
 CREATE OR REPLACE FUNCTION hosted_cancel_crypto_report(requested jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $$
 DECLARE prior hosted_crypto_execution_operations; current_version bigint; generation text;
@@ -56,4 +62,4 @@ END; $$;
 REVOKE ALL ON FUNCTION hosted_cancel_crypto_report(jsonb) FROM PUBLIC;
 COMMIT;
 -- Worker EXECUTE hosted_review_crypto_replacement(jsonb), hosted_cancel_crypto_report(jsonb);
--- SELECT report event history. No mutation privileges.
+-- EXECUTE hosted_read_crypto_report_events(text). No mutation privileges.
