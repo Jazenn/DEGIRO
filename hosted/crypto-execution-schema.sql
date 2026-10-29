@@ -156,8 +156,11 @@ BEGIN
     INTO executions FROM jsonb_array_elements(coalesce(model->'ledger'->'disposals','[]')) d
       LEFT JOIN hosted_crypto_execution_capacity c ON c.execution_id=d->>'execution_id'
     WHERE d->>'symbol'=requested_coin AND d->>'asset_kind'='Cryptocurrency';
+  -- Consumed capacity survives replacements; changes to earlier plans' fills
+  -- still require reconciliation for this coin and Asset.
   correction:=EXISTS(SELECT FROM hosted_crypto_execution_capacity c WHERE c.allocated_quantity>0
-      AND EXISTS(SELECT FROM hosted_crypto_match_allocations a WHERE a.execution_id=c.execution_id AND a.coin=requested_coin AND a.plan_id=plan->>'plan_id')
+      AND c.broker_asset_id=plan->>'asset_id'
+      AND EXISTS(SELECT FROM hosted_crypto_match_allocations a WHERE a.execution_id=c.execution_id AND a.coin=requested_coin)
       AND NOT EXISTS(SELECT FROM jsonb_array_elements(coalesce(model->'ledger'->'disposals','[]')) d WHERE d->>'execution_id'=c.execution_id AND hosted_execution_facts(d)=hosted_execution_facts(c.execution_facts)));
   reconciled:=NOT correction AND plan IS NOT NULL AND position IS NOT NULL
     AND (position->>'quantity')::numeric>=(plan->>'held_quantity_at_acceptance')::numeric-matched
