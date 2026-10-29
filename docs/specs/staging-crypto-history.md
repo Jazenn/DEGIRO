@@ -43,3 +43,12 @@ publisher boundary cover key forwarding, complete/incomplete independent results
 and retention. Guard tests reject missing keys and wrong destinations before a
 connection starts. Actual hosted quota, free-tier CPU, durable reads and daily
 publication remain live verification checks until the workflow is run.
+
+On 29 October 2026, the owner-provided Demo key was configured only in the
+`synthetic-staging` environment. The [authenticated hosted publication](https://github.com/Jazenn/DEGIRO/actions/runs/40876151180)
+passed for both coins with 365 completed days. Authenticated deployed Worker reads
+then returned `ready`, no missing days and 90 context days for each coin, covering
+29 October 2025 through 28 October 2026. The temporary verification session was
+removed. Sustained account quota and full-workload resource usage remain unproven.
+The schedule remains disabled because the temporary staging branch expires on
+30 October 2026 at 10:32 UTC; continuous operation requires a reviewed lifecycle.

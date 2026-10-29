@@ -64,6 +64,15 @@ The [hosted application recovery rehearsal](https://github.com/Jazenn/DEGIRO/act
 
 Final local backend verification passed 195 tests. The independent reviews found no remaining defects in the implemented fixes. Operational scratch, disposable worktrees, browser captures and pytest caches are now ignored to prevent accidental publication. The dedicated daily crypto job remains off pending authenticated Demo-key verification. Actual portfolio-derived Yahoo price requests remain pending destination-specific owner authorization; the prepared identity/source notes are private outside the repository.
 
+The [authenticated Demo-key history job](https://github.com/Jazenn/DEGIRO/actions/runs/40876151180)
+passed on 29 October 2026. Both coins published 365 completed days; deployed
+authenticated Worker reads returned ready with no missing days and 90 context
+days for 29 October 2025 through 28 October 2026. The environment-scoped key was
+never logged or committed, and the temporary session was removed. Daily scheduling
+remains off because the temporary staging branch expires on 30 October at 10:32
+UTC. This verifies keyed hosted publication and durable reads, while sustained
+quota, private coverage and full-workload resource checks remain open.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
