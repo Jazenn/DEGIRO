@@ -42,6 +42,9 @@ export function cryptoExecutionUI(root, request = fetch) {
     }
     function display(value) {
       records.replaceChildren();
+      const timing = policy => {
+        if (policy?.status === 'owner_assumed') records.append(node('p', `Execution time assumes ${policy.name} at your request. DEGIRO has not verified this convention. Matching uses this assumed timing; recorded cost and fee coverage are separate.`));
+      };
       const progress = value.progress ?? {};
       if (progress.reconciliation_required) records.append(node('p', 'An imported execution changed or disappeared. Recorded matches remain in history; reconcile the correction and review a replacement before acting on this plan.'));
       records.append(node('p', `Shared sales version ${value.version}. Pending ${progress.pending_quantity ?? 'unavailable'} units; matched ${progress.matched_quantity ?? 'unavailable'} units.`));
@@ -51,6 +54,7 @@ export function cryptoExecutionUI(root, request = fetch) {
       records.append(node('h5', 'Imported executions'));
       for (const row of executions) {
         records.append(node('p', `Execution ${row.execution_id}; ${row.executed_at ?? 'observation time unverified'}; ${row.quantity} units; unallocated ${row.available_quantity}.`));
+        timing(row.source_timezone);
         if (row.coverage === 'verified_complete') records.append(node('p', `Actual gross EUR ${row.gross_proceeds_eur}; actual fees EUR ${row.fees_eur}; disposed FIFO cost EUR ${row.disposed_cost_eur}; actual realized gain EUR ${row.realized_gain_eur}.`));
         else records.append(node('p', 'Actual cost or fee coverage is unverified. Do not infer a gain.'));
       }
@@ -58,6 +62,8 @@ export function cryptoExecutionUI(root, request = fetch) {
       for (const allocation of value.allocations ?? []) {
         const receipt = allocation.receipt ?? allocation;
         records.append(node('p', `Matched execution ${allocation.execution_id ?? receipt.execution_id}; ${allocation.quantity ?? receipt.quantity} units.`));
+        if (receipt.executed_at) records.append(node('p', `Matched execution time: ${receipt.executed_at}.`));
+        timing(receipt.source_timezone);
         if (receipt.state === 'verified' && receipt.display) {
           const amount = receipt.display;
           records.append(node('p', `Allocated actual gross EUR ${amount.gross_proceeds_eur}; fees EUR ${amount.fees_eur}; disposed FIFO cost EUR ${amount.disposed_cost_eur}; realized gain EUR ${amount.realized_gain_eur}.`));

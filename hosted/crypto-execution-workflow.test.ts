@@ -7,17 +7,20 @@ test('past sales remain reportable with stale quotes and matching requires an ex
   document.body.innerHTML='<div id="snapshot"></div><div id="history"></div>';
   Object.assign(document.querySelector('#snapshot')!,{acceptedSnapshot:{generation_id:'g1'}});
   const commands: any[]=[]; let version='0', reports: any[]=[], allocations: any[]=[];
+  const source_timezone={name:'Europe/Amsterdam',status:'owner_assumed',evidence:'synthetic owner decision'};
   const request=vi.fn(async (url:string,init:RequestInit)=>{
     if(init.method==='GET') return Response.json({state:'ready',coin:url.includes('BTC')?'BTC-EUR':'ETH-EUR',version,generation_id:'g1',
       plan:{plan_id:'plan1',stages:[{stage_id:'plan1:1',quantity:'0.6'}]},progress:{pending_quantity:reports.length?'0.6':'0',matched_quantity:allocations.length?'0.6':'0'},reports,allocations,
-      executions:[{execution_id:'fill-a',quantity:'0.6',available_quantity:'0.6',eligible:true,executed_at:'2026-10-22T12:00:00Z',gross_proceeds_eur:'500',fees_eur:'5',disposed_cost_eur:'480',realized_gain_eur:'15',coverage:'verified_complete'}],diagnostics:[]});
+      executions:allocations.length?[]:[{execution_id:'fill-a',quantity:'0.6',available_quantity:'0.6',eligible:true,executed_at:'2026-10-22T12:00:00Z',source_timezone,gross_proceeds_eur:'500',fees_eur:'5',disposed_cost_eur:'480',realized_gain_eur:'15',coverage:'verified_complete'}],diagnostics:[]});
     const body=JSON.parse(String(init.body)); commands.push(body); version=String(Number(version)+1);
     if(body.action==='report') reports=[{report_id:'report1',plan_id:'plan1',stage_id:'plan1:1',quantity:'0.6',pending_quantity:'0.6',matched_quantity:'0',status:'open'}];
-    else allocations=[{execution_id:'fill-a',quantity:'0.6',receipt:{state:'verified',display:{gross_proceeds_eur:'500.00',fees_eur:'5.00',disposed_cost_eur:'480.00',realized_gain_eur:'15.00'},rounding_note:'Display rounded; exact receipt retained.'}}];
+    else allocations=[{execution_id:'fill-a',quantity:'0.6',receipt:{state:'verified',executed_at:'2026-10-22T12:00:00Z',source_timezone,display:{gross_proceeds_eur:'500.00',fees_eur:'5.00',disposed_cost_eur:'480.00',realized_gain_eur:'15.00'},rounding_note:'Display rounded; exact receipt retained.'}}];
     return Response.json({state:body.action==='report'?'reported':'matched',version});
   });
   const root=document.querySelector('#history')!, cleanup=cryptoExecutionUI(root,request);
   await vi.waitFor(()=>expect(root.textContent).toContain('fill-a'));
+  expect(root.textContent).toContain('Execution time assumes Europe/Amsterdam at your request');
+  expect(root.textContent).toContain('DEGIRO has not verified this convention');
   const form=root.querySelector('form')!;
   const field=(name:string)=>form.querySelector<HTMLInputElement|HTMLSelectElement>(`[name=${name}]`)!;
   expect(field('execution').value).toBe('');
@@ -34,6 +37,8 @@ test('past sales remain reportable with stale quotes and matching requires an ex
   Array.from(form.querySelectorAll('button')).find(button=>button.textContent==='Match selected execution')!.click();
   await vi.waitFor(()=>expect(commands).toHaveLength(2));
   await vi.waitFor(()=>expect(root.textContent).toContain('15.00'));
+  expect(root.textContent).toContain('Matched execution time: 2026-10-22T12:00:00Z');
+  expect(root.textContent).toContain('Execution time assumes Europe/Amsterdam at your request');
   expect(commands[1]).toMatchObject({action:'match',execution_id:'fill-a',report_id:'report1',expected_version:'1'});
   cleanup();
 });
