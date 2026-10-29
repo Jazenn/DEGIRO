@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from backend.engine.calculation import calculate_portfolio
 from backend.engine.returns import estimated_return
+from backend.engine.source_timing import source_timezone_policy
 
 
 def instant(value):
@@ -38,7 +39,8 @@ def calculate_history(transactions, *, settings, daily_prices, asset_coverage,
     end = instant(now).replace(hour=0, minute=0, second=0, microsecond=0)
     baseline = settings.get('opening_baseline', {})
     result = {'schema_version': 'observed-history-v1', 'ledger_version': ledger_version,
-              'settings_version': settings_version, 'cutoff': stamp(end), 'periods': {}}
+              'settings_version': settings_version, 'cutoff': stamp(end), 'periods': {},
+              'source_timezone': source_timezone_policy(settings)}
     if not daily_prices:
         result['diagnostics'] = ['observed_daily_history_not_supplied']
         return result

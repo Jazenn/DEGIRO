@@ -26,6 +26,9 @@ export async function loadSnapshot(destination, request = fetch) {
     const model = snapshot.read_model;
     const ledger = model.ledger;
     target.replaceChildren(text('p', snapshot.data_classification === 'synthetic' ? 'Synthetic data  |  hosting verification only' : 'Private portfolio data'));
+    if (model.source_timezone?.status === 'owner_assumed') {
+      target.append(text('p', `Transaction times assume ${model.source_timezone.name} at your request. DEGIRO has not verified this convention. Timing-dependent values use this assumption, including summer and winter clock changes.`));
+    }
 
     const metrics = document.createElement('section');
     metrics.className = 'shell-summary';

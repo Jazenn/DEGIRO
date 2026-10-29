@@ -64,3 +64,18 @@ test('failed reread retains the accepted generation with an explicit stale warni
   expect(target?.textContent).toContain('Showing the previous accepted generation');
   expect(target?.querySelector('[role="alert"]')?.textContent).toContain('read failed');
 });
+
+test('overview and performance visibly retain the owner-assumed timezone convention', async () => {
+  document.body.innerHTML = '<main></main><section id="performance"></section>';
+  const read_model = JSON.parse(await readFile('hosted/synthetic.fixture', 'utf8'));
+  read_model.source_timezone = { name: 'Europe/Amsterdam', status: 'owner_assumed', evidence: 'synthetic owner decision' };
+  read_model.portfolio_history = { source_timezone: read_model.source_timezone, periods: {} };
+  await loadSnapshot(document.querySelector('main'), async () => new Response(JSON.stringify({ state: 'ready', snapshot: {
+    generation_id: 'assumed-timezone', published_at: '2026-01-11T00:01:00Z', data_classification: 'synthetic', read_model,
+  } })));
+  for (const selector of ['main', '#performance']) {
+    const content = document.querySelector(selector)!.textContent;
+    expect(content).toContain('Transaction times assume Europe/Amsterdam at your request');
+    expect(content).toContain('DEGIRO has not verified this convention');
+  }
+});

@@ -56,6 +56,8 @@ For completed daily intervals ending 00:00 UTC, use the approved Modified Dietz 
 
 Source timezone/DST must be verified before converting imported timestamps to UTC. Unknown or ambiguous timing, missing opening/closing values, unresolved flows, missing required valuations or a nonpositive denominator makes the affected percentage unavailable. Do not invent flow times or compound across an unknown interval. Establish a verified first-funded baseline; split valid sequences after a complete withdrawal/refunding rather than linking an undefined return through zero capital. Any fallback timing convention needs an explicit reviewed decision.
 
+On 29 October 2026 the owner explicitly chose the fallback convention `Europe/Amsterdam` after confirming independent timezone evidence was unavailable. This supersedes the verification requirement for that configured assumption only. Preserve `verified=false`, record explicit approval and dated evidence, display that Transaction times and dependent results use an owner assumption, and continue rejecting missing/ambiguous/nonexistent times. Other source coverage and reconciliation gates remain mandatory. See the [accounting timing contract](decimal-accounting-contract.md).
+
 Supported views: all time by default; YTD, 1Y, 3M, 1M and 1W. For rolling calendar periods use UTC calendar boundaries ending at the most recent completed daily cutoff; YTD starts at 1 January UTC, calendar month/year subtraction clamps to the last valid day. Indicate shorter verified coverage explicitly; do not claim a full period when its opening valuation is absent. Chart and selected-period EUR attribution share the same endpoints. Current holdings remain separately labelled current.
 
 ### Historical and current price quality

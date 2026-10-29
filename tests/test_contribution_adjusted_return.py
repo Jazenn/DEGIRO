@@ -23,6 +23,21 @@ def test_endpoint_deposit_has_zero_weight_and_preserves_ten_percent_gain():
     assert estimate['daily'][0]['denominator_eur'] == '1000'
     assert estimate['cutoff'] == '2026-01-02T00:00:00Z'
 
+
+def test_owner_assumed_amsterdam_flows_keep_endpoint_weight_and_label_the_history():
+    result = cash_history(['01-01-2026,13:00,,,Dividend,EUR,100,',
+                           '02-01-2026,01:00,,,Deposit,EUR,500,'],
+        timezone={'name': 'Europe/Amsterdam', 'verified': False, 'assumption_approved': True,
+                  'evidence': 'synthetic owner decision'})
+    period = result['periods']['ALL']
+    estimate = period['estimated_return']
+    assert period['state'] == 'ready'
+    assert estimate['state'] == 'ready'
+    assert Decimal(estimate['percent']) == Decimal('10')
+    assert estimate['daily'][0]['weighted_external_flows_eur'] == '0'
+    assert result['source_timezone'] == estimate['source_timezone'] == {
+        'name': 'Europe/Amsterdam', 'status': 'owner_assumed', 'evidence': 'synthetic owner decision'}
+
 def test_intraday_first_funding_then_growth_links_daily_estimates_geometrically():
     result = cash_history(['01-01-2026,12:00,,,Deposit,EUR,1000,', '02-01-2026,12:00,,,Dividend,EUR,100,', '03-01-2026,12:00,,,Dividend withholding,EUR,-110,'], baseline='0', now='2026-01-04T22:00:00Z')
     estimate = result['periods']['ALL']['estimated_return']
