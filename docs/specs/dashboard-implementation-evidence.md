@@ -135,6 +135,33 @@ is 10ms per HTTP request, so aggregate success is not sufficient free-tier-fit
 evidence. Measurements use local-network synthetic traffic, not controlled cold
 starts, a mobile network or the full private workload.
 
+### Completed current/history separation (#51)
+
+The same invented two-year workload reproduced 39–41ms of deployed Snapshot-read
+CPU with a 2.08MB complete generation. Current reads and bounded revaluation now
+project finalized history out inside Postgres. The valuation publisher preserves
+the original history server-side under the existing generation/settings checks
+and rejects a client-supplied history change. An owner-only, generation-pinned
+history interface separately returns every selected chart point and matching
+attribution/return summary; seven-day audit pages retain original sources and
+flow-weight details. Performance loads on demand and retains the prior displayed
+period on failure. Return-opening validation and the evidenced first-funded
+exception are preserved.
+
+Repeating the deployed workload returned 28,406-byte Snapshots at 3–6ms CPU and
+148–364ms end to end. The complete selected all-time chart response was 44,283
+bytes; an audit page was 9,510 bytes. All sampled reads succeeded and the original
+synthetic generation/session state was restored. Historical reads sampled 8–10ms
+CPU, with one audit page at 13ms. Crypto-level reads still showed higher CPU
+variation; sustained overall free-tier fit remains a release gate in #60. An
+additional public-series cache experiment did not reliably improve deployed
+results and was reverted. No extra cache remains in the implementation.
+
+Verification passed 221 backend tests, 111 hosted tests, 11 actual SQL regressions,
+typecheck and both builds. Independent review findings were fixed and rechecked.
+Feature tickets #47, #48, #55, #58 and #59 were closed against their own acceptance
+criteria; private release and cutover remain separate from those closures.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
