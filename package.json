@@ -12,7 +12,7 @@
     "hosted:typecheck": "tsc -p hosted/tsconfig.json",
     "hosted:build": "npm run hosted:typecheck && npx --yes wrangler@4.152.0 deploy --dry-run --config hosted/wrangler.toml --outdir hosted/.wrangler/build",
     "hosted:verify": "node --experimental-strip-types hosted/verify-neon.ts",
-    "hosted:sql-test": "node --test hosted/sql-regression.mjs hosted/crypto-execution-sql.test.mjs hosted/crypto-replacement-sql.test.mjs hosted/history-sql.test.mjs"
+    "hosted:sql-test": "node --test hosted/sql-regression.mjs hosted/crypto-execution-sql.test.mjs hosted/crypto-replacement-sql.test.mjs && vitest run --config hosted/vitest-sql.config.ts"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.2.0",

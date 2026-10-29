@@ -1,7 +1,7 @@
 import { PGlite } from '@electric-sql/pglite';
 import { readFile } from 'node:fs/promises';
 import assert from 'node:assert/strict';
-import { test } from 'node:test';
+import { test } from 'vitest';
 import { NeonSnapshotStore } from './snapshot-store.ts';
 import { valuationStore } from './valuation-store.ts';
 import { historyStore } from './history-store.ts';
