@@ -2,14 +2,14 @@ from backend.engine.calculation import calculate_portfolio, ObservedPrice
 from backend.ingestion.account_parser import parse_account_csv
 
 
-def disposal_model(cost_complete=True):
+def disposal_model(cost_complete=True, source_timezone=None):
     frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n'
         '02-01-2026,09:00,,,Deposit,EUR,100,\n'
         '03-01-2026,09:00,Coin,A,Buy 0.3 @ 100 EUR,EUR,-30,b1\n'
         '04-01-2026,09:00,Coin,A,Buy 0.3 @ 200 EUR,EUR,-60,b2\n'
         '05-01-2026,09:00,Coin,A,Sell 0.6 @ 200 EUR,EUR,120,s1\n'
         '05-01-2026,09:01,Coin,A,Transaction fee,EUR,-3,s1\n')
-    settings = {'source_timezone': {'name': 'UTC', 'verified': True, 'evidence': 'synthetic'},
+    settings = {'source_timezone': source_timezone or {'name': 'UTC', 'verified': True, 'evidence': 'synthetic'},
         'cost_history': {'verified': cost_complete, 'evidence': 'synthetic'},
         'opening_baseline': {'at': '2026-01-01T00:00:00Z', 'cash_eur': '0', 'equity_eur': '0', 'verified': True, 'evidence': 'synthetic'},
         'asset_evidence': {'A': {'symbol': 'BTC-EUR', 'kind': 'Cryptocurrency', 'verified': True, 'evidence': 'synthetic'}}}
@@ -31,3 +31,13 @@ def test_canonical_actual_disposal_retains_fill_identity_actual_fees_and_nonunif
     assert row['executed_at'] == '2026-01-05T09:00:00+00:00'
     assert row['ledger_version'] == 'ledger-sale'
     assert row['financial_settings_version'] == 'financial-sale'
+
+
+def test_actual_disposal_keeps_owner_assumed_execution_time_distinct_from_cost_coverage():
+    _, model = disposal_model(source_timezone={'name': 'Europe/Amsterdam', 'verified': False,
+        'assumption_approved': True, 'evidence': 'synthetic owner decision'})
+    row = model['ledger']['disposals'][0]
+    assert row['executed_at'] == '2026-01-05T09:00:00+01:00'
+    assert row['coverage'] == 'verified_complete'
+    assert row['source_timezone'] == {'name': 'Europe/Amsterdam', 'status': 'owner_assumed',
+                                      'evidence': 'synthetic owner decision'}

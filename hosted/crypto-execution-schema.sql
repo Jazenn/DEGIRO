@@ -105,6 +105,7 @@ BEGIN
     gain:=hosted_fraction_op(hosted_fraction_op(hosted_fraction_op(gross,fees,'-'),cost,'-'),residual,'+');
   END IF;
   result:=jsonb_build_object('state',CASE WHEN gain IS NULL THEN 'unverified' ELSE 'verified' END,'execution_id',facts->>'execution_id',
+    'executed_at',facts->>'executed_at','source_timezone',facts->'source_timezone',
     'quantity',trim_scale(b-a)::text,'range_start',trim_scale(a)::text,'range_end',trim_scale(b)::text,
     'gross_proceeds',gross,'fees',fees,'disposed_cost',cost,'realized_gain',gain,'canonical_rounding_allocation',residual,
     'recorded_execution_gain_eur',facts->>'realized_gain_eur',

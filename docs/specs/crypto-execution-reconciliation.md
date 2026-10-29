@@ -22,7 +22,7 @@ matches one atomically. Stage remainder includes both matched and pending quanti
 pending reports reserve held tactical units above the core. Matching an imported
 sale does not subtract already sold units from current holdings a second time.
 
-The Python ledger publishes actual disposal identities, observed execution times,
+The Python ledger publishes actual disposal identities, execution times and their source convention,
 actual proceeds/fees, consumed FIFO lots and cumulative cost breakpoints. The SQL
 operation interpolates that canonical execution projection rather than replaying
 accounting. Allocations consume consecutive ranges of a globally protected execution
@@ -32,6 +32,16 @@ execution's final arithmetic rounding residual. Their exact totals telescope to 
 recorded execution result; separately rounded EUR display amounts can differ by a
 cent from the sum of displayed components. Missing verified fees/costs produce an
 unverified receipt rather than a gain claim.
+
+The owner's approved Amsterdam timing assumption remains separate from verified
+cost/fee coverage. Each canonical disposal includes its `source_timezone` policy;
+the independent execution read returns it, and new durable allocation receipts
+retain it with `executed_at`. Imported executions and matched receipts display the
+assumption beside their times, including when a later correction removes the
+original imported execution. Matching remains allowed under the owner's convention.
+Existing immutable receipts are not rewritten, and no table migration is required;
+the receipt function update applies to future allocations. A changed execution
+timing policy remains an execution-facts change requiring reconciliation.
 
 Reports and allocations retain their plan identities across replacements. Current
 progress only counts the current plan. Reimporting unchanged facts leaves global

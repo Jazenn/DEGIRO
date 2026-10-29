@@ -15,7 +15,8 @@ test('durable reports stay pending, explicit partial matching is idempotent and 
     const query=async(sql,params=[])=>(await db.query(sql,params)).rows;
     const plan={plan_id:'plan-test',state:'accepted',coin:'BTC-EUR',symbol:'BTC-EUR',asset_id:'synthetic-btc',accepted_at:'2026-01-01T00:00:00Z',ledger_version:'original',core_quantity:'0.2',held_quantity_at_acceptance:'1.2',
       stages:[{stage_id:'stage-1',quantity:'0.4'},{stage_id:'stage-2',quantity:'0.4'},{stage_id:'stage-3',quantity:'0.2'}]};
-    const model={calculation_version:'decimal-accounting-v1',ledger_version:'import-ledger',settings_version:'financial',ledger:{schema_version:'ledger-v1',positions:[{broker_asset_id:'synthetic-btc',symbol:'BTC-EUR',asset_kind:'Cryptocurrency',quantity:'0.6'}],disposals:[actual]}};
+    const source_timezone={name:'Europe/Amsterdam',status:'owner_assumed',evidence:'synthetic owner decision'};
+    const model={calculation_version:'decimal-accounting-v1',ledger_version:'import-ledger',settings_version:'financial',ledger:{schema_version:'ledger-v1',positions:[{broker_asset_id:'synthetic-btc',symbol:'BTC-EUR',asset_kind:'Cryptocurrency',quantity:'0.6'}],disposals:[{...actual,source_timezone}]}};
     await query("INSERT INTO hosted_snapshot_generations VALUES('g1',now(),'synthetic',$1::jsonb)",[JSON.stringify(model)]);
     await query("INSERT INTO hosted_crypto_plan_history VALUES('plan-test','BTC-EUR','2026-01-01',$1::jsonb)",[JSON.stringify(plan)]);
     await db.exec("INSERT INTO hosted_snapshot_pointer VALUES(true,'g1'); UPDATE hosted_crypto_plan_state SET current_plan_id='plan-test',version=1 WHERE coin='BTC-EUR'");
@@ -25,9 +26,12 @@ test('durable reports stay pending, explicit partial matching is idempotent and 
     const reported=await operate(request);
     assert.equal(reported.state,'reported'); assert.deepEqual(await operate(request),reported);
     const pending=await read(); assert.equal(pending.progress.pending_quantity,'0.4'); assert.equal(pending.progress.matched_quantity,'0');
+    assert.deepEqual(pending.executions[0].source_timezone,source_timezone);
     assert.equal((await operate({...request,quantity:'0.3'})).reason,'operation_id_reused');
     const match={...request,action:'match',operation_id:'matching-operation',expected_version:'1',report_id:reported.report_id,execution_id:actual.execution_id,quantity:'0.2'};
     const matched=await operate(match); assert.equal(matched.state,'matched'); assert.deepEqual(await operate(match),matched);
+    assert.deepEqual(matched.receipt.source_timezone,source_timezone);
+    assert.equal(matched.receipt.executed_at,actual.executed_at);
     const partial=await read(); assert.equal(partial.reports[0].pending_quantity,'0.2'); assert.equal(partial.progress.matched_quantity,'0.2');
     assert.equal(partial.allocations[0].receipt.display.realized_gain_eur,'19.00');
     assert.equal((await operate({...match,operation_id:'stale-operation'})).reason,'snapshot_or_plan_changed');
@@ -51,6 +55,8 @@ test('durable reports stay pending, explicit partial matching is idempotent and 
     assert.equal((await operate({...second,operation_id:'corrected-match',expected_version:'4',generation_id:'corrected',quantity:'0.1'})).reason,'execution_facts_changed_review');
     await republish('reversed',next=>{next.ledger.disposals=[];next.ledger.positions[0].quantity='1.2';});
     const reversed=await read();assert.equal(reversed.progress.reconciliation_required,true);assert.equal(reversed.progress.matched_quantity,'0.6');
+    assert.deepEqual(reversed.allocations[0].receipt.source_timezone,source_timezone);
+    assert.equal(reversed.allocations[0].receipt.executed_at,actual.executed_at);
     assert.equal(reversed.allocations.length,3);
     await republish('manual-sale',next=>{next.ledger.positions[0].quantity='0.5';next.ledger.disposals.push({...actual,execution_id:'manual-sale',quantity:'0.1'});});
     assert.equal((await read()).progress.reconciled_ledger_version,null);
