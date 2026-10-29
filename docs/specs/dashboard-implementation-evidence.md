@@ -73,6 +73,68 @@ remains off because the temporary staging branch expires on 30 October at 10:32
 UTC. This verifies keyed hosted publication and durable reads, while sustained
 quota, private coverage and full-workload resource checks remain open.
 
+## Continued staging and source checks — 29 October 2026
+
+The complete deployed import API, queue, canonical publisher and status round trip
+passed with invented records in an owned temporary database on the approved
+staging branch. Owner authorization and same-origin checks passed; failed uploads
+and explicit retries retained the accepted generation. Identical uploads reused
+their completed identity, and overlapping files preserved the independent
+EUR1,005 cost / EUR1,100 value / EUR95 gain example. History status remained
+separately unavailable. The original Worker bindings, routes and synthetic source
+pointer were restored and imports again returned `imports_not_configured`.
+The owned temporary database was removed after its pooled connection expired,
+without forcing a disconnect.
+This does not prove browser file selection or unattended private publishing.
+
+Destination-specific owner consent enabled private current/daily-history source
+probes. The checked EUR sources responded, but internal missing closes and
+calendar/corporate-action conventions still need classification. A source
+inventory omission was corrected privately; absence of an ISIN does not establish
+absence of an Asset. No private identities, rows or prices are published here.
+Limited local source checks matched the statement's latest cash balance and net
+execution quantities, including closed Assets. This is not full matched-cutoff
+cost, price, income and gain reconciliation.
+
+A subsequent independent private raw-source FIFO/classification review matched
+all 163 current-cutoff comparison fields exactly under the canonical Decimal40
+operation policy, including cash, quantities, fee-inclusive costs, realized and
+held results, recorded charges and the equity bridge. The reference was built
+from source records, not copied from the canonical output; observed quotes and
+their provenance were shared inputs. An exact-rational diagnostic is retained
+privately and explains finite-operation rounding separately, without a tolerance
+being applied to the accepted comparison. This is one local current-cutoff
+accounting comparison, not historical-return coverage or production cutover.
+Three representative completed-sale cutoffs also passed 66 independently checked
+known-accounting fields. Historical market values and total gains at those
+cutoffs remained unavailable because the required observed prices were absent.
+
+The owner explicitly chose Europe/Amsterdam as the fallback timestamp convention.
+It remains an owner assumption, with separate persisted and visible provenance;
+it is not broker verification. Missing recorded times and ambiguous/nonexistent
+DST wall times remain rejected. This supersedes the earlier pending timing
+decision without asserting new source evidence.
+
+Deployed synthetic execution checks verified that owner-assumed timing survives
+independent execution reads and newly retained actual-gain receipts. A live
+correction after plan replacement exposed a query that only checked allocations
+from the current plan. The reviewed fix checks all consumed executions for the
+same coin and Asset. Repeating the deployed workflow passed both corrected facts
+and reversal after replacement: reconciliation is required and original receipts
+and consumed capacity remain. The SQL regression separately verifies independence
+from unrelated Assets. The
+original synthetic generation, actual public market series, empty plans and
+temporary sessions were restored; immutable synthetic probe generations remain.
+
+Cloudflare's existing 24-hour aggregate reported 230 successful synthetic staging
+invocations with no reported execution errors; CPU p50 was 3.466ms and p99
+41.307ms. A bounded filtered trace then measured crypto-level request CPU at
+9–36ms, Snapshot reads at 2–5ms and one target read at 11ms. The
+[free-tier CPU allowance](https://developers.cloudflare.com/workers/platform/limits/)
+is 10ms per HTTP request, so aggregate success is not sufficient free-tier-fit
+evidence. Measurements use local-network synthetic traffic, not controlled cold
+starts, a mobile network or the full private workload.
+
 ## Outstanding release gates
 
 Ticket #58 now connects the sale reporting UI to owner-only durable operations,
