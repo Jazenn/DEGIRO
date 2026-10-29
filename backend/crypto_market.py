@@ -63,7 +63,11 @@ def prepare_market_summary(observations, *, coin, version, now, prepared_at=None
         return None
 
 
-def publish_market_history(connection, *, now, api_key=None, require_complete=False):
+def publish_market_history(connection, *, now, api_key=None, require_complete=True):
+    """Publish verified windows; explicit False is legacy raw-only compatibility.
+
+    Hosted jobs must retain prior generations on incomplete or invalid sources.
+    """
     from psycopg2.extras import Json
     at = datetime.fromisoformat(now.replace('Z', '+00:00'))
     if at.tzinfo is None:
@@ -110,7 +114,7 @@ def main():
     import psycopg2
     with psycopg2.connect(os.environ['DATABASE_URL']) as connection:
         publish_market_history(connection, now=datetime.now(timezone.utc).isoformat(),
-                               api_key=os.environ.get('COINGECKO_DEMO_API_KEY'))
+                               api_key=os.environ.get('COINGECKO_DEMO_API_KEY'), require_complete=True)
 
 
 if __name__ == '__main__':

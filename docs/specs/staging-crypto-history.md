@@ -77,3 +77,11 @@ Compact context reconstructs only the UTC following-midnight timestamps already
 verified against those original observations; it preserves each original retrieval
 time. `prepared_at` records completion of preparation, separately from the fixed
 completed-window cutoff and the observation timestamps.
+
+
+Both the normal publisher entrypoint and the public publisher helper default to
+strict complete-window publication. Incomplete or corrupt input retains the
+previous observations, market version and prepared summary together. Explicit
+`require_complete=False` exists only for legacy raw-data compatibility callers;
+it may store an incomplete raw series without a prepared summary and is not used
+by hosted jobs.

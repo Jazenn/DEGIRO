@@ -133,3 +133,41 @@ def test_publisher_never_prepares_invalid_source_data(monkeypatch, change, compl
     publish_market_history(Connection(),now=now,require_complete=complete)
     assert all(params[5] is None for params in writes)
     assert all((params[2] is None) == complete for params in writes)  # strict staging retains; legacy raw semantics preserved
+
+@pytest.mark.parametrize('entrypoint', ['default_helper', 'main'])
+@pytest.mark.parametrize('invalid_source', ['incomplete', 'corrupt'])
+def test_normal_publisher_paths_retain_previous_generation_on_invalid_source(monkeypatch, entrypoint, invalid_source):
+    import backend.crypto_market as market
+    import psycopg2
+    now = datetime.now(timezone.utc)
+    end = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    rows = {}
+    for n in range(365):
+        at = (end-timedelta(days=n)).isoformat().replace('+00:00','Z')
+        rows[at] = {'price_eur':'100','observed_at':at,'retrieved_at':now.isoformat(),
+                    'currency':'EUR','adjustment_basis':'unadjusted','provider':'synthetic'}
+    if invalid_source == 'incomplete':
+        rows.pop(next(iter(rows)))
+    else:
+        rows[next(iter(rows))]['currency'] = 'USD'
+    monkeypatch.setattr(market, 'fetch_market_coin', lambda *args, **kw: rows)
+    writes = []
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def execute(self,sql,params): writes.append(params)
+    class Connection:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def cursor(self): return Cursor()
+        def commit(self): pass
+    if entrypoint == 'main':
+        monkeypatch.setenv('DATABASE_URL', 'synthetic-transport-only')
+        monkeypatch.setattr(psycopg2, 'connect', lambda *args, **kw: Connection())
+        market.main()
+    else:
+        result = market.publish_market_history(Connection(), now=now.isoformat())
+        assert all(value['state'] == 'retained' for value in result.values())
+    assert len(writes) == 2
+    # SQL regression executes this NULL-source path and proves all three persist.
+    assert all(params[2] is None and params[5] is None and params[8] is True for params in writes)
