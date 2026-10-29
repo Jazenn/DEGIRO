@@ -72,3 +72,8 @@ summary. Publisher-only database writes and Worker SELECT-only grants are the
 trust boundary, as for accepted Snapshots; this is not cryptographic source
 authentication. Apply/publish/deploy and route-specific CPU measurements remain
 separate staging checks. Local reductions do not establish the free CPU gate.
+The original observations remain stored for offline provenance and reconciliation.
+Compact context reconstructs only the UTC following-midnight timestamps already
+verified against those original observations; it preserves each original retrieval
+time. `prepared_at` records completion of preparation, separately from the fixed
+completed-window cutoff and the observation timestamps.
