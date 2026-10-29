@@ -63,7 +63,7 @@ def test_complete_daily_publication_is_independent_and_incomplete_coin_retains_p
         def __enter__(self): return self
         def __exit__(self, *args): return None
         def execute(self, statement, params):
-            coin, _, observations, _, reasons, _ = params
+            coin, _, observations, _, reasons, summary, _, _, _ = params
             if observations is not None:
                 stored[coin] = observations.adapted
             diagnostics[coin] = reasons.adapted
@@ -81,3 +81,55 @@ def test_complete_daily_publication_is_independent_and_incomplete_coin_retains_p
     assert diagnostics['ETH-EUR'] == ['complete_daily_window_required_previous_series_retained']
     assert len(requests) == 2
     assert all(request.get_header('X-cg-demo-api-key') == 'synthetic-demo-key' for request in requests)
+
+
+@pytest.mark.parametrize('complete', [True, False])
+def test_publisher_prepares_same_version_exact_sorted_window_and_retains_on_failure(monkeypatch, complete):
+    from backend.crypto_market import publish_market_history
+    now = '2026-10-23T12:00:00Z'
+    end = datetime(2026, 10, 23, tzinfo=timezone.utc)
+    observations = {}
+    for n in range(365):
+        at = (end - timedelta(days=364-n)).isoformat().replace('+00:00', 'Z')
+        observations[at] = {'price_eur': str(n+1), 'observed_at': at, 'retrieved_at': now,
+                            'provider': 'synthetic', 'currency': 'EUR', 'adjustment_basis': 'unadjusted'}
+    monkeypatch.setattr('backend.crypto_market.fetch_market_coin', lambda symbol, **kw: observations if symbol == 'BTC-EUR' else {})
+    writes = []
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self, *args): pass
+        def execute(self, sql, params): writes.append(params)
+    class Connection:
+        def cursor(self): return Cursor()
+        def commit(self): pass
+    publish_market_history(Connection(), now=now, require_complete=complete)
+    summary = writes[0][5].adapted
+    assert summary['version'] == writes[0][1]
+    assert summary['sorted_prices'] == [str(n) for n in range(1,366)]
+    assert summary['context_prices'] == [str(n) for n in range(276,366)]
+    assert summary['cutoff'] == '2026-10-23T00:00:00Z'
+    assert writes[1][5] is None  # failed series retains prior matching summary
+
+@pytest.mark.parametrize('change', [{'currency':'USD'}, {'adjustment_basis':'total_return'}, {'price_eur':'0'}, {'price_eur':'NaN'}, {'retrieved_at':'2099-01-01T00:00:00Z'}, {'observed_at':'2026-10-23T01:00:00Z'}, {'provider':'different'}])
+@pytest.mark.parametrize('complete', [True, False])
+def test_publisher_never_prepares_invalid_source_data(monkeypatch, change, complete):
+    from backend.crypto_market import publish_market_history
+    now = '2026-10-23T12:00:00Z'
+    end = datetime(2026,10,23,tzinfo=timezone.utc)
+    rows = {}
+    for n in range(365):
+        at = (end-timedelta(days=n)).isoformat().replace('+00:00','Z')
+        rows[at] = {'price_eur':'100','observed_at':at,'retrieved_at':now,'currency':'EUR','adjustment_basis':'unadjusted','provider':'synthetic'}
+    rows['2026-10-23T00:00:00Z'].update(change)
+    monkeypatch.setattr('backend.crypto_market.fetch_market_coin', lambda *args, **kw: rows)
+    writes=[]
+    class Cursor:
+        def __enter__(self): return self
+        def __exit__(self,*args): pass
+        def execute(self,sql,params): writes.append(params)
+    class Connection:
+        def cursor(self): return Cursor()
+        def commit(self): pass
+    publish_market_history(Connection(),now=now,require_complete=complete)
+    assert all(params[5] is None for params in writes)
+    assert all((params[2] is None) == complete for params in writes)  # strict staging retains; legacy raw semantics preserved

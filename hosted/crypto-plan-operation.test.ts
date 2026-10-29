@@ -10,10 +10,10 @@ test('authenticated independent plans survive retries, stale edits, new purchase
   const operations = new Map<string, { request: unknown; result: any }>();
   let current: any = structuredClone(snapshot), available = true;
   current.read_model.ledger.positions.push({ ...current.read_model.ledger.positions[0], broker_asset_id: 'direct-eth', symbol: 'ETH-EUR' });
-  const observations = Object.fromEntries(Array.from({length:365}, (_, index) => {
-    const at = new Date(Date.parse('2026-10-23T00:00:00Z') - index * 86400000).toISOString();
-    return [at, { price_eur: String(1000+index), observed_at: at, retrieved_at: now, provider: 'synthetic', currency: 'EUR', adjustment_basis: 'unadjusted' }];
-  }));
+  const prepared = { schema:'prepared-crypto-market-v1',version:'market1',cutoff:'2026-10-23T00:00:00Z',
+    prepared_at:now,required_days:'365',available_days:'365',provider:'synthetic',currency:'EUR',adjustment_basis:'unadjusted',
+    sorted_prices:Array.from({length:365},(_,n)=>String(1000+n)),
+    context_prices:Array.from({length:90},(_,n)=>String(1089-n)),context_retrieved_at:Array(90).fill(now) };
   const store = new NeonCryptoPlanStore(async (sql, params) => {
     if (sql.startsWith('SELECT s.coin,s.asset_id')) {
       const coin = params[0]; return [{ ...terms, coin, ...(coin === 'ETH-EUR' ? { asset_id: 'direct-eth', symbol: 'ETH-EUR' } : {}) }];
@@ -30,7 +30,7 @@ test('authenticated independent plans survive retries, stale edits, new purchase
       : { state:'accepted', coin:input.coin, version:String(Number(state.version)+1), plan };
     if (result.state === 'accepted') Object.assign(state, { version: result.version, plan, history:[...state.history,plan] });
     operations.set(input.operation_id, { request: input, result }); return [{result}];
-  }, async () => current, (coin,templates) => previewCryptoLevels({coin,templates}, {read:async () => ({coin,version:'market1',observations: available ? observations : {},attempted_at:now,diagnostics:[]})}, now));
+  }, async () => current, (coin,templates) => previewCryptoLevels({coin,templates}, {read:async () => ({coin,version:'market1',prepared_summary: available ? {...prepared,coin} : null,attempted_at:now,diagnostics:[]})}, now));
   const app = createApplication({ authQuery:databaseTransport(), readAccepted:async()=>current,
     cryptoPlans:(method,value) => cryptoPlans(store,()=>now)(method,value) });
   const cookie = (await login()).session!;

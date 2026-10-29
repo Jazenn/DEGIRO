@@ -14,10 +14,11 @@ export function validateTemplates(value: unknown): Templates {
   [...value.purchase, ...value.sale].forEach(percentile);
   return { purchase: [...value.purchase], sale: [...value.sale] };
 }
-function fromSorted(sorted: Decimal[], p: string) {
+function fromSorted(sorted: (Decimal | string)[], p: string) {
   const position = new D(sorted.length - 1).mul(percentile(p)).div(100);
   const index = position.floor().toNumber();
-  return sorted[index].plus((sorted[index + 1] || sorted[index]).minus(sorted[index]).mul(position.minus(index))).toFixed();
+  const lower = new D(sorted[index]), upper = new D(sorted[index + 1] || sorted[index]);
+  return lower.plus(upper.minus(lower).mul(position.minus(index))).toFixed();
 }
 export function linearPercentile(values: string[], p: string) {
   if (!values.length || values.length > 400) throw Error('invalid_observations');
@@ -87,12 +88,15 @@ export function suggestedLevels(coin: string, input: unknown, now: string, reque
     explanation: 'Historical EUR distribution positions, not predicted prices or probabilities of profit. Personal gain, drawdown and allocation are separate. Purchases require an explicitly allocated contribution; no Transaction is executed.' };
   if (missing.length || diagnostics.length) { result.diagnostics.push('complete_daily_window_required'); return result; }
   const sorted = orderedPrices.sort((a, b) => a.cmp(b));
-  result.purchase = templates.purchase.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
-  result.sale = templates.sale.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
-  const levels = [...result.purchase.slice().reverse(), ...result.sale].map(row => new D(row.price_eur));
-  const ordered = levels.every((price, index) => !index || price.gt(levels[index - 1]));
-  result.state = ordered ? 'ready' : 'review';
-  if (!ordered) result.diagnostics.push('coincident_or_unordered_levels_require_review');
-  return result;
+  return { ...result, ...completedLevels(sorted, templates) };
 }
 
+// Both raw offline/reference and prepared hosted paths share exact interpolation.
+export function completedLevels(sorted: (Decimal | string)[], templates: Templates) {
+  const purchase = templates.purchase.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
+  const sale = templates.sale.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
+  const levels = [...purchase.slice().reverse(), ...sale].map(row => new D(row.price_eur));
+  const ordered = levels.every((price, index) => !index || price.gt(levels[index - 1]));
+  return { purchase, sale, state: ordered ? 'ready' : 'review',
+    diagnostics: ordered ? [] : ['coincident_or_unordered_levels_require_review'] };
+}

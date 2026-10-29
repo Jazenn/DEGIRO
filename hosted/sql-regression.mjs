@@ -123,3 +123,27 @@ test('PostgreSQL crypto plan acceptance retains history, retries safely and isol
     assert.equal((await query("SELECT has_function_privilege('public','hosted_accept_crypto_plan(jsonb,jsonb)','EXECUTE') AS allowed"))[0].allowed,false);
   } finally { await db.close(); }
 });
+
+test('market publisher retains matching raw data, version and prepared summary on failure', async () => {
+  const db = new PGlite();
+  try {
+    await db.exec(await source('crypto-market-schema'));
+    await db.exec(await source('crypto-market-schema')); // additive migration is repeatable
+    // Execute the publisher's actual psycopg statement, converting only bind syntax.
+    const publisher = await readFile(new URL('../backend/crypto_market.py', import.meta.url), 'utf8');
+    const statement = publisher.match(/cursor.execute\('''([\s\S]*?)'''/);
+    assert.ok(statement, 'publisher persistence statement must be exercised');
+    let index = 0;
+    const sql = statement[1].replace(/%s/g, () => '$' + (++index));
+    const publish = (version, observations, summary) => db.query(sql, ['BTC-EUR', version,
+      observations === null ? null : JSON.stringify(observations), '2026-10-29T12:00:00Z', '[]',
+      summary === null ? null : JSON.stringify(summary), observations === null ? null : JSON.stringify(observations),
+      observations === null ? null : JSON.stringify(observations), observations === null]);
+    await publish('v1', { synthetic: 'observations' }, { version: 'v1' });
+    await publish('failed-v2', null, null);
+    const retained = (await db.query('SELECT version,observations,prepared_summary FROM hosted_crypto_market_history')).rows[0];
+    assert.deepEqual(retained, { version: 'v1', observations: { synthetic: 'observations' }, prepared_summary: { version: 'v1' } });
+    await publish('partial-v3', {}, null);
+    assert.deepEqual((await db.query('SELECT version,prepared_summary FROM hosted_crypto_market_history')).rows[0], { version: 'partial-v3', prepared_summary: null });
+  } finally { await db.close(); }
+});
