@@ -84,7 +84,7 @@ export function renderPerformance(target, snapshot, request = fetch) {
     details.addEventListener('toggle', () => { if (details.open && !loaded) loadPage(page); });
     return details;
   }
-  function display(payload, name, serial) {
+  function display(payload, name) {
     const next = document.createElement('div');
     assumption(next, payload.source_timezone);
     const period = payload.period;
@@ -121,7 +121,7 @@ export function renderPerformance(target, snapshot, request = fetch) {
       const payload = await read(name);
       if (state.disposed || serial !== state.serial) return;
       if (payload.state !== 'ready' && payload.state !== 'unavailable') throw Error('invalid_history');
-      display(payload, name, serial); state.response = payload; state.period = name; status.textContent = '';
+      display(payload, name); state.response = payload; state.period = name; status.textContent = '';
     } catch {
       if (!state.disposed && serial === state.serial) status.textContent = 'History read failed. Showing the previous displayed period unchanged; load finalized history to retry.';
     }
@@ -135,7 +135,7 @@ export function renderPerformance(target, snapshot, request = fetch) {
     else { state.serial++; cancel(); }
   }
   window.addEventListener('hashchange', onHash);
-  if (state.response) display(state.response, state.period, state.serial);
+  if (state.response) display(state.response, state.period);
   loadButton.addEventListener('click', () => select(state.period));
   if (window.location.hash === '#performance') return select(state.period);
   return Promise.resolve();

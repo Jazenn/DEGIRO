@@ -65,6 +65,15 @@ test('history reads pin one generation and period while source and return audits
     period.points[0].observed_prices.FUND.price_eur = 100;
     await db.query("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES('corrupt-audit','synthetic',$1::jsonb)", [JSON.stringify(model)]);
     await assert.rejects(reader.read({ generation_id: 'corrupt-audit', period: 'ALL', offset: '0' }), /invalid_history/);
+    period.estimated_return.start = points[1].cutoff;
+    await db.query("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES('wrong-opening','synthetic',$1::jsonb)", [JSON.stringify(model)]);
+    await assert.rejects(reader.read({ generation_id: 'wrong-opening', period: 'ALL' }), /invalid_history/);
+    Object.assign(period.estimated_return, { opening_coverage: 'first_funded_baseline', requested_start: period.start, excluded_prefunding_intervals: [points[1].cutoff] });
+    await db.query("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES('first-funded','synthetic',$1::jsonb)", [JSON.stringify(model)]);
+    assert.equal((await reader.read({ generation_id: 'first-funded', period: 'ALL' })).period.estimated_return.start, points[1].cutoff);
+    period.estimated_return.excluded_prefunding_intervals = ['not-a-midnight'];
+    await db.query("INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES('bad-prefunding','synthetic',$1::jsonb)", [JSON.stringify(model)]);
+    await assert.rejects(reader.read({ generation_id: 'bad-prefunding', period: 'ALL' }), /invalid_history/);
   } finally { await db.close(); }
 });
 test('a lean current refresh preserves server-owned history and rejects replacement history', async () => {
