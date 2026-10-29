@@ -46,7 +46,7 @@ const summarySql = context + `SELECT CASE
       'points',CASE WHEN period->>'state'='ready' THEN
         (SELECT coalesce(jsonb_agg(jsonb_build_object('cutoff',point->'cutoff','equity_eur',point->'equity_eur') ORDER BY ordinal),'[]'::jsonb)
          FROM jsonb_array_elements(period->'points') WITH ORDINALITY AS points(point,ordinal)) ELSE '[]'::jsonb END,
-      'estimated_return',(period->'estimated_return')-ARRAY['daily','excluded_prefunding_intervals'])) END AS result FROM selected`;
+      'estimated_return',(period->'estimated_return')-'daily')) END AS result FROM selected`;
 const detailsSql = context + `, page AS (
   SELECT *,coalesce((SELECT jsonb_agg(point ORDER BY ordinal) FROM jsonb_array_elements(period->'points') WITH ORDINALITY AS p(point,ordinal)
     WHERE ordinal>$3::integer AND ordinal<=$3::integer+7),'[]'::jsonb) AS points FROM selected
@@ -78,6 +78,14 @@ function validSummary(result: Row) {
   if (!object(estimate) || !['ready', 'unavailable'].includes(estimate.state)
       || estimate.method !== 'geometrically_linked_daily_modified_dietz' || estimate.cutoff !== period.end
       || !strings(estimate.diagnostics) || (estimate.state === 'ready' ? !decimal(estimate.percent) : estimate.percent !== null)) return false;
+  if (estimate.start !== period.start && !(estimate.opening_coverage === 'first_funded_baseline'
+      && estimate.requested_start === period.start && midnight(estimate.start)
+      && estimate.start > period.start && estimate.start < period.end
+      && Array.isArray(estimate.excluded_prefunding_intervals)
+      && estimate.excluded_prefunding_intervals.length > 0
+      && estimate.excluded_prefunding_intervals.length <= (Date.parse(period.end) - Date.parse(period.start)) / 86400000
+      && estimate.excluded_prefunding_intervals.every(midnight)
+      && estimate.excluded_prefunding_intervals.at(-1) === estimate.start)) return false;
   if (period.state === 'unavailable') return estimate.state !== 'ready';
   return object(period.attribution) && ['retained_gain_change_eur', 'realized_gain_change_eur', 'net_income_eur', 'portfolio_costs_eur', 'net_external_flows_eur', 'net_gain_eur'].every(key => decimal(period.attribution[key]))
     && Array.isArray(period.assets) && period.assets.every((asset: unknown) => object(asset) && typeof asset.broker_asset_id === 'string' && decimal(asset.retained_gain_change_eur) && decimal(asset.realized_gain_change_eur))
