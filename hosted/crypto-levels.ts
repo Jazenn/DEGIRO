@@ -33,29 +33,48 @@ export function suggestedLevels(coin: string, input: unknown, now: string, reque
   const current = Date.parse(now);
   if (!Number.isFinite(current)) throw Error('invalid_clock');
   const midnight = Math.floor(current / 86400000) * 86400000;
+  // These caches live for one calculation only: edits and new market versions are
+  // always revalidated. Provider retrieval timestamps commonly repeat 365 times.
+  const times = new Map<string, number>();
+  const checkedTime = (value: unknown): number => {
+    if (typeof value !== 'string') return NaN;
+    if (times.has(value)) return times.get(value)!;
+    const time = timestamp(value) ? Date.parse(value) : NaN;
+    times.set(value, time);
+    return time;
+  };
   const quotes = new Map<number, Context>();
+  const prices = new Map<number, Decimal>();
   const diagnostics: string[] = [];
   if (record(input) && Object.keys(input).length <= 400) for (const [at, row] of Object.entries(input)) {
-    const time = Date.parse(at);
+    const time = checkedTime(at);
     // A following midnight closes yesterday. Today's intraday tail is excluded.
-    if (!timestamp(at) || !Number.isFinite(time) || time % 86400000 || time > midnight || time <= midnight - 365 * 86400000) continue;
+    if (!Number.isFinite(time) || time % 86400000 || time > midnight || time <= midnight - 365 * 86400000) continue;
     if (!record(row) || typeof row.price_eur !== 'string' || !/^\d+(?:\.\d+)?$/.test(row.price_eur)
-        || !new D(row.price_eur).gt(0) || row.currency !== 'EUR' || row.adjustment_basis !== 'unadjusted'
-        || !timestamp(row.observed_at) || Date.parse(row.observed_at) !== time || !row.provider || typeof row.provider !== 'string'
-        || !timestamp(row.retrieved_at) || Date.parse(row.retrieved_at) < time || Date.parse(row.retrieved_at) > current) {
+        || row.currency !== 'EUR' || row.adjustment_basis !== 'unadjusted'
+        || checkedTime(row.observed_at) !== time || !row.provider || typeof row.provider !== 'string'
+        || !Number.isFinite(checkedTime(row.retrieved_at)) || checkedTime(row.retrieved_at) < time || checkedTime(row.retrieved_at) > current) {
       diagnostics.push('invalid_daily_observation'); continue;
     }
+    const price = new D(row.price_eur);
+    if (!price.gt(0)) { diagnostics.push('invalid_daily_observation'); continue; }
     const quote = { day: new Date(time - 86400000).toISOString().slice(0, 10), price_eur: row.price_eur,
       observed_at: new Date(time).toISOString(), retrieved_at: row.retrieved_at, provider: row.provider };
     const previous = quotes.get(time);
     if (previous && (previous.price_eur !== quote.price_eur || previous.provider !== quote.provider)) diagnostics.push('conflicting_daily_observation');
     quotes.set(time, quote);
+    prices.set(time, price);
   }
-  const observations: Context[] = [], missing: string[] = [];
+  const observations: Context[] = [], missing: string[] = [], context: Context[] = [];
+  const orderedPrices: Decimal[] = [];
   for (let n = 364; n >= 0; n--) {
     const time = midnight - n * 86400000;
     const row = quotes.get(time);
-    if (row) observations.push(row); else missing.push(new Date(time - 86400000).toISOString().slice(0, 10));
+    if (row) {
+      observations.push(row);
+      orderedPrices.push(prices.get(time)!);
+      if (n < 90) context.push(row);
+    } else missing.push(new Date(time - 86400000).toISOString().slice(0, 10));
   }
   if (new Set(observations.map(row => row.provider)).size > 1) diagnostics.push('inconsistent_daily_source');
   const result = { coin, state: 'paused', templates, generated_at: now,
@@ -63,11 +82,11 @@ export function suggestedLevels(coin: string, input: unknown, now: string, reque
     window_start: new Date(midnight - 365 * 86400000).toISOString().slice(0, 10),
     window_end: new Date(midnight - 86400000).toISOString().slice(0, 10),
     available_days: String(observations.length), required_days: '365', missing_days: missing,
-    context: observations.filter(row => Date.parse(row.observed_at) > midnight - 90 * 86400000),
+    context,
     purchase: [] as Level[], sale: [] as Level[], diagnostics,
     explanation: 'Historical EUR distribution positions, not predicted prices or probabilities of profit. Personal gain, drawdown and allocation are separate. Purchases require an explicitly allocated contribution; no Transaction is executed.' };
   if (missing.length || diagnostics.length) { result.diagnostics.push('complete_daily_window_required'); return result; }
-  const sorted = observations.map(row => new D(row.price_eur)).sort((a, b) => a.cmp(b));
+  const sorted = orderedPrices.sort((a, b) => a.cmp(b));
   result.purchase = templates.purchase.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
   result.sale = templates.sale.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
   const levels = [...result.purchase.slice().reverse(), ...result.sale].map(row => new D(row.price_eur));
@@ -76,3 +95,4 @@ export function suggestedLevels(coin: string, input: unknown, now: string, reque
   if (!ordered) result.diagnostics.push('coincident_or_unordered_levels_require_review');
   return result;
 }
+
