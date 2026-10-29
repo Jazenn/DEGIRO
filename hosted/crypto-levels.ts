@@ -14,7 +14,7 @@ export function validateTemplates(value: unknown): Templates {
   [...value.purchase, ...value.sale].forEach(percentile);
   return { purchase: [...value.purchase], sale: [...value.sale] };
 }
-function fromSorted(sorted: readonly (Decimal | string)[], p: string) {
+function fromSorted(sorted: (Decimal | string)[], p: string) {
   const position = new D(sorted.length - 1).mul(percentile(p)).div(100);
   const index = position.floor().toNumber();
   const lower = new D(sorted[index]), upper = new D(sorted[index + 1] || sorted[index]);
@@ -92,7 +92,7 @@ export function suggestedLevels(coin: string, input: unknown, now: string, reque
 }
 
 // Both raw offline/reference and prepared hosted paths share exact interpolation.
-export function completedLevels(sorted: readonly (Decimal | string)[], templates: Templates) {
+export function completedLevels(sorted: (Decimal | string)[], templates: Templates) {
   const purchase = templates.purchase.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
   const sale = templates.sale.map(p => ({ percentile: p, price_eur: fromSorted(sorted, p) }));
   const levels = [...purchase.slice().reverse(), ...sale].map(row => new D(row.price_eur));

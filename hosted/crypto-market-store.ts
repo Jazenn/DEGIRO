@@ -16,11 +16,11 @@ export async function previewCryptoLevels(input: unknown, reader: CryptoMarketRe
   if (!input || typeof input !== 'object' || Array.isArray(input)) throw Error('invalid_request');
   const value = input as Record<string, unknown>;
   if (!['BTC-EUR', 'ETH-EUR'].includes(String(value.coin))) throw Error('invalid_coin');
-  const templates = validateTemplates(value.templates === undefined ? defaultPercentiles : value.templates);
+  const templates = value.templates === undefined ? defaultPercentiles : validateTemplates(value.templates);
   const series = await reader.read(String(value.coin));
   if (value.market_version !== undefined && value.market_version !== (series?.version || null))
     return { state: 'stale', reason: 'market_history_changed' };
-  return { ...await preparedLevels(String(value.coin), series?.version, series && series.coin === value.coin ? series.prepared_summary : null, now, templates),
+  return { ...preparedLevels(String(value.coin), series?.version, series && series.coin === value.coin ? series.prepared_summary : null, now, templates),
     market_version: series?.version || null, attempted_at: series?.attempted_at || null,
     provider_diagnostics: series?.diagnostics || ['market_history_not_published'] };
 }
