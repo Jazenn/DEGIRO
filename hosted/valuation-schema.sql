@@ -22,7 +22,7 @@ BEGIN
     OR proposed->>'calculation_version' IS DISTINCT FROM original->>'calculation_version'
     OR proposed->>'settings_version' IS DISTINCT FROM original->>'settings_version'
     OR proposed->>'rebalancing_targets_version' IS DISTINCT FROM expected_settings::text
-    OR proposed->'portfolio_history' IS DISTINCT FROM original->'portfolio_history'
+    OR (proposed ? 'portfolio_history' AND proposed->'portfolio_history' IS DISTINCT FROM original->'portfolio_history')
     OR proposed->'ledger'->'charges' IS DISTINCT FROM original->'ledger'->'charges'
     OR proposed->'ledger'->'cash_balance_eur' IS DISTINCT FROM original->'ledger'->'cash_balance_eur'
     OR ((proposed->'ledger') - ARRAY['positions','market_value_eur','equity_eur','net_gain_eur','attributed_gain_eur'])
@@ -31,9 +31,14 @@ BEGIN
         FROM jsonb_array_elements(proposed->'ledger'->'positions') WITH ORDINALITY AS p(position, ordinal))
       IS DISTINCT FROM (SELECT jsonb_agg(position - ARRAY['market_value_eur','held_gain_eur'] ORDER BY ordinal)
         FROM jsonb_array_elements(original->'ledger'->'positions') WITH ORDINALITY AS p(position, ordinal))
-    OR (proposed - ARRAY['ledger','cutoff','rebalancing_targets_version','observed_prices','crypto_quote_eligibility','crypto_quote_eligible_until','contribution_inputs','valuation_refreshed_at'])
-      IS DISTINCT FROM (original - ARRAY['ledger','cutoff','rebalancing_targets_version','observed_prices','crypto_quote_eligibility','crypto_quote_eligible_until','contribution_inputs','valuation_refreshed_at'])
+    OR (proposed - ARRAY['portfolio_history','ledger','cutoff','rebalancing_targets_version','observed_prices','crypto_quote_eligibility','crypto_quote_eligible_until','contribution_inputs','valuation_refreshed_at'])
+      IS DISTINCT FROM (original - ARRAY['portfolio_history','ledger','cutoff','rebalancing_targets_version','observed_prices','crypto_quote_eligibility','crypto_quote_eligible_until','contribution_inputs','valuation_refreshed_at'])
     THEN RAISE EXCEPTION 'Inconsistent valuation'; END IF;
+  -- Current revaluation never needs to transfer or clone finalized history.
+  -- Only the publisher's original immutable history can enter this generation.
+  IF original ? 'portfolio_history' THEN
+    proposed:=proposed || jsonb_build_object('portfolio_history',original->'portfolio_history');
+  END IF;
   INSERT INTO hosted_snapshot_generations(generation_id,data_classification,read_model) VALUES(new_generation,classification,proposed);
   UPDATE hosted_snapshot_pointer SET generation_id=new_generation WHERE singleton;
   RETURN true;

@@ -1,11 +1,11 @@
 import { neon } from '@neondatabase/serverless';
-import { validReadModel, timestamp } from './read-model';
+import { validReadModel, timestamp } from './read-model.ts';
 import type { RefreshInput, RefreshStore } from './refresh';
 type Query = (query: string, params: unknown[], signal: AbortSignal) => Promise<Record<string, any>[]>;
 export function valuationStore(query: Query): RefreshStore {
   return {
     async read(signal) {
-      const rows = await query(`SELECT g.generation_id, to_char(g.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at, g.data_classification, g.read_model,
+      const rows = await query(`SELECT g.generation_id, to_char(g.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at, g.data_classification, g.read_model - 'portfolio_history' AS read_model,
         t.version::text AS rebalancing_targets_version, t.targets,
         (SELECT coalesce(jsonb_agg(symbol),'[]'::jsonb) FROM hosted_contribution_assets WHERE verified_at <= now()) AS planning_symbols,
         (SELECT coalesce(jsonb_agg(jsonb_build_object('symbol', symbol, 'provider', provider, 'provider_symbol', provider_symbol, 'evidence', evidence)), '[]'::jsonb) FROM hosted_quote_mappings) AS mappings

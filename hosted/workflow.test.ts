@@ -51,7 +51,7 @@ test('overview explains completed-sale gains, dated recorded charges and missing
   expect(overview.textContent).toContain('missing_purchase_history');
   expect(overview.textContent).toContain('already included');
   expect(overview.textContent).toContain('Future fee estimates');
-  expect(overview.textContent).toContain('Finalized historical coverage is unavailable');
+  expect(overview.textContent).toContain('See Performance for finalized historical coverage and any missing intervals');
 });
 
 test('failed reread retains the accepted generation with an explicit stale warning', async () => {

@@ -1,9 +1,28 @@
 import { expect, test } from 'vitest';
 import { readFile } from 'node:fs/promises';
 import { NeonSnapshotStore } from './snapshot-store';
+import { createApplication } from './application';
+import { historyRequest } from './history-store';
 
-import { env, application as app, login } from './auth-test-support';
+import { env, application as app, login, databaseTransport } from './auth-test-support';
 async function token() { return (await login()).session!; }
+
+test('generation-pinned history and detail routes authorize before reading and reject malformed selections', async () => {
+  const seen: unknown[] = [];
+  const handle = createApplication({ readAccepted: async () => null, authQuery: databaseTransport(),
+    readHistory: async value => { seen.push(value); return { state: 'unavailable', generation_id: value.generation_id, reason: 'history_not_supplied' }; } });
+  const path = '/api/history?generation_id=original&period=ALL&offset=7';
+  expect((await handle(new Request(env.APP_ORIGIN + path), env)).status).toBe(401);
+  expect(seen).toHaveLength(0);
+  const headers = { Cookie: await token() };
+  const response = await handle(new Request(env.APP_ORIGIN + path, { headers }), env);
+  expect(response.status).toBe(200);
+  expect(response.headers.get('cache-control')).toBe('private, no-store');
+  expect(seen).toEqual([historyRequest({ generation_id: 'original', period: 'ALL', offset: '7' })]);
+  expect((await handle(new Request(env.APP_ORIGIN + '/api/history?generation_id=original&period=ALL&period=1Y', { headers }), env)).status).toBe(400);
+  expect((await handle(new Request(env.APP_ORIGIN + '/api/history?generation_id=original&period=bad', { headers }), env)).status).toBe(400);
+  expect((await handle(new Request(env.APP_ORIGIN + path, { method: 'POST', headers }), env)).status).toBe(405);
+});
 
 test('every private route rejects an unauthenticated request before reading assets or data', async () => {
   for (const path of ['/index.html', '/app.js', '/api/snapshot', '/versions/old', '/preview']) {
