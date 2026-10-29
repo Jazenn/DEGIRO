@@ -48,7 +48,10 @@ progress only counts the current plan. Reimporting unchanged facts leaves global
 execution capacity intact; ledger/cutoff publication metadata is not a new fill.
 Changed or missing matched facts preserve receipts and matched quantities, flag
 reconciliation, and suspend stage suggestions even when the ledger version itself
-did not change. Unmatched post-acceptance sales and holdings deficits also prevent
+did not change. This check includes consumed executions from earlier plan versions
+of the same coin and Asset; accepting a replacement does not erase correction or
+reversal obligations. An unrelated Asset's execution capacity does not block the
+current Asset's plan. Unmatched post-acceptance sales and holdings deficits also prevent
 claiming that a changed ledger has been reconciled. Completed identities are never
 automatically released or rearmed.
 
