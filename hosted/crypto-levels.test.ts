@@ -65,3 +65,18 @@ test('unsupported currency, conflicting observations or inconsistent sources pau
     expect(suggestedLevels('ETH-EUR', data, now).state).toBe('paused');
   }
 });
+
+test('each calculation revalidates reused history, clock and edited templates', () => {
+  const data = series();
+  expect(suggestedLevels('BTC-EUR', data, now).purchase[0].price_eur).toBe('128.4');
+  expect(suggestedLevels('BTC-EUR', data, now, { purchase: ['0', '20', '10'], sale: ['75', '90', '100'] }).purchase[0].price_eur).toBe('1');
+  data['2026-10-23T00:00:00.000Z'].retrieved_at = '2026-10-23T12:00:01Z';
+  expect(suggestedLevels('BTC-EUR', data, now).state).toBe('paused');
+  expect(suggestedLevels('BTC-EUR', data, '2026-10-23T12:00:02Z').state).toBe('ready');
+  data['2026-10-23T00:00:00.000Z'].price_eur = '0.0000000000000000000000000000000000000001';
+  const edited = suggestedLevels('BTC-EUR', data, '2026-10-23T12:00:02Z', { purchase: ['0', '20', '10'], sale: ['75', '90', '100'] });
+  expect(edited.purchase[0].price_eur).toBe('0.0000000000000000000000000000000000000001');
+  expect(edited.sale[2].price_eur).toBe('364');
+  data['2026-10-23T00:00:00.000Z'].price_eur = '000.000';
+  expect(suggestedLevels('BTC-EUR', data, '2026-10-23T12:00:02Z').state).toBe('paused');
+});
