@@ -6,11 +6,12 @@ External amounts reuse the canonical ledger's preserved source decimals and FX.
 from decimal import Decimal, localcontext
 import pandas as pd
 from backend.engine.ledger import exact, eur_rate
+from backend.engine.source_timing import source_timezone_policy
 
 
 def flow_observations(transactions, settings, start, end):
-    timezone = settings.get('source_timezone', {})
-    if timezone.get('verified') is not True or not timezone.get('evidence') or not timezone.get('name'):
+    timezone = source_timezone_policy(settings)
+    if not timezone:
         raise ValueError('external_flow_timezone_unverified')
     local_start = start.tz_convert(timezone['name']).date()
     local_end = end.tz_convert(timezone['name']).date()
@@ -44,6 +45,7 @@ def estimated_return(points, transactions, settings):
     result = {'method': 'geometrically_linked_daily_modified_dietz', 'state': 'unavailable',
               'start': points[0]['cutoff'] if points else None,
               'cutoff': points[-1]['cutoff'] if points else None, 'percent': None, 'daily': []}
+    result['source_timezone'] = source_timezone_policy(settings)
     result.update(requested_start=result['start'], opening_coverage='complete', excluded_prefunding_intervals=[])
     if len(points) < 2 or any(point.get('equity_eur') is None or point.get('ledger') is None for point in points):
         return {**result, 'diagnostics': ['missing_daily_valuation_or_flow_coverage']}

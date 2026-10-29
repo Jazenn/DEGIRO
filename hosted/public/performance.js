@@ -9,6 +9,10 @@ export function renderPerformance(target, snapshot) {
   const history = snapshot.read_model.portfolio_history;
   target.replaceChildren(element('h2', 'What changed over time?'));
   target.append(element('p', 'Finalized daily history is separate from current intraday holdings.'));
+  const timezone = history?.source_timezone ?? snapshot.read_model.source_timezone;
+  if (timezone?.status === 'owner_assumed') {
+    target.append(element('p', `Transaction times assume ${timezone.name} at your request. DEGIRO has not verified this convention. Timing-dependent values use this assumption, including summer and winter clock changes.`));
+  }
   if (!history || !Object.keys(history.periods ?? {}).length) {
     target.append(element('p', `Observed history unavailable. ${(history?.diagnostics ?? ['Verified historical prices and coverage have not been supplied.']).join('; ')}`));
     return;

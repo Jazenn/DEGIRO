@@ -205,3 +205,62 @@ def test_canonical_record_timing_is_distinct_from_current_quote_calculation_cuto
     assert model['rebalancing_targets_version'] is None
     unknown=calculate_portfolio(frame,observed_prices={},settings={},ledger_version='l',settings_version='financial',cutoff='2026-01-11T00:00:00Z').to_read_model()
     assert unknown['latest_recorded_transaction_at'] is None
+
+
+def test_owner_approved_amsterdam_assumption_uses_dst_and_preserves_its_provenance():
+    for date, cutoff, expected_time in [('10-01-2026', '2026-01-10T23:00:00Z', '2026-01-10T23:31:00+01:00'),
+                                        ('10-07-2026', '2026-07-10T22:00:00Z', '2026-07-10T23:31:00+02:00')]:
+        frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n'
+            + f'{date},23:30,,,Deposit,EUR,100,\n{date},23:31,,,Dividend,EUR,10,\n')
+        settings = {'source_timezone': {'name': 'Europe/Amsterdam', 'verified': False,
+                        'assumption_approved': True, 'evidence': 'synthetic owner decision'},
+                    'opening_baseline': {'at': '2026-01-01T00:00:00Z', 'cash_eur': '0', 'equity_eur': '0',
+                        'verified': True, 'evidence': 'synthetic first funding'},
+                    'cost_history': {'verified': True, 'evidence': 'synthetic complete'}}
+        model = calculate_portfolio(frame, observed_prices={}, settings=settings,
+            ledger_version='l', settings_version='s', cutoff=cutoff).to_read_model()
+        assert model['ledger']['net_gain_eur'] == '10'
+        assert model['latest_recorded_transaction_at'] == expected_time
+        assert model['source_timezone'] == {'name': 'Europe/Amsterdam', 'status': 'owner_assumed',
+                                           'evidence': 'synthetic owner decision'}
+        assert 'source_timezone_assumed:Europe/Amsterdam' in model['diagnostics']
+        assert settings['source_timezone']['verified'] is False
+
+
+def test_amsterdam_assumption_does_not_invent_a_missing_transaction_time():
+    import pytest
+    frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n02-01-2026,,,,Deposit,EUR,100,\n')
+    with pytest.raises(ValueError, match='recorded_time_required'):
+        calculate_portfolio(frame, observed_prices={}, settings={'source_timezone': {
+            'name': 'Europe/Amsterdam', 'verified': False, 'assumption_approved': True,
+            'evidence': 'synthetic owner decision'}}, ledger_version='l', settings_version='s',
+            cutoff='2026-01-03T00:00:00Z')
+
+
+def test_unapproved_or_other_timezone_assumptions_still_withhold_cutoff_dependent_results():
+    for timezone in [
+        {'name': 'Europe/Amsterdam', 'evidence': 'synthetic'},
+        {'name': 'Europe/Amsterdam', 'assumption_approved': 'true', 'evidence': 'synthetic'},
+        {'name': 'Europe/Amsterdam', 'assumption_approved': True},
+        {'name': 'Europe/Amsterdam', 'assumption_approved': True, 'evidence': '   '},
+        {'name': 'Europe/London', 'assumption_approved': True, 'evidence': 'synthetic'},
+    ]:
+        frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n02-01-2026,09:00,,,Deposit,EUR,100,\n')
+        model = calculate_portfolio(frame, observed_prices={}, settings={'source_timezone': timezone},
+            ledger_version='l', settings_version='s', cutoff='2026-01-03T00:00:00Z').to_read_model()
+        assert model['ledger']['net_gain_eur'] is None
+        assert model['latest_recorded_transaction_at'] is None
+        assert model['source_timezone'] is None
+
+
+def test_amsterdam_assumption_still_rejects_repeated_and_nonexistent_clock_times():
+    import pytest
+    from pytz.exceptions import InvalidTimeError
+    for date in ['25-10-2026', '29-03-2026']:
+        frame = parse_account_csv('Date,Time,Product,ISIN,Description,Amount,,Order Id\n'
+                                 + f'{date},02:30,,,Deposit,EUR,100,\n')
+        with pytest.raises((ValueError, InvalidTimeError)):
+            calculate_portfolio(frame, observed_prices={}, settings={'source_timezone': {
+                'name': 'Europe/Amsterdam', 'verified': False, 'assumption_approved': True,
+                'evidence': 'synthetic owner decision'}}, ledger_version='l', settings_version='s',
+                cutoff='2026-10-26T00:00:00Z')

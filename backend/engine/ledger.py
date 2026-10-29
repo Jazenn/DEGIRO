@@ -4,6 +4,7 @@ from decimal import Decimal, localcontext
 import re
 import pandas as pd
 from backend.engine.cash import sort_transactions_chronologically
+from backend.engine.source_timing import source_timezone_policy
 
 ZERO = Decimal(0)
 
@@ -131,7 +132,9 @@ def calculate_ledger(frame, prices, settings, cutoff, *, cutoff_eligible):
 
 def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
     diagnostics = []
-    timezone = settings.get('source_timezone', {})
+    timing = source_timezone_policy(settings)
+    if timing and timing['status'] == 'owner_assumed':
+        diagnostics.append('source_timezone_assumed:Europe/Amsterdam')
     if not cutoff_eligible:
         diagnostics.append('source_timezone_unverified:cutoff_eligibility_unavailable')
     cost_evidence = settings.get('cost_history', {})
@@ -148,8 +151,8 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             raise ValueError('Opening baseline requires dated verified cash-only equity; opening holdings require reconciled lots')
         if not frame.empty:
             earliest = pd.to_datetime(frame['normalized_date'] + ' ' + frame['time'], format='mixed').min()
-            zone = settings.get('source_timezone', {})
-            if zone.get('verified') and zone.get('evidence'):
+            zone = timing
+            if zone:
                 earliest = earliest.tz_localize(zone['name'], ambiguous='raise', nonexistent='raise')
                 if earliest < at:
                     raise ValueError('Opening baseline must precede all Transactions')
@@ -273,7 +276,7 @@ def _calculate(frame, prices, settings, cutoff, cutoff_eligible):
             state['realized'] = state['realized'] + gain if state['realized'] is not None and gain is not None else None
             executed_at = None
             if cutoff_eligible and row.get('time'):
-                executed_at = pd.Timestamp(row['normalized_date']+' '+row['time']).tz_localize(timezone['name'], ambiguous='raise', nonexistent='raise').isoformat()
+                executed_at = pd.Timestamp(row['normalized_date']+' '+row['time']).tz_localize(timing['name'], ambiguous='raise', nonexistent='raise').isoformat()
             verified_disposal = cost_complete and cost_known and disposed is not None and cutoff_eligible and executed_at is not None and mapped
             disposals.append({'schema_version': 'canonical-disposal-v1', 'execution_id': row['row_hash'],
                 'identity_version': row.get('identity_version'), 'identity_fingerprint': row.get('identity_fingerprint'),

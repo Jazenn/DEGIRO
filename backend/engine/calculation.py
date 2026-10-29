@@ -2,7 +2,7 @@
 
 The Decimal ledger and to_read_model are authoritative for new consumers. Legacy
 DataFrame fields retain the existing dashboard adapter until migration acceptance.
-Normalized dates retain broker-local semantics: timezone verification is pending.
+Normalized dates retain broker-local semantics and explicit timing provenance.
 """
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from backend.engine.ledger import Ledger, calculate_ledger, number, eur_rate
 from backend.config import BackendConfig
 from backend.engine.cash import calculate_cash_balance, calculate_net_invested_capital
 from backend.engine.portfolio import compute_fifo_holdings
+from backend.engine.source_timing import source_timezone_policy
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,7 @@ class CalculationReport:
     diagnostics: tuple[str, ...]
     ledger: Ledger
     latest_recorded_transaction_at: str | None = None
+    source_timezone: dict | None = None
 
     def to_read_model(self) -> dict:
         """Versioned JSON contract for new consumers; decimal values are strings.
@@ -65,6 +67,7 @@ class CalculationReport:
             "ledger_cutoff": self.cutoff,
             "latest_recorded_transaction_at": self.latest_recorded_transaction_at,
             "source_coverage_through": None,
+            "source_timezone": self.source_timezone,
             "ledger": {**asdict(self.ledger), "disposals": [{**row, "ledger_version": self.ledger_version,
                 "financial_settings_version": self.settings_version, "ledger_cutoff": self.cutoff} for row in self.ledger.disposals]},
             "disposal_cost_projections": {position.broker_asset_id: disposal_projection(position,
@@ -92,7 +95,8 @@ def calculate_portfolio(
     No file, provider, database or wall clock is consulted. Missing prices retain
     legacy cost valuation with an explicit coverage diagnostic, never a claim of
     observed market value. Naive source timestamps are compared in their source
-    calendar until verified timezone normalization is implemented.
+    calendar when neither verified evidence nor the owner's Amsterdam convention
+    has been configured.
     """
     end = pd.Timestamp(cutoff)
     if pd.isna(end) or end.tzinfo is None:
@@ -110,17 +114,19 @@ def calculate_portfolio(
     if "amount_currency" in frame and (~frame["amount_currency"].fillna("").isin(["", "EUR"])).any():
         if any(eur_rate(row, settings) is None for row in frame.to_dict("records") if row.get("amount_currency") not in ("", "EUR")):
             raise ValueError("non_eur_cash_requires_dated_fx: cannot publish an EUR cash balance")
-    timezone = settings.get("source_timezone", {})
-    verified_timezone = timezone.get("verified") is True and bool(timezone.get("evidence"))
+    timezone = source_timezone_policy(settings)
     latest_recorded = None
     if not frame.empty:
-        if not verified_timezone:
+        if not timezone:
             diagnostics.append("source_timezone_unverified:cutoff_eligibility_unavailable:legacy_wall_time_filter")
+        if (timezone and timezone['status'] == 'owner_assumed'
+                and ('time' not in frame or frame['time'].fillna('').astype(str).str.strip().eq('').any())):
+            raise ValueError('assumed_source_timezone_recorded_time_required')
         times = frame.get("time", pd.Series("00:00", index=frame.index))
         dates = pd.to_datetime(frame.get("normalized_date", frame["date"]).astype(str) + " " + times.astype(str), format="mixed", dayfirst="normalized_date" not in frame, errors="coerce")
         if dates.isna().any():
             raise ValueError("Normalized Transactions contain invalid dates")
-        if verified_timezone:
+        if timezone:
             dates = dates.dt.tz_localize(timezone["name"], ambiguous="raise", nonexistent="raise")
             eligible = dates <= end
             latest_recorded = dates.loc[eligible].max().isoformat() if eligible.any() else None
@@ -140,12 +146,12 @@ def calculate_portfolio(
         for symbol in holdings["symbol"]:
             if symbol not in prices:
                 diagnostics.append(f"missing_observed_price:{symbol}:legacy_cost_valuation")
-    ledger = calculate_ledger(frame, observed_prices, settings, end, cutoff_eligible=transactions.empty or verified_timezone)
+    ledger = calculate_ledger(frame, observed_prices, settings, end, cutoff_eligible=transactions.empty or bool(timezone))
     legacy_cash_frame = frame.copy()
     if not frame.empty:
         legacy_cash_frame["amount"] = [float(number(row["amount"]) * (eur_rate(row, settings) or Decimal(1))) for row in frame.to_dict("records")]
     return CalculationReport(
         ledger_version, settings_version, "canonical-v1", end.isoformat(),
         holdings, calculate_cash_balance(legacy_cash_frame), calculate_net_invested_capital(legacy_cash_frame),
-        dict(observed_prices), tuple(sorted(set(diagnostics + list(ledger.diagnostics)))), ledger, latest_recorded,
+        dict(observed_prices), tuple(sorted(set(diagnostics + list(ledger.diagnostics)))), ledger, latest_recorded, timezone,
     )
