@@ -3,6 +3,7 @@ import { beginLogin, finishLogin, cookie, readCookie, flowCookie, sessionCookie,
 import { AuthStore, authQuery, type AuthQuery } from './auth-store';
 import { generateRandomState } from 'oauth4webapi';
 import { loginPage } from './login-page';
+import { historyRequest, type HistoryRequest } from './history-store';
 
 export interface Environment {
   IMPORTS_ENABLED?: string;
@@ -22,6 +23,7 @@ export interface AcceptedSnapshot {
 }
 export interface SnapshotReader { readAccepted(): Promise<AcceptedSnapshot | null> }
 interface Dependencies {
+  readHistory?(value: HistoryRequest, env: Environment, signal: AbortSignal): Promise<Record<string, unknown>>;
   cryptoExecutions?(method: string, value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoStageReview?(value: unknown, env: Environment): Promise<Record<string, unknown>>;
   cryptoPlans?(method: string, value: unknown, env: Environment): Promise<Record<string, unknown>>;
@@ -92,6 +94,18 @@ export function createApplication(dependencies: Dependencies) {
     if (!authorized) {
       if (path === '/' && request.method === 'GET') return privateResponse(null, 303, { Location: '/login' });
       return json({ error: 'authentication_required' }, 401);
+    }
+    if (path === '/api/history') {
+      if (request.method !== 'GET') return json({ error: 'method_not_allowed' }, 405);
+      try {
+        if (url.searchParams.size !== new Set(url.searchParams.keys()).size) throw Error('invalid_history_request');
+        const value = historyRequest(Object.fromEntries(url.searchParams));
+        if (!dependencies.readHistory) throw Error('unavailable');
+        return json(await dependencies.readHistory(value, env, AbortSignal.any([request.signal, AbortSignal.timeout(10000)])));
+      } catch (error) {
+        return error instanceof Error && error.message === 'invalid_history_request' ? json({ error: 'invalid_history_request' }, 400)
+          : json({ state: 'unavailable', reason: 'history_read_failed' }, 503);
+      }
     }
     if (path === '/auth/logout' && request.method === 'POST') {
       if (request.headers.get('Origin') !== env.APP_ORIGIN) return json({ error: 'origin_rejected' }, 403);

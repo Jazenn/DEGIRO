@@ -11,11 +11,13 @@ import { handleImports } from './import-store';
 import { createApplication } from './application';
 import { neonSnapshotStore } from './snapshot-store';
 import type { AuthQuery } from './auth-store';
+import { neonHistoryStore } from './history-store';
 // External database/provider transports are replaceable for Worker entry tests.
 export function workerApplication(options: { authQuery?: AuthQuery; refreshStore?: (url: string) => RefreshStore; quote?: typeof fetchQuote } = {}) {
   let binding: string | undefined, refresh: ReturnType<typeof createRefresh> | undefined;
   return createApplication({
     authQuery: options.authQuery,
+    readHistory: (value, env, signal) => neonHistoryStore(env.DATABASE_URL).read(value, signal),
     cryptoExecutions: (method, value, env) => cryptoExecutions(neonExecutionStore(env.DATABASE_URL))(method, value),
     cryptoStageReview: (value, env) => previewStageReview(value, neonStageReviewReader(env.DATABASE_URL)),
     cryptoPlans: (method, value, env) => neonCryptoPlans(env.DATABASE_URL)(method, value),

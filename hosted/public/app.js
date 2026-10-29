@@ -41,7 +41,7 @@ export async function loadSnapshot(destination, request = fetch) {
     }
     target.append(metrics, text('p', `Current valuation calculated at ${model.cutoff}. Recorded Transactions calculated at ${model.ledger_cutoff}. Latest recorded Transaction: ${model.latest_recorded_transaction_at ?? 'Unavailable'}. Verified record coverage through: ${model.source_coverage_through ?? 'Unavailable'}. Finalized period results have their own cutoff in Performance.`), text('h3', 'Investment result explanation'));
     target.append(text('p', 'All-time net gain is equity including cash minus net external contributions. Completed-sale results remain included after the Asset is sold. Retained gain uses fee-inclusive FIFO recorded cost; realized gain uses actual completed sales. Net income includes withholding. Trade charges are already included in FIFO costs and sale proceeds; portfolio-only costs are deducted separately. Do not subtract recorded charges again.'));
-    target.append(text('p', `Future fee estimates are separate from these recorded charges. ${model.portfolio_history && Object.keys(model.portfolio_history.periods ?? {}).length ? 'Finalized historical coverage is shown separately in Performance.' : 'Finalized historical coverage is unavailable.'} Current holdings are not a historical return series.`));
+    target.append(text('p', 'Future fee estimates are separate from these recorded charges. See Performance for finalized historical coverage and any missing intervals. Current holdings are not a historical return series.'));
     for (const [title, closed] of [['Current holdings', false], ['Completed positions', true]]) {
       const section = document.createElement('section');
       section.setAttribute('aria-label', title);
@@ -89,7 +89,7 @@ export async function loadSnapshot(destination, request = fetch) {
     destination.acceptedSnapshot = snapshot;
     renderExposure(document.querySelector('#exposure'), snapshot);
     const performance = document.querySelector('#performance');
-    if (performance) renderPerformance(performance, snapshot);
+    if (performance) renderPerformance(performance, snapshot, request);
     document.dispatchEvent(new CustomEvent('accepted-snapshot', { detail: snapshot }));
     return true;
   } catch {

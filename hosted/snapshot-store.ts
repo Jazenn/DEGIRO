@@ -10,7 +10,7 @@ export class NeonSnapshotStore implements SnapshotReader {
     // One statement observes a coherent pointer + immutable generation under MVCC.
     const rows = await this.query(`SELECT g.generation_id,
       to_char(g.published_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.US"Z"') AS published_at,
-      g.data_classification, g.read_model
+      g.data_classification, g.read_model - 'portfolio_history' AS read_model
       FROM hosted_snapshot_pointer p LEFT JOIN hosted_snapshot_generations g
         ON g.generation_id = p.generation_id WHERE p.singleton = true`, []);
     if (!rows.length) return null;
