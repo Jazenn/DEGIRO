@@ -85,3 +85,15 @@ previous observations, market version and prepared summary together. Explicit
 `require_complete=False` exists only for legacy raw-data compatibility callers;
 it may store an incomplete raw series without a prepared summary and is not used
 by hosted jobs.
+
+
+The Worker may reuse validated public summary data within an isolate, with at
+most one copied generation for each supported coin. Each request checks the
+current window, version, clock and bounded payload, then fingerprints the relevant
+summary fields with SHA-256; changed content requires full validation even when
+its version is unchanged. The fingerprint identifies cached content and is not
+source authentication. Only sorted source prices and context are retained;
+templates, suggested levels, response objects and private owner data are not.
+Edited templates use fresh exact interpolation, and responses receive context
+copies. Cache misses and warm requests require separate CPU measurements; the
+cache does not establish that cold requests meet the free CPU constraint.
