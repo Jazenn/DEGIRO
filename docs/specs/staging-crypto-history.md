@@ -52,3 +52,28 @@ then returned `ready`, no missing days and 90 context days for each coin, coveri
 removed. Sustained account quota and full-workload resource usage remain unproven.
 The schedule remains disabled because the temporary staging branch expires on
 30 October 2026 at 10:32 UTC; continuous operation requires a reviewed lifecycle.
+
+
+The prepared-summary increment adds one nullable `prepared_summary` JSONB column
+through the idempotent market schema. Apply that additive schema to the approved
+synthetic database before updating the publisher or Worker. Existing rows remain
+unprepared until a complete public publication succeeds; no synthetic backfill is
+invented. The trusted publisher validates the complete window and atomically
+stores the same version with raw observations and an exact sorted-price summary.
+Failed publication retains all three together. Preparation time is captured after
+retrieval; it does not replace the source retrieval timestamps.
+
+The Worker selects only the compact summary, validates its schema, identity,
+version, current completed window, exact decimal ordering, bounded context and
+provenance, and performs the shared exact Decimal interpolation for each edited
+template. Missing, expired or invalid summaries return explicitly paused results;
+there is no expensive raw-observation fallback. The browser cannot supply the
+summary. Publisher-only database writes and Worker SELECT-only grants are the
+trust boundary, as for accepted Snapshots; this is not cryptographic source
+authentication. Apply/publish/deploy and route-specific CPU measurements remain
+separate staging checks. Local reductions do not establish the free CPU gate.
+The original observations remain stored for offline provenance and reconciliation.
+Compact context reconstructs only the UTC following-midnight timestamps already
+verified against those original observations; it preserves each original retrieval
+time. `prepared_at` records completion of preparation, separately from the fixed
+completed-window cutoff and the observation timestamps.
