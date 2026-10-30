@@ -45,6 +45,17 @@ test('valid unavailable periods explain shorter coverage without keeping the pre
   expect(target.querySelector('svg')).toBeNull();
 });
 
+test('shorter all-time coverage names the missing opening and keeps chart and euro results on the observed interval', async () => {
+  window.history.replaceState(null, '', '#performance');
+  const target = mount(), value = period();
+  Object.assign(value, { requested_start: '2025-12-31T00:00:00Z', shorter_coverage: true });
+  await renderPerformance(target, snapshot, async () => Response.json(envelope('ALL', value)));
+  expect(target.textContent).toContain('Requested opening: 2025-12-31T00:00:00Z');
+  expect(target.textContent).toContain(`Observed opening: ${start}`);
+  expect(target.textContent).toContain('EUR 47');
+  expect(target.querySelector('svg')?.getAttribute('aria-label')).toBe(`Observed equity from ${start} to ${end}`);
+});
+
 test('failed or mismatched generation reads preserve the prior period and its original labels', async () => {
   window.history.replaceState(null, '', '#performance');
   const target = mount(); let count = 0;

@@ -54,6 +54,19 @@ def test_calendar_months_clamp_and_missing_opening_is_explicit():
     assert result['periods']['1Y']['requested_start'] == '2025-01-05T00:00:00Z'
 
 
+def test_intraday_baseline_discloses_shorter_all_time_without_inventing_daily_opening():
+    _, settings, _, _ = scenario()
+    settings['opening_baseline']['at'] = '2026-01-01T08:00:00Z'
+    period = history(settings=settings)['periods']['ALL']
+    assert period['state'] == 'ready'
+    assert period['shorter_coverage'] is True
+    assert period['requested_start'] == '2026-01-01T00:00:00Z'
+    assert period['start'] == period['points'][0]['cutoff'] == '2026-01-02T00:00:00Z'
+    assert period['end'] == period['points'][-1]['cutoff'] == '2026-01-05T00:00:00Z'
+    assert period['attribution']['net_gain_eur'] == '29'
+    assert period['attribution']['net_external_flows_eur'] == '0'
+
+
 def test_unexpected_gap_withholds_period_instead_of_bridging_or_zero():
     _, _, daily, _ = scenario()
     daily.pop('2026-01-03T00:00:00Z')
@@ -84,6 +97,37 @@ def test_unresolved_corporate_actions_and_non_eur_cash_without_dated_fx_withhold
     transactions, _, _, _ = scenario()
     transactions.loc[transactions['type'] == 'DIVIDEND', 'amount_currency'] = 'USD'
     assert history(transactions=transactions)['periods']['ALL']['state'] == 'unavailable'
+
+
+def test_adjusted_prices_cannot_double_count_recorded_distributions_in_period_results():
+    _, _, daily, _ = scenario()
+    daily['2026-01-03T00:00:00Z']['ETF'] = ObservedPrice(
+        '120', '2026-01-02T16:30:00Z', 'synthetic adjusted source',
+        adjustment_basis='split_and_dividend_adjusted')
+    period = history(daily_prices=daily)['periods']['ALL']
+    assert period['state'] == 'unavailable'
+    assert period['points'][2]['equity_eur'] is None
+    assert 'attribution' not in period
+    assert period['estimated_return']['percent'] is None
+    assert 'Observed price is unusable for ETF' in period['diagnostics']
+
+
+def test_non_eur_distribution_requires_its_transaction_date_fx_evidence():
+    transactions, settings, _, _ = scenario()
+    dividend = transactions['description'] == 'Dividend'
+    transactions.loc[dividend, 'amount_currency'] = 'USD'
+    transaction = transactions.loc[dividend].iloc[0]
+    settings['fx_evidence'] = {transaction['row_hash']: {
+        'verified': True, 'provider': 'synthetic dated FX', 'currency': 'USD',
+        'date': transaction['normalized_date'], 'eur_per_unit': '0.5'}}
+    period = history(transactions=transactions, settings=settings)['periods']['ALL']
+    assert period['state'] == 'ready'
+    assert period['attribution']['net_income_eur'] == '1.0'
+    assert period['attribution']['net_gain_eur'] == '45.0'
+    settings['fx_evidence'][transaction['row_hash']]['date'] = '2026-01-01'
+    period = history(transactions=transactions, settings=settings)['periods']['ALL']
+    assert period['state'] == 'unavailable'
+    assert 'attribution' not in period
 
 def test_crypto_completed_day_requires_its_exact_midnight_observation():
     _, settings, daily, _ = scenario()

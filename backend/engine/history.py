@@ -48,6 +48,7 @@ def calculate_history(transactions, *, settings, daily_prices, asset_coverage,
         result['diagnostics'] = ['verified_opening_baseline_required']
         return result
     start = instant(baseline['at'])
+    requested_opening = start.replace(hour=0, minute=0, second=0, microsecond=0)
     # A non-midnight baseline cannot invent that day's opening valuation.
     if start != start.replace(hour=0, minute=0, second=0, microsecond=0):
         start = (start + timedelta(days=1)).replace(hour=0, minute=0, second=0, microsecond=0)
@@ -93,7 +94,7 @@ def calculate_history(transactions, *, settings, daily_prices, asset_coverage,
                      'diagnostics': [str(error)], 'observed_prices': {}}
         points.append(point)
         day += timedelta(days=1)
-    requested = {'ALL': start, 'YTD': end.replace(month=1, day=1), '1Y': calendar_months(end, 12),
+    requested = {'ALL': requested_opening, 'YTD': end.replace(month=1, day=1), '1Y': calendar_months(end, 12),
                  '3M': calendar_months(end, 3), '1M': calendar_months(end, 1), '1W': end - timedelta(days=7)}
     for name, requested_start in requested.items():
         opening = max(start, requested_start)

@@ -47,3 +47,34 @@ The calculation and Performance UI support observed and unavailable intervals.
 Missing observations are never replaced by zeros, cost valuations, adjusted
 prices or inferred movements. Private source reconciliation and source coverage
 remain parent delivery gates; public probes and synthetic tests do not satisfy them.
+
+## Rechecked 2026-10-30 for selected-period history (#49)
+
+Three bounded public read-only probes used no keys, cookies or private mappings:
+
+| Public request | Observed result |
+| --- | --- |
+| CoinGecko bitcoin market_chart, EUR, 365 days, daily | HTTP 200; 365 exact-midnight samples, 2025-10-31 through 2026-10-30 |
+| CoinGecko ethereum market_chart, EUR, 365 days, daily | HTTP 200; 365 exact-midnight samples, 2025-10-31 through 2026-10-30 |
+| Yahoo chart VWCE.DE, one month, daily, events requested | HTTP 200; EUR; 23 timestamps, 2026-09-30 07:00 UTC through 2026-10-30 08:00 UTC; no event types returned |
+
+The [CoinGecko Demo documentation](https://docs.coingecko.com/demo/reference/coins-id-market-chart)
+still states a 365-day limit, daily 00:00 UTC granularity and availability of the
+last completed day after 00:10 UTC. A request without a key succeeding today
+does not supersede the documented key requirement or guarantee future access.
+The Yahoo timestamp/event response still does not verify official unadjusted
+closes, complete corporate actions or an owner's Asset mapping. The prior Yahoo
+adjustment help URL returned HTTP 429 to the web reader during this recheck;
+no new adjustment guarantee is inferred. Full private all-time coverage remains
+unverified, and missing FX, source or corporate-action evidence still withholds
+dependent results.
+
+For an intraday verified opening baseline, daily history starts at the next UTC
+midnight. **All time** now marks that interval as shorter than the requested
+opening day, rather than silently implying complete opening coverage. The UI
+names requested and observed openings; chart and EUR attribution both retain
+the observed endpoints. A synthetic 2026-01-01 08:00 UTC baseline produces an
+observed 2026-01-02 through 2026-01-05 interval with EUR29 gain, excluding the
+unobserved opening-day result. Additional calculation checks withhold adjusted
+prices in the presence of recorded distributions, accept independently dated
+transaction FX, and reject FX evidence for a different date.

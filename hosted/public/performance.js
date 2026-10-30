@@ -92,7 +92,7 @@ export function renderPerformance(target, snapshot, request = fetch) {
     if (payload.state !== 'ready') {
       next.append(element('p', `Observed history unavailable. ${(payload.diagnostics ?? [payload.reason ?? 'Verified history has not been supplied.']).join('; ')}`));
     } else {
-      if (period.shorter_coverage) next.append(element('p', 'Shorter observed coverage: the requested opening is unavailable. Results use the displayed observed start.'));
+      if (period.shorter_coverage) next.append(element('p', `Shorter observed coverage: the requested opening is unavailable. Requested opening: ${period.requested_start ?? 'unavailable'}. Observed opening: ${period.start}. Any available chart and EUR results use the displayed observed interval.`));
       const estimate = period.estimated_return;
       if (estimate?.state === 'ready') {
         next.append(element('p', `Estimated cash-flow-adjusted return: ${estimate.percent}%`));
