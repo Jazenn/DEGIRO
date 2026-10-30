@@ -364,6 +364,8 @@ export function planContribution(
       terms_valid_until: rule.valid_until,
       quote_observed_at: observed,
       quantity_step: rule.quantity_step,
+      minimum_quantity: rule.minimum_quantity,
+      minimum_notional_eur: rule.minimum_notional_eur,
     });
   }
   if (invested.plus(fees).plus(spreads).gt(budget))
@@ -385,25 +387,21 @@ export function planContribution(
       after = new D(position.market_value_eur).plus(
         purchase?.notional_eur ?? "0",
       );
+    const target = settings.targets.find(
+      (row) => row.asset_id === position.broker_asset_id,
+    )?.target_pct ?? null;
+    const beforePct = market.isZero() ? null : new D(position.market_value_eur).div(market).mul(100);
+    const afterPct = afterMarket.isZero() ? null : after.div(afterMarket).mul(100);
     return {
       asset_id: position.broker_asset_id,
       symbol: position.symbol,
       before_value_eur: position.market_value_eur,
       after_value_eur: after.toFixed(),
-      before_pct: market.isZero()
-        ? null
-        : new D(position.market_value_eur)
-            .div(market)
-            .mul(100)
-            .toDecimalPlaces(12)
-            .toFixed(),
-      after_pct: afterMarket.isZero()
-        ? null
-        : after.div(afterMarket).mul(100).toDecimalPlaces(12).toFixed(),
-      target_pct:
-        settings.targets.find(
-          (row) => row.asset_id === position.broker_asset_id,
-        )?.target_pct ?? null,
+      before_pct: beforePct?.toDecimalPlaces(12).toFixed() ?? null,
+      after_pct: afterPct?.toDecimalPlaces(12).toFixed() ?? null,
+      target_pct: target,
+      before_deviation_pct: target === null || beforePct === null ? null : beforePct.minus(target).toDecimalPlaces(12).toFixed(),
+      after_deviation_pct: target === null || afterPct === null ? null : afterPct.minus(target).toDecimalPlaces(12).toFixed(),
     };
   });
   const cryptoIds = new Set(

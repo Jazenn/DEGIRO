@@ -2,6 +2,53 @@
 import { expect, test } from "vitest";
 // @ts-expect-error static browser module
 import { contributionUI } from "./public/contribution.js";
+import { createContribution } from "./contribution-store";
+
+test.each(["missing-fees", "missing-price", "tiny-budget", "zero-budget"])(
+  "ETF workflow retains the chosen budget and explains %s without executable purchases",
+  async (scenario) => {
+    document.body.innerHTML = '<section id="snapshot"></section><section id="contribution"></section>';
+    const root = document.querySelector("#contribution")!;
+    const snapshot = { generation_id: "etf-synthetic", published_at: "2026-10-23T10:00:00Z",
+      data_classification: "synthetic" as const, read_model: {
+        settings_version: "financial-fixture", rebalancing_targets_version: "1",
+        ledger: { market_value_eur: "100", positions: [
+          { broker_asset_id: "ETF", symbol: "ETF", asset_kind: "ETF", quantity: "1", market_value_eur: "100" },
+        ] },
+        observed_prices: scenario === "missing-price" ? {} : {
+          ETF: { price_eur: "100", observed_at: "2026-10-23T10:00:00Z" },
+        },
+      } };
+    const preview = createContribution({ read: async () => ({ snapshot,
+      settings: { version: "1", targets: [{ asset_id: "ETF", target_pct: "100" }] },
+      terms: scenario === "missing-fees" ? [] : [{ asset_id: "ETF", revision: "synthetic-1",
+        quantity_step: "1", minimum_quantity: "1", minimum_notional_eur: "0", fixed_fee_eur: "1",
+        fee_rate_pct: "0", minimum_fee_eur: "0", fee_status: "estimated",
+        evidence: "Synthetic reviewed terms, not a real broker tariff",
+        valid_from: "2026-01-01T00:00:00Z", valid_until: "2027-01-01T00:00:00Z" }],
+    }) }, () => Date.parse("2026-10-23T10:00:00Z"));
+    contributionUI(root, document.querySelector("#snapshot"), async (_url: string, options: RequestInit) =>
+      Response.json(await preview(JSON.parse(String(options.body)))));
+    document.dispatchEvent(new CustomEvent("accepted-snapshot", { detail: snapshot }));
+    const budget = scenario === "zero-budget" ? "0" : scenario === "tiny-budget" ? "100" : "101";
+    root.querySelector("input")!.value = budget;
+    root.querySelector("form")!.dispatchEvent(new Event("submit", { cancelable: true }));
+    await new Promise(resolve => setTimeout(resolve, 0));
+    expect(root.querySelector("thead")?.textContent ?? "").not.toContain("Buy quantity");
+    if (scenario.startsWith("missing")) {
+      expect(root.textContent).toContain("Estimate incomplete. No purchases proposed");
+      expect(root.textContent).toContain("Unallocated contribution EUR 101. Fees unknown.");
+      expect(root.textContent).toContain(scenario === "missing-fees"
+        ? "Reviewed fees or quantity minimums are missing for ETF"
+        : "An eligible source price is missing for ETF");
+    } else {
+      expect(root.textContent).toContain("produce no purchases");
+      expect(root.textContent).toContain(`Remaining cash EUR ${budget}`);
+      expect(root.textContent).toContain("Estimated fees EUR 0");
+    }
+    expect(snapshot.read_model.ledger.positions[0].quantity).toBe("1");
+  },
+);
 
 test("owner previews a manual ETF contribution and changing generation invalidates the visible plan", async () => {
   document.body.innerHTML =
@@ -35,6 +82,9 @@ test("owner previews a manual ETF contribution and changing generation invalidat
             quote_observed_at: "2026-10-23T10:00:00Z",
             terms_revision: "review-1",
             terms_evidence: "Synthetic all-in fee evidence",
+            quantity_step: "1",
+            minimum_quantity: "1",
+            minimum_notional_eur: "0",
           },
         ],
         allocation: [
@@ -43,6 +93,8 @@ test("owner previews a manual ETF contribution and changing generation invalidat
             before_pct: "100",
             after_pct: "100",
             target_pct: "100",
+            before_deviation_pct: "0",
+            after_deviation_pct: "0",
           },
         ],
       });
@@ -65,6 +117,9 @@ test("owner previews a manual ETF contribution and changing generation invalidat
   });
   expect(root.textContent).toContain("Estimated fees EUR 1");
   expect(root.textContent).toContain("Manual");
+  expect(root.textContent).toContain("Before deviation (pp)");
+  expect(root.textContent).toContain("After deviation (pp)");
+  expect(root.textContent).toContain("Quantity step 1; minimum quantity 1; minimum purchase EUR 0");
   document.dispatchEvent(
     new CustomEvent("accepted-snapshot", {
       detail: { generation_id: "g2", read_model: { settings_version:"financial-fixture", rebalancing_targets_version: "1" } },

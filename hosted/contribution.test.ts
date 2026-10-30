@@ -177,6 +177,26 @@ import { createContribution } from "./contribution-store";
 import { createApplication } from "./application";
 import { databaseTransport, env, login } from "./auth-test-support";
 
+test("ETF preview exposes verified purchase limits and fee-inclusive allocation deviations", async () => {
+  const preview = createContribution({ read: async () => ({
+    snapshot: { generation_id: "etf-limits", published_at: "2026-10-23T10:00:00Z",
+      data_classification: "synthetic", read_model: model },
+    settings: { version: "1", targets: [
+      { asset_id: "A", target_pct: "75" }, { asset_id: "B", target_pct: "25" },
+    ] },
+    terms: [terms("A"), terms("B")],
+  }) }, () => Date.parse("2026-10-23T10:00:00Z"));
+  const plan = await preview({ generation_id: "etf-limits", rebalancing_targets_version: "1", budget_eur: "101" });
+  expect(plan).toMatchObject({ state: "complete", invested_eur: "100", fees_eur: "1", remaining_cash_eur: "0" });
+  if (!("purchases" in plan)) throw Error("Expected a contribution plan");
+  expect(plan.purchases).toEqual([expect.objectContaining({ asset_id: "A", quantity: "1",
+    quantity_step: "1", minimum_quantity: "1", minimum_notional_eur: "0" })]);
+  expect(plan.allocation).toEqual([
+    expect.objectContaining({ asset_id: "A", before_deviation_pct: "-25", after_deviation_pct: "-8.333333333333" }),
+    expect.objectContaining({ asset_id: "B", before_deviation_pct: "25", after_deviation_pct: "8.333333333333" }),
+  ]);
+});
+
 test("authenticated preview requires the displayed coherent generation and settings and cannot mutate holdings", async () => {
   const snapshot = {
     generation_id: "g1",

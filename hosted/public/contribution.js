@@ -312,15 +312,18 @@ export function contributionUI(root, snapshotNode, request = fetch) {
           "Allocation across all holdings, including the Long-Term Crypto Core (cash shown separately)",
         ),
         table(
-          ["Asset", "Before %", "After %", "Target %"],
+          ["Asset", "Before %", "After %", "Target %", "Before deviation (pp)", "After deviation (pp)"],
           plan.allocation.map((row) => [
             row.symbol ?? row.asset_id,
             row.before_pct,
             row.after_pct,
             row.target_pct,
+            row.before_deviation_pct,
+            row.after_deviation_pct,
           ]),
         ),
       );
+      output.append(node("p", "Allocation percentages exclude cash and purchase fees. Deviations are percentage points from the target: negative is below target, positive is above target. Remaining contribution cash is shown separately."));
       const sources = document.createElement("details");
       sources.append(
         node("summary", "Quote times and reviewed execution terms"),
@@ -329,7 +332,7 @@ export function contributionUI(root, snapshotNode, request = fetch) {
         sources.append(
           node(
             "p",
-            `${row.asset_id}: source observation ${row.quote_observed_at}; execution terms ${row.terms_revision}; ${row.terms_evidence}; spread evidence ${row.spread_evidence ?? "unavailable"}; valid until ${row.terms_valid_until ?? "unavailable"}.`,
+            `${row.asset_id}: source observation ${row.quote_observed_at}; execution terms ${row.terms_revision}; ${row.terms_evidence}; Quantity step ${row.quantity_step ?? "unavailable"}; minimum quantity ${row.minimum_quantity ?? "unavailable"}; minimum purchase EUR ${row.minimum_notional_eur ?? "unavailable"}; spread evidence ${row.spread_evidence ?? "unavailable"}; valid until ${row.terms_valid_until ?? "unavailable"}.`,
           ),
         ),
       );
