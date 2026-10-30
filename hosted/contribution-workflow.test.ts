@@ -189,6 +189,7 @@ test("owner explicitly chooses mixed funding and a BTC/ETH split and sees concen
         rebalancing_targets_version: "1",
         budget_eur: "200",
         budgets: { etf_eur: "100", btc_eur: "75", eth_eur: "25" },
+        remaining_cash_by_category: { etf_eur: "0.25", btc_eur: "0.5", eth_eur: "0.25" },
         invested_eur: "196",
         fees_eur: "2",
         spread_allowance_eur: "1",
@@ -227,4 +228,12 @@ test("owner explicitly chooses mixed funding and a BTC/ETH split and sees concen
   });
   expect(root.textContent).toContain("Crypto concentration increases");
   expect(root.textContent).toContain("Spread allowance EUR 1");
+  expect(root.textContent).toContain("Unspent cash by contribution choice");
+  expect(Array.from(root.querySelectorAll("tbody tr"), row => row.textContent)).toEqual([
+    "ETFs1000.25", "Bitcoin750.5", "Ethereum250.25",
+  ]);
+  inputs[2].value = "60";
+  inputs[2].dispatchEvent(new Event("input"));
+  expect(root.textContent).toContain("Coin split changed. Preview again.");
+  expect(root.textContent).not.toContain("Unspent cash by contribution choice");
 });

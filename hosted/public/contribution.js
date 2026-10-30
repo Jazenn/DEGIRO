@@ -212,6 +212,15 @@ export function contributionUI(root, snapshotNode, request = fetch) {
         plan.rebalancing_targets_version !== snapshot.read_model.rebalancing_targets_version || plan.settings_version !== snapshot.read_model.settings_version
       )
         throw Error();
+      if (plan.budgets && plan.remaining_cash_by_category) {
+        output.append(
+          node("h3", "Unspent cash by contribution choice"),
+          table(["Contribution choice", "Allocated budget EUR", "Unspent cash EUR"],
+            [["ETFs", "etf_eur"], ["Bitcoin", "btc_eur"], ["Ethereum", "eth_eur"]]
+              .map(([label, key]) => [label, plan.budgets[key], plan.remaining_cash_by_category[key]])),
+          node("p", "Unspent amounts stay cash. They are not automatically moved to another category or used for future purchases."),
+        );
+      }
       if (plan.state !== "complete") {
         status.textContent =
           "Estimate incomplete. No purchases proposed; missing inputs are not treated as free.";
@@ -252,7 +261,7 @@ export function contributionUI(root, snapshotNode, request = fetch) {
           `Purchases EUR ${plan.invested_eur} � Estimated fees EUR ${plan.fees_eur} � Spread allowance EUR ${plan.spread_allowance_eur ?? "0"} � Remaining cash EUR ${plan.remaining_cash_eur}`,
         ),
       );
-      if (plan.budgets)
+      if (plan.budgets && !plan.remaining_cash_by_category)
         output.append(
           node(
             "p",

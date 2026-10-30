@@ -32,6 +32,7 @@ export interface ContributionPlan {
   invested_eur: string | null;
   fees_eur: string | null;
   remaining_cash_eur: string;
+  remaining_cash_by_category: Record<string, string>;
   spread_allowance_eur: string | null;
   warnings: string[];
   budgets: Record<string, string>;
@@ -137,6 +138,11 @@ export function planContribution(
     remaining_cash_eur: budget.toFixed(),
     warnings: [],
     budgets: {
+      etf_eur: pools.etf.toFixed(),
+      btc_eur: pools.BTC.toFixed(),
+      eth_eur: pools.ETH.toFixed(),
+    },
+    remaining_cash_by_category: {
       etf_eur: pools.etf.toFixed(),
       btc_eur: pools.BTC.toFixed(),
       eth_eur: pools.ETH.toFixed(),
@@ -343,6 +349,9 @@ export function planContribution(
       continue;
     const charge = fee(notional),
       allowance = spread(notional);
+    const category = pool.toLowerCase() + "_eur";
+    result.remaining_cash_by_category[category] = new D(result.remaining_cash_by_category[category])
+      .minus(notional).minus(charge).minus(allowance).toFixed();
     invested = invested.plus(notional);
     fees = fees.plus(charge);
     spreads = spreads.plus(allowance);
@@ -380,6 +389,9 @@ export function planContribution(
     .minus(fees)
     .minus(spreads)
     .toFixed();
+  const categoryCash = Object.values(result.remaining_cash_by_category).map(value => new D(value));
+  if (categoryCash.some(value => value.lt(0)) || !categoryCash.reduce((sum, value) => sum.plus(value), new D(0)).eq(result.remaining_cash_eur))
+    throw Error("category_budget_invariant");
   result.allocation = positions.map((position) => {
     const purchase = result.purchases.find(
         (row) => row.asset_id === position.broker_asset_id,

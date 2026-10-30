@@ -308,6 +308,34 @@ const mixedTargets = {
   ],
 };
 
+test("mixed preview keeps odd-cent split remainders in their chosen categories without consuming core or existing cash", async () => {
+  const snapshot = { generation_id: "mixed-remainders", published_at: "2026-10-23T10:00:00Z",
+    data_classification: "synthetic" as const, read_model: {
+      ...structuredClone(cryptoModel),
+      ledger: { ...structuredClone(cryptoModel.ledger), cash_balance_eur: "100000" },
+    } };
+  const original = structuredClone(snapshot);
+  const preview = createContribution({ read: async () => ({ snapshot, settings: mixedTargets,
+    terms: [terms("A"), terms("B"), cryptoTerms("BTC-ID"), cryptoTerms("ETH-ID")],
+  }) }, () => Date.parse("2026-10-23T10:00:00Z"));
+  const input = { generation_id: snapshot.generation_id, rebalancing_targets_version: "1", budget_eur: "101",
+    choice: { mode: "mixed", crypto_budget_eur: "51", coin: "both", btc_pct: "33" } };
+  const plan = await preview(input);
+  expect(plan).toMatchObject({ state: "complete",
+    budgets: { etf_eur: "50", btc_eur: "16.83", eth_eur: "34.17" },
+    remaining_cash_by_category: { etf_eur: "50", btc_eur: "0.68", eth_eur: "0.85" },
+    invested_eur: "47", fees_eur: "2", spread_allowance_eur: "0.47", remaining_cash_eur: "51.53",
+  });
+  if (!("purchases" in plan)) throw Error("Expected a contribution plan");
+  expect(plan.purchases.map(row => [row.symbol, row.quantity, row.total_cost_eur])).toEqual([
+    ["ETH", "0.32", "33.32"], ["BTC", "0.15", "16.15"],
+  ]);
+  expect(plan.allocation.map(row => row.asset_id).sort()).toEqual(["A", "B", "BTC-ID", "ETH-ID"]);
+  expect(plan.warnings).toContain("crypto_concentration_increases");
+  expect(await preview(input)).toEqual(plan);
+  expect(snapshot).toEqual(original);
+});
+
 test("explicit mixed contribution preserves category budgets, both coin split, fees, spread and all holdings", () => {
   const plan = planContribution(
     cryptoModel,
@@ -330,6 +358,7 @@ test("explicit mixed contribution preserves category budgets, both coin split, f
   expect(plan.fees_eur).toBe("4");
   expect(plan.spread_allowance_eur).toBe("1.98");
   expect(plan.remaining_cash_eur).toBe("0.02");
+  expect(plan.remaining_cash_by_category).toEqual({ etf_eur: "0", btc_eur: "0.01", eth_eur: "0.01" });
   expect(plan.allocation).toHaveLength(4);
   expect(plan.warnings).not.toContain("crypto_concentration_increases");
 });
@@ -380,6 +409,7 @@ test("contradictory category/coin choices and missing spread evidence never crea
     { mode: "crypto", crypto_budget_eur: "202", coin: "BTC" },
   );
   expect(unknown.state).toBe("incomplete");
+  expect(unknown.remaining_cash_by_category).toEqual({ etf_eur: "0", btc_eur: "202", eth_eur: "0" });
   expect(unknown.purchases).toEqual([]);
   expect(unknown.diagnostics).toContain(
     "missing_reviewed_spread_allowance:BTC-ID",
@@ -508,6 +538,7 @@ test("crypto-only ETH allocation works without ETF targets and never silently su
   );
   expect(plan.state).toBe("complete");
   expect(plan.budgets).toEqual({ etf_eur: "0", btc_eur: "0", eth_eur: "202" });
+  expect(plan.remaining_cash_by_category).toEqual({ etf_eur: "0", btc_eur: "0", eth_eur: "0.01" });
   expect(plan.purchases.map((row) => row.symbol)).toEqual(["ETH"]);
   expect(
     planContribution(
