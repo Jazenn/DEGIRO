@@ -54,7 +54,11 @@ Keep provider classifications as reported: matching country/sector labels do not
 prove compatible classification methodologies across providers.
 
 Overlap is the sum of minimum weights for matching stable security identifiers.
-It requires equal source dates, identifier namespaces and weight bases. Complete
+It requires equal source dates and identifier namespaces, and verified
+fund-net-asset weight bases for both funds. Matching provider-reported scope
+labels alone do not establish compatible denominators, so those comparisons
+remain unavailable. The visible comparison includes its source date and each
+fund's covered net-asset fraction. Complete
 datasets produce a comparison of fund weights, not an investment risk score.
 Partial compatible datasets produce only an observed lower bound. Missing IDs,
 different dates or incompatible scope disable the comparison. Coverage uses

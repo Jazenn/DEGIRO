@@ -53,6 +53,18 @@ def test_partial_compatible_overlap_is_only_an_observed_lower_bound():
     assert overlap['state'] == 'partial'
 
 
+def test_matching_provider_reported_scopes_do_not_establish_compatible_fund_weights():
+    model = {'ledger': {'market_value_eur': '1000', 'positions': [
+        {'broker_asset_id': 'A', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'},
+        {'broker_asset_id': 'B', 'quantity': '1', 'asset_kind': 'ETF', 'market_value_eur': '500'}]}}
+    sources = {identifier: fund([holding('X', '100')], complete=True,
+                               weight_basis='provider_reported_market_value')
+               for identifier in ('A', 'B')}
+    overlap = build_exposure(model, sources)['overlap'][0]
+    assert overlap['state'] == 'unavailable'
+    assert overlap['observed_overlap_pct'] is None
+
+
 def test_dated_provider_table_remains_partial_and_unknown_ids_never_become_names():
     html = '''<h3>Holdings details</h3><p>As at 30 Sept 2026</p><table>
     <tr><th>Holding name</th><th>% of market value</th><th>Sector</th><th>Region</th></tr>

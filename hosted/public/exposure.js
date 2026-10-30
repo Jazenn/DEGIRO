@@ -48,8 +48,17 @@ export function renderExposure(destination, snapshot) {
       content.append(card);
     }
     content.append(text('h3', 'Compatible fund overlap'));
-    for (const overlap of exposure.overlap) content.append(text('p', `${overlap.fund_a} / ${overlap.fund_b}: ${overlap.observed_overlap_pct === null
+    for (const overlap of exposure.overlap) {
+      content.append(text('p', `${overlap.fund_a} / ${overlap.fund_b}: ${overlap.observed_overlap_pct === null
       ? 'Overlap unavailable' : `${percent(overlap.observed_overlap_pct)} ${overlap.state === 'complete' ? 'overlap of fund weights' : 'observed lower bound'}`} · ${overlap.reason}`));
+      if (overlap.observed_overlap_pct !== null) {
+        content.append(text('p', `Comparison as of ${overlap.as_of || 'unknown date'}.`));
+        for (const id of [overlap.fund_a, overlap.fund_b]) {
+          const fund = exposure.funds.find(item => item.fund_id === id);
+          content.append(text('p', `${id}: ${fraction(fund?.covered_fund_fraction)} of fund net assets covered.`));
+        }
+      }
+    }
     if (!exposure.overlap.length) content.append(text('p', 'At least two dated compatible holdings datasets are needed to compare overlap.'));
     content.append(text('p', 'These dated disclosures describe holdings, not a forecast or an exact diversification score.'));
   }

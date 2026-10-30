@@ -98,7 +98,7 @@ def build_exposure(model, sources):
         a, b = accepted.get(left['fund_id']), accepted.get(right['fund_id'])
         item = {'fund_a': left['fund_id'], 'fund_b': right['fund_id'], 'state': 'unavailable',
                 'observed_overlap_pct': None, 'reason': 'Missing or incompatible dates, identifiers or weight basis.'}
-        if a and b and a['as_of'] == b['as_of'] and a['weight_basis'] == b['weight_basis'] and a.get('identifier_namespace') \
+        if a and b and a['as_of'] == b['as_of'] and a['weight_basis'] == b['weight_basis'] == 'fund_net_assets' and a.get('identifier_namespace') \
                 and a.get('identifier_namespace') == b.get('identifier_namespace') \
                 and all(row.get('security_id') for row in a['holdings'] + b['holdings']):
             aw = {row['security_id']: number(row['weight_pct']) for row in a['holdings']}
